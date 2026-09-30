@@ -968,15 +968,36 @@ configuration system, cloud, or container surface. Skip the Aspire, EF Core, ASP
 Blazor, TestContainers, OpenTelemetry, and email skills. `playwright-blazor` in particular
 is not a way to test this UI — it is a desktop app, not a web one.
 
-## CodeGraph
+## Finding code: graphify and CodeGraph first
 
-This repository is indexed (`.codegraph/`). Reach for it **before** grep or reading files:
+**Search through the two graphs before reading or parsing any file.** Grep, `Read`, and
+ad-hoc scripts over the source come after them, not instead of them — and only for what the
+graphs could not answer.
 
-```bash
-codegraph explore "<symbol names or question>"
-```
+1. **graphify** — the knowledge graph in `graphify-out/graph.json`. Use it to orient: what
+   an area is, how two things connect, what depends on something.
 
-The MCP tool `codegraph_explore` does the same in one call and returns verbatim
-line-numbered source plus call paths and blast radius. It is the cheapest way to answer
-"what calls this" — which matters here, because a change to one vtable struct can reach
-every wrapper. Re-run `codegraph init` after large refactors to refresh the index.
+   ```bash
+   graphify query "<question>"      # traversal of the graph for a question
+   graphify explain "<symbol>"      # a node and its neighbours
+   graphify path "<A>" "<B>"        # how two things connect
+   graphify affected "<symbol>"     # what a change to it reaches
+   ```
+
+   If `graphify-out/` does not exist or is stale, build it with `graphify update .` (code
+   only, no LLM needed).
+
+2. **CodeGraph** — the symbol index in `.codegraph/`. Use it to get the actual source.
+
+   ```bash
+   codegraph explore "<symbol names or question>"
+   ```
+
+   The MCP tool `codegraph_explore` does the same in one call and returns verbatim
+   line-numbered source plus call paths and blast radius, safe to edit from. It is the
+   cheapest way to answer "what calls this" — which matters here, because a change to one
+   vtable struct can reach every wrapper. Re-run `codegraph init` after large refactors to
+   refresh the index.
+
+3. **Only then** read or grep files directly: for what neither graph covers, or to confirm
+   a detail the graphs summarised.
