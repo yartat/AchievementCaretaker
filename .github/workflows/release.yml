@@ -1,21 +1,16 @@
-# SteamAchievementCaretaker
+# AchievementCaretaker
 # Copyright (c) 2026 Yaroslav V Tatarenko
 #
-# This project is based on Steam Achievement Manager (SAM)
-# Copyright (c) 2008-2024 Rick (rick 'at' gibbed 'dot' us)
-# https://github.com/gibbed/SteamAchievementManager
-#
-# An altered source version of that software, plainly marked as such and
-# distributed under the zlib license; see LICENSE.txt in the repository root.
+# See LICENSE in the repository root.
 #
 # Pushing a tag of the form v1.2.3 builds the release artifacts and publishes
 # them on a GitHub release:
 #
-#   steam-achievement-caretaker-1.2.3-win-x64-setup.exe      installer
-#   steam-achievement-caretaker-1.2.3-win-x64-portable.zip   unzip and run
-#   steam-achievement-caretaker-1.2.3-win-x86-setup.exe
-#   steam-achievement-caretaker-1.2.3-win-x86-portable.zip
-#   steam-achievement-caretaker_1.2.3_amd64.deb
+#   achievement-caretaker-1.2.3-win-x64-setup.exe      installer
+#   achievement-caretaker-1.2.3-win-x64-portable.zip   unzip and run
+#   achievement-caretaker-1.2.3-win-x86-setup.exe
+#   achievement-caretaker-1.2.3-win-x86-portable.zip
+#   achievement-caretaker_1.2.3_amd64.deb
 #
 # Every one of them is self-contained: the .NET runtime is inside, so nothing
 # has to be installed first. That is what makes the portable build portable,
@@ -122,8 +117,8 @@ jobs:
           VERSION: ${{ needs.version.outputs.version }}
         run: |
           set -euo pipefail
-          DIR="steam-achievement-caretaker-${VERSION}-${{ matrix.rid }}-portable"
-          dotnet publish SteamAchievementCaretaker.App/SteamAchievementCaretaker.App.csproj \
+          DIR="achievement-caretaker-${VERSION}-${{ matrix.rid }}-portable"
+          dotnet publish AchievementCaretaker.App/AchievementCaretaker.App.csproj \
             -c Release -r "${{ matrix.rid }}" -p:Platform="${{ matrix.platform }}" \
             --self-contained true -o "out/$DIR"
           bash packaging/check-pe-arch.sh "out/$DIR" "${{ matrix.rid }}"
@@ -163,7 +158,7 @@ jobs:
           VERSION: ${{ needs.version.outputs.version }}
         run: |
           set -euo pipefail
-          dotnet publish SteamAchievementCaretaker.App/SteamAchievementCaretaker.App.csproj \
+          dotnet publish AchievementCaretaker.App/AchievementCaretaker.App.csproj \
             -c Release -r linux-x64 --self-contained true -o out/linux-x64
           bash packaging/linux/build-deb.sh \
             --publish-dir out/linux-x64 \
@@ -203,7 +198,7 @@ jobs:
           find artifacts -type f | sort
           gh release create "${{ github.ref_name }}" \
             --repo "${{ github.repository }}" \
-            --title "Steam Achievement Caretaker $VERSION" \
+            --title "Achievement Caretaker $VERSION" \
             --notes-file artifacts/release-notes/release-notes.md \
             artifacts/win-x64/* \
             artifacts/win-x86/* \

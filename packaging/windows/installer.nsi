@@ -1,12 +1,7 @@
-; SteamAchievementCaretaker
+; AchievementCaretaker
 ; Copyright (c) 2026 Yaroslav V Tatarenko
 ;
-; This project is based on Steam Achievement Manager (SAM)
-; Copyright (c) 2008-2024 Rick (rick 'at' gibbed 'dot' us)
-; https://github.com/gibbed/SteamAchievementManager
-;
-; An altered source version of that software, plainly marked as such and
-; distributed under the zlib license; see LICENSE.txt in the repository root.
+; See LICENSE in the repository root.
 ;
 ; Per-user installer. build-installer.sh passes VERSION, VERSION4, ARCH,
 ; PUBLISH_DIR, ICON, LICENSE_FILE, OUTFILE and HOMEPAGE with -D.
@@ -23,9 +18,9 @@ Unicode true
 !include "FileFunc.nsh"
 !include "LogicLib.nsh"
 
-!define APP_NAME "Steam Achievement Caretaker"
-!define APP_ID "SteamAchievementCaretaker"
-!define APP_EXE "SteamAchievementCaretaker.exe"
+!define APP_NAME "Achievement Caretaker"
+!define APP_ID "AchievementCaretaker"
+!define APP_EXE "AchievementCaretaker.exe"
 !define PUBLISHER "Yaroslav V Tatarenko"
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_ID}"
 
@@ -44,7 +39,7 @@ VIAddVersionKey "FileDescription" "${APP_NAME} ${ARCH} installer"
 VIAddVersionKey "FileVersion" "${VERSION4}"
 VIAddVersionKey "ProductVersion" "${VERSION}"
 VIAddVersionKey "CompanyName" "${PUBLISHER}"
-VIAddVersionKey "LegalCopyright" "Copyright (c) 2026 ${PUBLISHER}. Based on Steam Achievement Manager, copyright (c) 2008-2024 Rick (gibbed)."
+VIAddVersionKey "LegalCopyright" "Copyright (c) 2026 ${PUBLISHER}. Steam support based on Steam Achievement Manager, copyright (c) 2008-2024 Rick (gibbed); GOG support based on GOG Achievements Manager by Timendum."
 
 !define MUI_ICON "${ICON}"
 !define MUI_UNICON "${ICON}"

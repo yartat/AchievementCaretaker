@@ -8,7 +8,7 @@ Section: utils
 Priority: optional
 Homepage: @HOMEPAGE@
 Description: Manage Steam achievements and statistics
- Steam Achievement Caretaker reads and writes achievements and statistics for
+ Achievement Caretaker reads and writes achievements and statistics for
  the games in a Steam library. It shows the library with a completion meter per
  game, and opens a per-game editor for unlocking, locking and resetting.
  .
@@ -18,5 +18,6 @@ Description: Manage Steam achievements and statistics
  This package is self-contained: it bundles the .NET runtime and does not need
  dotnet-runtime-10.0 from Microsoft's repository.
  .
- Based on Steam Achievement Manager by Rick (gibbed), and an altered source
- version of it.
+ Steam support is based on Steam Achievement Manager by Rick (gibbed), and is
+ an altered source version of it. GOG support is based on GOG Achievements
+ Manager by Timendum.

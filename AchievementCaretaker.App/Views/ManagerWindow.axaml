@@ -1,0 +1,417 @@
+<!--
+  AchievementCaretaker
+  Copyright (c) 2026 Yaroslav V Tatarenko
+
+  This project is based on Steam Achievement Manager (SAM)
+  Copyright (c) 2008-2024 Rick (rick 'at' gibbed 'dot' us)
+  https://github.com/gibbed/SteamAchievementManager
+
+  An altered source version of that software, plainly marked as such and
+  distributed under the zlib license; see LICENSE.txt in the repository root.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:AchievementCaretaker.App.ViewModels"
+        xmlns:stats="using:AchievementCaretaker.App.Achievements.Stats"
+        xmlns:local="using:AchievementCaretaker.App.Achievements"
+        x:Class="AchievementCaretaker.App.Views.ManagerWindow"
+        x:DataType="vm:ManagerViewModel"
+        Icon="/Resources/AchievementCaretaker.ico"
+        Width="860" Height="600"
+        MinWidth="640" MinHeight="420"
+        Background="{DynamicResource SamWindowBrush}"
+        Title="{Binding Title}">
+
+  <Window.Styles>
+    <Style Selector="Button.quiet">
+      <Setter Property="Background" Value="{DynamicResource SamPanelBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SamBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="5" />
+      <Setter Property="Padding" Value="10,0" />
+      <Setter Property="Height" Value="28" />
+      <Setter Property="Foreground" Value="{DynamicResource SamSecondaryTextBrush}" />
+    </Style>
+
+    <!-- Filter chips: one of the three is always on. -->
+    <Style Selector="Button.chip">
+      <Setter Property="Background" Value="{DynamicResource SamPanelBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SamBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="13" />
+      <Setter Property="Padding" Value="11,0" />
+      <Setter Property="Height" Value="26" />
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Foreground" Value="{DynamicResource SamSecondaryTextBrush}" />
+    </Style>
+    <Style Selector="Button.chip.on">
+      <Setter Property="Background" Value="{DynamicResource SamAccentSoftBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource SamAccentTextBrush}" />
+    </Style>
+
+    <!-- The tab strip stands in for the design's segmented pair. -->
+    <Style Selector="TabControl">
+      <Setter Property="Padding" Value="0" />
+    </Style>
+    <Style Selector="TabItem">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="MinHeight" Value="34" />
+      <Setter Property="Padding" Value="12,0" />
+    </Style>
+  </Window.Styles>
+
+  <DockPanel>
+
+    <!-- Game header: completion is the headline number -->
+    <Border DockPanel.Dock="Top" Padding="16,14,16,12">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Button Classes="quiet"
+                  Command="{Binding ReloadCommand}"
+                  IsEnabled="{Binding IsInputEnabled}"
+                  ToolTip.Tip="Re-read achievements and statistics from Steam">
+            <PathIcon Data="{StaticResource RefreshIcon}" />
+          </Button>
+          <Button Classes="quiet"
+                  Command="{Binding ResetAllStatsCommand}"
+                  IsEnabled="{Binding IsInputEnabled}"
+                  ToolTip.Tip="Reset all stats for this game">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="{StaticResource ResetIcon}" />
+              <TextBlock Text="Reset" FontSize="12" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
+
+        <StackPanel Spacing="7" VerticalAlignment="Center">
+          <TextBlock Text="{Binding GameName}"
+                     FontSize="16"
+                     FontWeight="SemiBold"
+                     Foreground="{DynamicResource SamTextBrush}"
+                     TextTrimming="CharacterEllipsis" />
+          <StackPanel Orientation="Horizontal" Spacing="10">
+            <ProgressBar Width="260"
+                         Height="5"
+                         Minimum="0" Maximum="1"
+                         Value="{Binding CompletionFraction}"
+                         Foreground="{DynamicResource SamAccentBrush}"
+                         Background="{DynamicResource SamMeterTrackBrush}"
+                         VerticalAlignment="Center" />
+            <TextBlock Text="{Binding CompletionText}"
+                       FontSize="11.5"
+                       Foreground="{DynamicResource SamSecondaryTextBrush}"
+                       VerticalAlignment="Center" />
+          </StackPanel>
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
+    <!-- Status bar -->
+    <Border DockPanel.Dock="Bottom"
+            Padding="16,5"
+            BorderThickness="0,1,0,0"
+            BorderBrush="{DynamicResource SamBorderBrush}">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Right"
+                    Orientation="Horizontal"
+                    Spacing="8"
+                    IsVisible="{Binding IsProgressVisible}">
+          <PathIcon Data="{StaticResource DownloadIcon}"
+                    Foreground="{DynamicResource SamMutedTextBrush}"
+                    VerticalAlignment="Center" />
+          <TextBlock Text="{Binding ProgressText}"
+                     FontSize="11"
+                     Foreground="{DynamicResource SamMutedTextBrush}"
+                     VerticalAlignment="Center" />
+          <ProgressBar Width="130"
+                       Minimum="0"
+                       Maximum="{Binding ProgressMaximum}"
+                       Value="{Binding ProgressValue}"
+                       IsIndeterminate="{Binding IsProgressIndeterminate}"
+                       Foreground="{DynamicResource SamAccentBrush}"
+                       VerticalAlignment="Center" />
+        </StackPanel>
+        <TextBlock Text="{Binding StatusText}"
+                   FontSize="11"
+                   Foreground="{DynamicResource SamMutedTextBrush}"
+                   VerticalAlignment="Center"
+                   TextTrimming="CharacterEllipsis" />
+      </DockPanel>
+    </Border>
+
+    <!-- Pending changes. Only here when there is something to commit, which is
+         also the only time Commit is reachable. -->
+    <Border DockPanel.Dock="Bottom"
+            IsVisible="{Binding HasPendingChanges}"
+            Padding="16,9"
+            Background="{DynamicResource SamPanelBrush}"
+            BorderThickness="0,1,0,0"
+            BorderBrush="{DynamicResource SamBorderBrush}">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Button Classes="quiet"
+                  Command="{Binding DiscardChangesCommand}"
+                  IsEnabled="{Binding IsInputEnabled}"
+                  Background="Transparent"
+                  BorderThickness="0"
+                  Content="Discard" />
+          <Button Command="{Binding StoreCommand}"
+                  IsEnabled="{Binding IsInputEnabled}"
+                  Height="30"
+                  Padding="14,0"
+                  CornerRadius="5"
+                  Background="{DynamicResource SamAccentBrush}"
+                  Foreground="{DynamicResource SamOnAccentBrush}"
+                  BorderThickness="0"
+                  ToolTip.Tip="Send these changes to Steam">
+            <StackPanel Orientation="Horizontal" Spacing="7">
+              <PathIcon Data="{StaticResource CommitIcon}"
+                        Foreground="{DynamicResource SamOnAccentBrush}" />
+              <TextBlock Text="{Binding CommitText}"
+                         FontSize="12"
+                         FontWeight="SemiBold"
+                         VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <TextBlock Text="Uncommitted"
+                     FontSize="12"
+                     FontWeight="SemiBold"
+                     Foreground="{DynamicResource SamAccentTextBrush}"
+                     VerticalAlignment="Center" />
+          <TextBlock Text="{Binding PendingSummaryText}"
+                     FontSize="11.5"
+                     Foreground="{DynamicResource SamMutedTextBrush}"
+                     VerticalAlignment="Center" />
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
+    <TabControl Margin="10,0,10,0">
+
+      <TabItem Header="Achievements">
+        <DockPanel>
+
+          <!-- Filters -->
+          <Border DockPanel.Dock="Top" Padding="6,10,6,10">
+            <DockPanel>
+              <TextBox DockPanel.Dock="Right"
+                       Text="{Binding MatchingString}"
+                       Width="180"
+                       Height="26"
+                       FontSize="12"
+                       CornerRadius="13"
+                       PlaceholderText="Filter"
+                       VerticalAlignment="Center" />
+
+              <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                <Button Classes="chip" Classes.on="{Binding IsShowingAll}"
+                        Command="{Binding ShowFilterCommand}"
+                        CommandParameter="{x:Static local:AchievementFilter.All}">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock Text="All" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding TotalCount}"
+                               Foreground="{DynamicResource SamMutedTextBrush}"
+                               VerticalAlignment="Center" />
+                  </StackPanel>
+                </Button>
+                <Button Classes="chip" Classes.on="{Binding IsShowingLocked}"
+                        Command="{Binding ShowFilterCommand}"
+                        CommandParameter="{x:Static local:AchievementFilter.Locked}">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock Text="Locked" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding LockedCount}"
+                               Foreground="{DynamicResource SamMutedTextBrush}"
+                               VerticalAlignment="Center" />
+                  </StackPanel>
+                </Button>
+                <Button Classes="chip" Classes.on="{Binding IsShowingUnlocked}"
+                        Command="{Binding ShowFilterCommand}"
+                        CommandParameter="{x:Static local:AchievementFilter.Unlocked}">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock Text="Unlocked" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding UnlockedCount}"
+                               Foreground="{DynamicResource SamMutedTextBrush}"
+                               VerticalAlignment="Center" />
+                  </StackPanel>
+                </Button>
+
+                <Rectangle Width="1" Margin="4,4"
+                           Fill="{DynamicResource SamBorderBrush}" />
+
+                <Button Classes="quiet" Height="26" Command="{Binding LockAllCommand}"
+                        IsEnabled="{Binding IsInputEnabled}"
+                        ToolTip.Tip="Lock every achievement shown">
+                  <PathIcon Data="{StaticResource LockIcon}" />
+                </Button>
+                <Button Classes="quiet" Height="26" Command="{Binding InvertAllCommand}"
+                        IsEnabled="{Binding IsInputEnabled}"
+                        ToolTip.Tip="Invert every achievement shown">
+                  <PathIcon Data="{StaticResource InvertIcon}" />
+                </Button>
+                <Button Classes="quiet" Height="26" Command="{Binding UnlockAllCommand}"
+                        IsEnabled="{Binding IsInputEnabled}"
+                        ToolTip.Tip="Unlock every achievement shown">
+                  <PathIcon Data="{StaticResource UnlockIcon}" />
+                </Button>
+              </StackPanel>
+            </DockPanel>
+          </Border>
+
+          <!-- List and detail -->
+          <Grid ColumnDefinitions="*,272">
+
+            <ListBox Grid.Column="0"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     Padding="0,0,6,0"
+                     ItemsSource="{Binding Achievements}"
+                     SelectedItem="{Binding SelectedAchievement}">
+              <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="stats:AchievementInfo">
+                  <!-- The date column is fixed-width so the dates line up down
+                       the list; 96 holds "d MMM yyyy" with room for a longer
+                       month abbreviation in other cultures. -->
+                  <Grid ColumnDefinitions="26,32,*,96" MinHeight="36" Background="{Binding RowBackground}">
+                    <CheckBox Grid.Column="0"
+                              IsChecked="{Binding IsAchieved}"
+                              IsEnabled="{Binding !IsProtected}"
+                              VerticalAlignment="Center" />
+                    <Border Grid.Column="1"
+                            Width="26" Height="26"
+                            CornerRadius="4"
+                            ClipToBounds="True"
+                            Background="{DynamicResource SamPlaceholderBrush}">
+                      <Image Source="{Binding Icon}" />
+                    </Border>
+                    <!-- Name, and the description under it on one trimmed line;
+                         the detail pane still shows the description in full.
+                         The second line collapses when there is nothing to say,
+                         which is the case for hidden achievements. -->
+                    <StackPanel Grid.Column="2"
+                                VerticalAlignment="Center"
+                                Spacing="1"
+                                Margin="8,4,8,4">
+                      <TextBlock Text="{Binding DisplayName}"
+                                 FontSize="12"
+                                 Foreground="{DynamicResource SamTextBrush}"
+                                 TextTrimming="CharacterEllipsis" />
+                      <TextBlock Text="{Binding DisplayDescription}"
+                                 FontSize="11"
+                                 Foreground="{DynamicResource SamSecondaryTextBrush}"
+                                 TextTrimming="CharacterEllipsis"
+                                 IsVisible="{Binding DisplayDescription, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    </StackPanel>
+                    <TextBlock Grid.Column="3"
+                               Text="{Binding UnlockDateText}"
+                               FontSize="11"
+                               Foreground="{DynamicResource SamSecondaryTextBrush}"
+                               VerticalAlignment="Center" />
+                  </Grid>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+
+            <!-- The description in full. The list shows it too, but only as
+                 one trimmed line under the name; this pane is where it has room,
+                 which is why it is a pane rather than another list column. -->
+            <Border Grid.Column="1"
+                    Background="{DynamicResource SamRailBrush}"
+                    BorderThickness="1,0,0,0"
+                    BorderBrush="{DynamicResource SamBorderBrush}"
+                    Padding="16">
+              <ScrollViewer>
+                <StackPanel Spacing="14" DataContext="{Binding SelectedAchievement}"
+                            x:DataType="stats:AchievementInfo">
+                  <Border Width="56" Height="56"
+                          CornerRadius="8"
+                          HorizontalAlignment="Left"
+                          ClipToBounds="True"
+                          Background="{DynamicResource SamPlaceholderBrush}">
+                    <Image Source="{Binding Icon}" />
+                  </Border>
+
+                  <StackPanel Spacing="7">
+                    <TextBlock Text="{Binding DisplayName}"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource SamTextBrush}"
+                               TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding DisplayDescription}"
+                               FontSize="11.5"
+                               LineHeight="17"
+                               Foreground="{DynamicResource SamSecondaryTextBrush}"
+                               TextWrapping="Wrap" />
+                  </StackPanel>
+
+                  <StackPanel Spacing="8">
+                    <Rectangle Height="1" Fill="{DynamicResource SamBorderBrush}" />
+                    <DockPanel>
+                      <TextBlock DockPanel.Dock="Left" Text="State" FontSize="11"
+                                 Foreground="{DynamicResource SamMutedTextBrush}" />
+                      <TextBlock Text="{Binding StateText}" FontSize="11"
+                                 HorizontalAlignment="Right"
+                                 Foreground="{DynamicResource SamSecondaryTextBrush}" />
+                    </DockPanel>
+                    <DockPanel>
+                      <TextBlock DockPanel.Dock="Left" Text="Unlock time" FontSize="11"
+                                 Foreground="{DynamicResource SamMutedTextBrush}" />
+                      <TextBlock Text="{Binding UnlockTimeText}" FontSize="11"
+                                 HorizontalAlignment="Right"
+                                 Foreground="{DynamicResource SamSecondaryTextBrush}" />
+                    </DockPanel>
+                  </StackPanel>
+
+                  <Border IsVisible="{Binding IsProtected}"
+                          Padding="10"
+                          CornerRadius="5"
+                          Background="{DynamicResource SamPanelBrush}">
+                    <TextBlock Text="Protected — Steam does not allow this one to be changed."
+                               FontSize="11"
+                               TextWrapping="Wrap"
+                               Foreground="{StaticResource RatingDislikeBrush}" />
+                  </Border>
+
+                  <TextBlock Text="Nothing is sent to Steam until you commit."
+                             FontSize="10.5"
+                             TextWrapping="Wrap"
+                             Foreground="{DynamicResource SamMutedTextBrush}" />
+                </StackPanel>
+              </ScrollViewer>
+            </Border>
+          </Grid>
+        </DockPanel>
+      </TabItem>
+
+      <TabItem Header="Statistics">
+        <DockPanel Margin="0,8,0,0">
+          <CheckBox DockPanel.Dock="Bottom"
+                    Margin="0,6,0,0"
+                    IsChecked="{Binding IsStatsEditingEnabled}"
+                    Content="I understand by modifying the values of stats, I may screw things up and can't blame anyone but myself." />
+          <DataGrid ItemsSource="{Binding Statistics}"
+                    AutoGenerateColumns="False"
+                    CanUserReorderColumns="False"
+                    GridLinesVisibility="Horizontal"
+                    IsReadOnly="{Binding !IsStatsEditingEnabled}">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Name"
+                                  Width="260"
+                                  IsReadOnly="True"
+                                  Binding="{Binding DisplayName, x:DataType=stats:StatInfo}" />
+              <DataGridTextColumn Header="Value"
+                                  Width="120"
+                                  Binding="{Binding ValueText, x:DataType=stats:StatInfo}" />
+              <DataGridTextColumn Header="Extra"
+                                  Width="*"
+                                  IsReadOnly="True"
+                                  Binding="{Binding Extra, x:DataType=stats:StatInfo}" />
+            </DataGrid.Columns>
+          </DataGrid>
+        </DockPanel>
+      </TabItem>
+
+    </TabControl>
+  </DockPanel>
+</Window>

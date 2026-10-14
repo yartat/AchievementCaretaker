@@ -1,5 +1,5 @@
 <!--
-  SteamAchievementCaretaker
+  AchievementCaretaker
   Copyright (c) 2026 Yaroslav V Tatarenko
 
   This project is based on Steam Achievement Manager (SAM)
@@ -12,7 +12,7 @@
   Vector master for the application icon: Steam's gear carrying an achievement
   star. Gold is #DDA63A, the same accent the dark theme uses. This is the
   full-detail form, used for the 24px and larger entries of
-  SteamAchievementCaretaker.App/Resources/SteamAchievementCaretaker.ico; the
+  AchievementCaretaker.App/Resources/AchievementCaretaker.ico; the
   16px entry drops the teeth. See docs/BUILD.md.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="256" height="256">

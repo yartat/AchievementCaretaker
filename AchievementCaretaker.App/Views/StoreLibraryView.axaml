@@ -1,0 +1,252 @@
+<!--
+  AchievementCaretaker
+  Copyright (c) 2026 Yaroslav V Tatarenko
+
+  See LICENSE in the repository root.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:AchievementCaretaker.App.ViewModels"
+             xmlns:local="using:AchievementCaretaker.App.Library"
+             x:Class="AchievementCaretaker.App.Views.StoreLibraryView"
+             x:DataType="vm:StoreLibraryViewModel">
+
+  <!-- Self-contained: these are the library window's own styles, repeated so this
+       view does not depend on where it is hosted. -->
+  <UserControl.Styles>
+    <Style Selector="ListBox.plain">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+    </Style>
+
+    <Style Selector="Button.quiet">
+      <Setter Property="Background" Value="{DynamicResource SamPanelBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SamBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="5" />
+      <Setter Property="Padding" Value="10,0" />
+      <Setter Property="Height" Value="28" />
+      <Setter Property="Foreground" Value="{DynamicResource SamSecondaryTextBrush}" />
+    </Style>
+  </UserControl.Styles>
+
+  <!-- A Panel, not a DockPanel: see the note in GamePickerWindow.axaml. Everything
+       here has to stretch to the full width so the scrollbar stays at the edge. -->
+  <Panel>
+
+    <!-- Signed out: the one thing to do is sign in. -->
+    <Border IsVisible="{Binding IsSignedOut}"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Width="440"
+            Padding="26"
+            CornerRadius="8"
+            Background="{DynamicResource SamPanelBrush}"
+            BorderBrush="{DynamicResource SamBorderBrush}"
+            BorderThickness="1">
+      <StackPanel Spacing="12">
+        <TextBlock Text="{Binding SignInTitle}"
+                   FontSize="17"
+                   FontWeight="SemiBold"
+                   Foreground="{DynamicResource SamTextBrush}" />
+        <TextBlock Text="{Binding SignInPrompt}"
+                   FontSize="12"
+                   TextWrapping="Wrap"
+                   Foreground="{DynamicResource SamSecondaryTextBrush}" />
+
+        <Button Classes="quiet"
+                HorizontalAlignment="Left"
+                Command="{Binding OpenSignInPageCommand}">
+          <TextBlock Text="Open the sign-in page" FontSize="12" VerticalAlignment="Center" />
+        </Button>
+
+        <TextBox Text="{Binding PastedCode}"
+                 Height="30"
+                 FontSize="12"
+                 CornerRadius="5"
+                 PlaceholderText="Paste it here">
+          <TextBox.KeyBindings>
+            <KeyBinding Gesture="Enter" Command="{Binding SignInCommand}" />
+          </TextBox.KeyBindings>
+        </TextBox>
+
+        <Button HorizontalAlignment="Left"
+                Height="30"
+                Padding="16,0"
+                CornerRadius="5"
+                Background="{DynamicResource SamAccentBrush}"
+                Foreground="{DynamicResource SamOnAccentBrush}"
+                BorderThickness="0"
+                IsEnabled="{Binding !IsBusy}"
+                Command="{Binding SignInCommand}">
+          <TextBlock Text="Continue" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+        </Button>
+
+        <!-- RatingDislikeBrush is the theme-independent red; there is no error brush. -->
+        <TextBlock Text="{Binding ErrorText}"
+                   IsVisible="{Binding HasError}"
+                   FontSize="12"
+                   TextWrapping="Wrap"
+                   Foreground="{StaticResource RatingDislikeBrush}" />
+
+        <TextBlock Text="Caretaker never sees your password. The session is kept in your .sac folder and is removed by Sign out."
+                   FontSize="11"
+                   TextWrapping="Wrap"
+                   Foreground="{DynamicResource SamMutedTextBrush}" />
+      </StackPanel>
+    </Border>
+
+    <!-- Signed in: the library, in the same two views as Steam's. -->
+    <Panel IsVisible="{Binding IsSignedIn}">
+
+      <!-- Tile view -->
+      <ListBox Name="_StoreTileBox"
+               Classes="plain"
+               Margin="0,0,0,8"
+               Padding="14,0"
+               IsVisible="{Binding IsTileView}"
+               ItemsSource="{Binding FilteredGames}"
+               SelectedItem="{Binding SelectedGame}"
+               ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+               DoubleTapped="OnGameDoubleTapped"
+               KeyDown="OnGameListKeyDown">
+        <ListBox.ItemsPanel>
+          <ItemsPanelTemplate>
+            <WrapPanel Orientation="Horizontal" />
+          </ItemsPanelTemplate>
+        </ListBox.ItemsPanel>
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="local:StoreGameInfo">
+            <StackPanel Width="183" Margin="2" Spacing="7">
+              <Panel>
+                <Border Height="86"
+                        Background="{DynamicResource SamPlaceholderBrush}"
+                        CornerRadius="5"
+                        ClipToBounds="True">
+                  <Image Source="{Binding Logo}" Stretch="UniformToFill" />
+                </Border>
+                <Border IsVisible="{Binding IsPerfect}"
+                        HorizontalAlignment="Right" VerticalAlignment="Top"
+                        Margin="7"
+                        Padding="6,2"
+                        CornerRadius="10"
+                        Background="{DynamicResource SamAccentBrush}">
+                  <StackPanel Orientation="Horizontal" Spacing="4">
+                    <PathIcon Classes="small"
+                              Data="{StaticResource StarIcon}"
+                              Foreground="{DynamicResource SamOnAccentBrush}" />
+                    <TextBlock Text="100%"
+                               FontSize="10"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource SamOnAccentBrush}"
+                               VerticalAlignment="Center" />
+                  </StackPanel>
+                </Border>
+              </Panel>
+
+              <TextBlock Text="{Binding Name}"
+                         FontSize="12"
+                         Foreground="{DynamicResource SamTextBrush}"
+                         TextTrimming="CharacterEllipsis" />
+
+              <!-- Absent, not empty, until the achievements have been read: unknown
+                   and zero are different answers. MinWidth="0" because the theme's
+                   200 minimum is wider than the 183 tile. -->
+              <ProgressBar Height="3"
+                           MinWidth="0"
+                           Minimum="0" Maximum="1"
+                           Value="{Binding CompletionFraction}"
+                           IsVisible="{Binding HasCompletion}"
+                           Foreground="{DynamicResource SamAccentBrush}"
+                           Background="{DynamicResource SamMeterTrackBrush}" />
+
+              <TextBlock Text="{Binding AchievementsText}"
+                         FontSize="10.5"
+                         Foreground="{DynamicResource SamMutedTextBrush}"
+                         ToolTip.Tip="Open the game, or use Load progress, to read its achievements" />
+            </StackPanel>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+
+      <!-- Content view -->
+      <DockPanel IsVisible="{Binding IsContentView}">
+        <Border DockPanel.Dock="Top"
+                Padding="26,0"
+                BorderThickness="0,0,0,1"
+                BorderBrush="{DynamicResource SamBorderBrush}">
+          <!-- The header and the rows agree on column widths and on the horizontal
+               inset: the rows sit inside the ListBox's 14 plus the Fluent
+               ListBoxItem's 12, so this padding is 26. See the Steam view. -->
+          <Grid ColumnDefinitions="56,*,132">
+            <Grid.Styles>
+              <Style Selector="Button.header">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Padding" Value="4,7" />
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="FontSize" Value="11" />
+                <Setter Property="Foreground" Value="{DynamicResource SamMutedTextBrush}" />
+              </Style>
+            </Grid.Styles>
+
+            <Button Grid.Column="1" Classes="header"
+                    Command="{Binding SortByCommand}"
+                    CommandParameter="{x:Static local:GameSortField.Name}"
+                    Content="Name" />
+            <Button Grid.Column="2" Classes="header"
+                    Command="{Binding SortByCommand}"
+                    CommandParameter="{x:Static local:GameSortField.Completion}"
+                    Content="Achievements" />
+          </Grid>
+        </Border>
+
+        <ListBox Name="_StoreContentBox"
+                 Classes="plain"
+                 Padding="14,0"
+                 ItemsSource="{Binding FilteredGames}"
+                 SelectedItem="{Binding SelectedGame}"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 DoubleTapped="OnGameDoubleTapped"
+                 KeyDown="OnGameListKeyDown">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="local:StoreGameInfo">
+              <Grid ColumnDefinitions="56,*,132" MinHeight="38">
+                <Border Grid.Column="0"
+                        Width="48" Height="22"
+                        HorizontalAlignment="Left"
+                        Background="{DynamicResource SamPlaceholderBrush}"
+                        CornerRadius="2"
+                        ClipToBounds="True">
+                  <Image Source="{Binding Logo}" Stretch="UniformToFill" />
+                </Border>
+                <TextBlock Grid.Column="1"
+                           Text="{Binding Name}"
+                           FontSize="12"
+                           Foreground="{DynamicResource SamTextBrush}"
+                           VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"
+                           Margin="4,0" />
+                <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="4" Margin="4,0">
+                  <TextBlock Text="{Binding AchievementsText}"
+                             FontSize="11"
+                             Foreground="{DynamicResource SamSecondaryTextBrush}" />
+                  <!-- MinWidth="0": the theme's 200 minimum would overrun this 132 column. -->
+                  <ProgressBar Height="3"
+                               MinWidth="0"
+                               Minimum="0" Maximum="1"
+                               Value="{Binding CompletionFraction}"
+                               IsVisible="{Binding HasCompletion}"
+                               Foreground="{DynamicResource SamAccentBrush}"
+                               Background="{DynamicResource SamMeterTrackBrush}" />
+                </StackPanel>
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+    </Panel>
+  </Panel>
+</UserControl>

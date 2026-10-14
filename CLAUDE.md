@@ -4,25 +4,29 @@ Guidance for Claude Code when working in this repository.
 
 ## What this is
 
-**Steam Achievement Caretaker** — a portable desktop tool that reads and writes
+**Achievement Caretaker** — a portable desktop tool that reads and writes
 achievements and stats for games in a Steam library. It works by loading Steam's own
 `steamclient.dll` in-process and calling its **C++ COM-like vtable interfaces** directly
 through hand-rolled P/Invoke. There is no Steamworks SDK dependency: the entire native
-surface is reimplemented in `SteamAchievementCaretaker.SteamApi`, which has no package
+surface is reimplemented in `AchievementCaretaker.SteamApi`, which has no package
 references at all.
 
-**This project is based on [Steam Achievement Manager](https://github.com/gibbed/SteamAchievementManager)
-(SAM) by Rick (gibbed)**, and is an *altered source version* of it in the sense the zlib
-license means. That attribution is not decoration: it is a licence condition, and it must
-be preserved in the file headers, the README, the release notes and `docs/ATTRIBUTION.md`.
-Every source file carries the zlib notice plus the "based on Steam Achievement Manager"
-line. **Do not strip either when editing a file, and add both to every new file.**
+**What the project is based on differs by part, and each file says which.** The Steam
+support (`AchievementCaretaker.SteamApi` and the Steam half of the application) is based on
+[Steam Achievement Manager](https://github.com/gibbed/SteamAchievementManager) (SAM) by Rick
+(gibbed) and is an *altered source version* of it in the sense the zlib license means. That
+attribution is not decoration: it is a licence condition, and it must be preserved in those
+files' headers, the README, the release notes and `docs/ATTRIBUTION.md`. The GOG provider is
+based on [GOG Achievements Manager](https://github.com/timendum/gog_achievements) by
+Timendum. The Epic provider, the rest of the store code and the CI and packaging files are
+this project's own work. **Do not strip an attribution when editing a file, and give a new
+file the header for what it actually derives from: see Conventions.**
 
 Caretaker diverges from SAM far enough to carry its own name: the two executables were
 merged into one, the Windows Forms UI was replaced by Avalonia, the library and achievement
 lists are cached in SQLite, and the game list was rebuilt around completion.
 
-The UI is **Avalonia 12**. `SteamAchievementCaretaker.SteamApi` carries no UI dependency
+The UI is **Avalonia 12**. `AchievementCaretaker.SteamApi` carries no UI dependency
 and no package reference of any kind.
 
 ## Language
@@ -35,17 +39,90 @@ to a file is.
 
 | Project | Output | Role |
 |---|---|---|
-| `SteamAchievementCaretaker.SteamApi` | `SteamAchievementCaretaker.SteamApi.dll` (class library) | All native interop. Loads `steamclient.dll`, resolves vtables, marshals calls, pumps callbacks. Also owns the Valve KeyValues parsers (`KeyValue` binary, `TextKeyValue` text). |
-| `SteamAchievementCaretaker.App` | `bin/SteamAchievementCaretaker.exe` (WinExe) | The whole application: the library window and the per-game achievement editor, in one binary. |
+| `AchievementCaretaker.SteamApi` | `AchievementCaretaker.SteamApi.dll` (class library) | All native interop. Loads `steamclient.dll`, resolves vtables, marshals calls, pumps callbacks. Also owns the Valve KeyValues parsers (`KeyValue` binary, `TextKeyValue` text). |
+| `AchievementCaretaker.App` | `bin/AchievementCaretaker.exe` (WinExe) | The whole application: the library window and the per-game achievement editor, in one binary. |
+| `AchievementCaretaker.Providers` | `AchievementCaretaker.Providers.dll` (class library) | **Branch `feature/epic-achievements` only.** Read-only library and achievements of other stores (Epic Games, GOG) over HTTPS, behind `IStoreProvider`. Shown by the library window as the Epic and GOG sources. |
 
-`SteamAchievementCaretaker.slnx` is the solution, in the **`.slnx`** format. There is no
+`AchievementCaretaker.slnx` is the solution, in the **`.slnx`** format. There is no
 `.sln`; do not add one back. Its `Documentation` folder carries `README.md`, `CLAUDE.md`,
 `LICENSE.txt` and everything under `docs/`.
+
+### Store providers (research branch)
+
+`AchievementCaretaker.Providers` reads the library and achievements of other stores,
+each behind `IStoreProvider`: `Epic/EpicProvider` and `Gog/GogProvider`. It and the
+throwaway `tools/ProviderProbe` (listed in the `.slnx` so it builds with everything, never
+published) are research, written up in `docs/EPIC-RESEARCH.md` and `docs/GOG-RESEARCH.md`.
+The rules:
+
+- **Steam is not a provider.** Its interface is native, scoped to one app id per process,
+  and can write. A store reached over HTTPS with the user's own sign-in has none of those
+  properties, and hiding them behind one interface would hide what shapes how Steam is used.
+- **Read-only.** No unlocking, no re-locking, no EOS SDK, and no reading a game's client
+  secret. Epic cannot re-lock an achievement anyway, and the tools that unlock inject into
+  the game or need that secret. GOG's build records carry the secret next to the client id;
+  `GogProvider` reads the id and nothing else from them.
+- **Every unofficial endpoint lives in its store's one `*Provider.cs`.** They are the
+  stores' own and can change; keep them in one file each.
+- **A session file holds a refresh token**, a credential for the whole store account:
+  `~/.sac/epic.json`, `~/.sac/gog.json`. They go through `SessionFile`, which writes them
+  user-only on Unix. Never log one, print one or put one in an error message.
+  `ThrowIfEpicError` and `ThrowIfError` deliberately do not echo response bodies, and
+  GOG's token request carries the code or refresh token in its URL, so that URL is never
+  part of a message either.
+- **Sign in with the store's own page, in the user's browser.** Caretaker never sees a
+  password and never reads another application's stored credentials. GOG Galaxy keeps its
+  refresh token in the registry and the reference tools take it from there; this does not.
+- **Unknown is null, not zero.** `StoreAchievement.XP`, `Progress` and `RarityPercent` are
+  nullable because a store may not have them: GOG has no XP and no progress.
+- **Adding a store** means implementing `IStoreProvider` and listing it in
+  `StoreProviders.CreateAll`. Nothing else has to change to see it.
+
+How the library window shows them. One source is on screen at a time, chosen in the rail's
+SOURCE section; Steam is the default and is `SelectedStoreLibrary == null`, not an entry.
+
+- **Store games are their own types, not `GameInfo`.** `GameInfo`, the `games` table,
+  `RatingStore` and `IconCache` are all keyed by a Steam app id, and a store's id is a string.
+  The counterparts are `StoreGameInfo`, the `store_games` table, `StoreImageCache` and
+  `StoreLibraryViewModel`, which is a parallel of the Steam half of `GamePickerViewModel`,
+  not an extension of it. `GamePickerViewModel.Stores.cs` is the one place the two meet. A
+  store has no playtime, last played, review rating or demo/mod types, so it offers only the
+  All / Has achievements / Perfect collections and sorting by name or completion. No likes
+  and no Recently played yet.
+- **`store_games` lives in `GameCache`, not in a second class.** `GameCache` owns the one
+  connection to `games.db` and its `MoveTo`; a second connection would block a cache move on
+  Windows. The Steam library saves from a pool thread while the stores read and write from
+  the UI thread, so every public `GameCache` member takes `_Gate`. The store libraries reach
+  the cache through a `Func<GameCache>`, because `MoveTo` replaces the instance.
+- **Store images live in `<icon cache>/store/<provider>/`, named by a hash of the URL**
+  (`StoreImageCache`). The subfolder is what keeps `IconCache.Prune`, which parses app ids out
+  of file names and only walks the top level, away from them. `IconCache.MoveTo` moves the
+  subfolder along with the files; keep it doing that. Nothing prunes these images.
+- **A store game's achievements open in a window of this process**
+  (`StoreAchievementsWindow`), not through `Program.LaunchForApp`. The one-process-per-game
+  rule exists because `ISteamUserStats` is scoped to the app id a process initialised with;
+  a store's HTTPS service has no such scope.
+- **Progress is read on request, never automatically.** A library listing carries no
+  achievement counts, and reading them costs a request or more per game (GOG's two more to
+  GOGDB, which is run by volunteers). A game's counts are known once its window has been
+  opened or **Load progress** has covered it; until then the meter is absent, not empty.
+  Unknown is `null`, never 0.
+- **Sign-out and an expired session forget the account's library**, including the cached
+  progress: progress belongs to an account, and the next account to sign in must not be shown
+  the previous one's numbers. A dead session is forgotten too, or the sign-in panel would
+  never come back; `EpicProvider` and `GogProvider` both report a refused refresh as
+  `login_required` for that.
+- **An element's own bindings read from its own `DataContext`.** The store view is hosted
+  with `DataContext="{Binding SelectedStoreLibrary}"`, so its visibility is on a wrapper
+  `Panel`, not on the view itself, or `IsVisible="{Binding IsStoreSelected}"` is looked up on
+  the store.
+- `packaging/check-version.sh` checks the App and SteamApi projects only. When this ships,
+  add `AchievementCaretaker.Providers`, or its version silently stays behind.
 
 ### One executable, two windows
 
 SAM shipped `SAM.Picker.exe` and `SAM.Game.exe` as separate programs. Caretaker ships one
-`SteamAchievementCaretaker.exe`, but it still starts **one process per game**, because that
+`AchievementCaretaker.exe`, but it still starts **one process per game**, because that
 part was never a packaging choice:
 
 > **`ISteamUserStats` is scoped to the one app id the process was initialised with.**
@@ -67,18 +144,18 @@ window — that is a dead end, not an optimisation problem.
 The executable refuses to run from the Steam install directory
 (`Program.IsRunningFromSteamDirectory`).
 
-### Layout inside `SteamAchievementCaretaker.App`
+### Layout inside `AchievementCaretaker.App`
 
 | Folder | Namespace | Holds |
 |---|---|---|
-| *(root)* | `SteamAchievementCaretaker.App` | `Program`, `App`, `InvariantShorthand`, `GlobalSuppressions`, `app.manifest` |
+| *(root)* | `AchievementCaretaker.App` | `Program`, `App`, `InvariantShorthand`, `GlobalSuppressions`, `app.manifest` |
 | `Common/` | `…App.Common` | `AppSettings`, `IconCache` — settings and the icon directory, used by both windows |
 | `Library/` | `…App.Library` | `GameInfo`, `GameCache`, `LibraryStats`, `RatingStore`, `OwnRating` |
 | `Achievements/` | `…App.Achievements` | `AchievementCache`, `AchievementFilter` |
 | `Achievements/Stats/` | `…App.Achievements.Stats` | the schema model — `AchievementDefinition`, `StatInfo`, … |
 | `ViewModels/` | `…App.ViewModels` | `ProgressViewModel`, `GamePickerViewModel`, `ManagerViewModel`, `SettingsViewModel` |
 | `Views/` | `…App.Views` | the windows, plus the hand-rolled `MessageWindow` |
-| `Resources/` | — | `Icons.axaml`, `Theme.axaml`, `SteamAchievementCaretaker.ico` |
+| `Resources/` | — | `Icons.axaml`, `Theme.axaml`, `AchievementCaretaker.ico` |
 
 These used to be three projects plus a `Shared/` folder linked into both executables with
 `<Compile Include="..\Shared\*.cs">`. That machinery is gone: one assembly needs no links,
@@ -141,12 +218,12 @@ Package these as documented dependencies for any Linux release.
 ## Build
 
 ```bash
-dotnet build SteamAchievementCaretaker.slnx -c Release
+dotnet build AchievementCaretaker.slnx -c Release
 ```
 
 The executable lands in `bin/` (64-bit). `-p:Platform=x86` builds 32-bit into **`bin/x86/`**.
 
-The solution platform mapping is spelled out in `SteamAchievementCaretaker.slnx`
+The solution platform mapping is spelled out in `AchievementCaretaker.slnx`
 (`<Platform Solution="*|x86" Project="x86" />`). Without it a solution-level
 `-p:Platform=x86` silently builds AnyCPU — the `.slnx` reader does not infer the mapping.
 
@@ -167,7 +244,7 @@ To produce a bundle for a specific target, publish rather than build. There is o
 executable now, so there is only one publish command:
 
 ```bash
-dotnet publish SteamAchievementCaretaker.App/SteamAchievementCaretaker.App.csproj \
+dotnet publish AchievementCaretaker.App/AchievementCaretaker.App.csproj \
   -c Release -r linux-x64 --self-contained false -o publish/linux-x64
 ```
 
@@ -198,7 +275,7 @@ this code in CI or a sandbox — changes to interop must be tested by hand.
 
 Plenty of this codebase *can* be exercised on a machine with no Steam at all, and should be
 before anything is called done. There are no tests in the repository, so this means a
-throwaway console project that references `SteamAchievementCaretaker.App`:
+throwaway console project that references `AchievementCaretaker.App`:
 
 - **Windows, resources and styles** — `Avalonia.Headless` plus `Avalonia.Skia`, with
   `UseHeadlessDrawing = false`. `AppBuilder.Configure<App>().UseSkia().UseHeadless(…)
@@ -215,7 +292,7 @@ throwaway console project that references `SteamAchievementCaretaker.App`:
   for this: for an arc it reports the endpoint extents rather than the swept extents, so
   `RefreshIcon` measures 8.2 wide on a 16 grid and renders 15.
 
-Starting `bin/SteamAchievementCaretaker.exe` with no Steam running is also a real check: it
+Starting `bin/AchievementCaretaker.exe` with no Steam running is also a real check: it
 must come up showing the error `MessageWindow` rather than dying, which proves
 `App.Initialize` loaded every style and resource dictionary.
 
@@ -224,7 +301,7 @@ schema parse, `LibraryStats`, and every number the windows actually display.
 
 ## Architecture
 
-### The interop pattern (`SteamAchievementCaretaker.SteamApi`)
+### The interop pattern (`AchievementCaretaker.SteamApi`)
 
 This is the part that matters. Everything else is ordinary application code.
 
@@ -466,7 +543,7 @@ Two things about that file are load-bearing:
   usage, or the toolbars drift apart one button at a time.
 
 **The application icon is a different thing** and does not live there: it is
-`Resources/SteamAchievementCaretaker.ico`, a seven-size Windows icon whose vector master
+`Resources/AchievementCaretaker.ico`, a seven-size Windows icon whose vector master
 is `docs/assets/app-icon.svg`. Its 16px entry is drawn separately rather than downscaled;
 see `docs/BUILD.md`. Do not try to fold it into `Icons.axaml` — `ApplicationIcon` needs a
 real `.ico` file on disk.
@@ -712,7 +789,7 @@ included, so an achievement does not vanish from Locked the instant it is ticked
 
 `ManagerViewModel.LoadUserGameStatsSchema` parses
 `<SteamInstall>/appcache/stats/UserGameStatsSchema_<appid>.bin`, a Valve binary KeyValues
-blob, with the hand-written parser in `SteamAchievementCaretaker.SteamApi/KeyValue.cs`. It
+blob, with the hand-written parser in `AchievementCaretaker.SteamApi/KeyValue.cs`. It
 handles **two schema shapes**: a newer one where `stat.type` is a string enum name, and an
 older one where `stat.type_int` (or `type`) is an integer. Keep both paths — upstream
 commits in SAM (`4f2b037`, `de8b710`) exist specifically to fix regressions here.
@@ -737,10 +814,20 @@ one download at a time, matching the old single-`BackgroundWorker` behaviour.
 
 Match the surrounding style; it is consistent and deliberate even where it is unfashionable.
 
-- **Every source file opens with the shared header**: the Caretaker copyright, the
-  "based on Steam Achievement Manager" attribution with the upstream URL, the "altered
-  source version" marking, and the full zlib notice. `.axaml` files carry the short XML
-  comment form. This is a licence condition, not a style rule.
+- **Every source file opens with a header, and which one depends on what the file derives
+  from.** Do not copy a header from a neighbouring file without checking.
+  - *Derived from SAM* (everything in `AchievementCaretaker.SteamApi`, and the Steam half of
+    the application that came out of the conversion): the Caretaker copyright, the "based on
+    Steam Achievement Manager" attribution with the upstream URL, the "altered source
+    version" marking, and the full zlib notice. A licence condition, not a style rule.
+  - *Based on GOG Achievements Manager* (`Gog/`): the Caretaker copyright, the "based on GOG
+    Achievements Manager by Timendum" attribution with both upstream URLs, and a note that it
+    reimplements the calls for reading only.
+  - *Everything else* (`Epic/`, the shared store code, the store windows and view models,
+    `tools/`, CI and packaging): the Caretaker copyright, `See LICENSE in the repository
+    root.`, and for `Epic/` a line saying it is written from the endpoints Legendary and
+    Heroic document. No SAM claim: it is not derived from SAM.
+  - `.axaml` files carry the short XML comment form; scripts and workflows the `#` form.
 - Explicit `this.` on instance members.
 - Explicit comparisons: `if (x == false)`, `if (s == true)` — not `if (!x)`.
 - Private fields are `_PascalCase`.
@@ -917,8 +1004,8 @@ Details, including what the deb contains and how to build it without tagging, ar
 | `docs/RELEASE-NOTES.md` | per-version changes, including the SAM attribution |
 | `docs/ATTRIBUTION.md` | the SAM lineage and the licence position |
 
-Every one of them states that this project is based on Steam Achievement Manager. Keep it
-that way when editing them.
+Each of them says what the project is based on: Steam Achievement Manager for the Steam
+support, GOG Achievements Manager for GOG. Keep it that way when editing them.
 
 ## Skills index
 
@@ -941,7 +1028,7 @@ before implementing, then make the smallest change that fits the surrounding sty
   `dotnet-skills:project-structure`
 - Adding any package, or introducing Central Package Management →
   `dotnet-skills:package-management` (use `dotnet add`/`remove`, never hand-edit the XML)
-- Public surface of `SteamAchievementCaretaker.SteamApi` if it is ever versioned →
+- Public surface of `AchievementCaretaker.SteamApi` if it is ever versioned →
   `dotnet-skills:csharp-api-design`
 - Enabling nullable reference types → `dotnet-skills:csharp-nullable-reference-types`
 - Struct layout and allocation in the hot marshalling path →

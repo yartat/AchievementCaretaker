@@ -1,12 +1,7 @@
-# SteamAchievementCaretaker
+# AchievementCaretaker
 # Copyright (c) 2026 Yaroslav V Tatarenko
 #
-# This project is based on Steam Achievement Manager (SAM)
-# Copyright (c) 2008-2024 Rick (rick 'at' gibbed 'dot' us)
-# https://github.com/gibbed/SteamAchievementManager
-#
-# An altered source version of that software, plainly marked as such and
-# distributed under the zlib license; see LICENSE.txt in the repository root.
+# See LICENSE in the repository root.
 #
 # Build validation for pushes and pull requests. Releases are built by
 # release.yml, which a v* tag triggers.
@@ -42,7 +37,7 @@ jobs:
       # StyleInclude paths resolve at runtime. See "Verifying a build" in
       # docs/BUILD.md for the headless check that does.
       - name: Build
-        run: dotnet build SteamAchievementCaretaker.slnx -c Release -p:TreatWarningsAsErrors=true
+        run: dotnet build AchievementCaretaker.slnx -c Release -p:TreatWarningsAsErrors=true
 
       - name: Install NSIS
         run: |
@@ -58,7 +53,7 @@ jobs:
           set -euo pipefail
           package() {
             local rid="$1" platform="$2" arch="$3"
-            dotnet publish SteamAchievementCaretaker.App/SteamAchievementCaretaker.App.csproj \
+            dotnet publish AchievementCaretaker.App/AchievementCaretaker.App.csproj \
               -c Release -r "$rid" -p:Platform="$platform" --self-contained true -o "out/$rid" >/dev/null
             bash packaging/check-pe-arch.sh "out/$rid" "$rid"
             find "out/$rid" -name '*.pdb' -delete
@@ -76,7 +71,7 @@ jobs:
           set -euo pipefail
           VERSION="$(bash packaging/version.sh)"
           VERSION="${VERSION#VERSION=}"
-          dotnet publish SteamAchievementCaretaker.App/SteamAchievementCaretaker.App.csproj \
+          dotnet publish AchievementCaretaker.App/AchievementCaretaker.App.csproj \
             -c Release -r linux-x64 --self-contained true -o out/linux-x64 >/dev/null
           bash packaging/linux/build-deb.sh \
             --publish-dir out/linux-x64 \

@@ -1,21 +1,16 @@
-# SteamAchievementCaretaker
+# AchievementCaretaker
 # Copyright (c) 2026 Yaroslav V Tatarenko
 #
-# This project is based on Steam Achievement Manager (SAM)
-# Copyright (c) 2008-2024 Rick (rick 'at' gibbed 'dot' us)
-# https://github.com/gibbed/SteamAchievementManager
-#
-# An altered source version of that software, plainly marked as such and
-# distributed under the zlib license; see LICENSE.txt in the repository root.
+# See LICENSE in the repository root.
 #
 # Pushing a tag of the form v1.2.3 builds the release artifacts, uploads them to
 # the project's generic package registry and creates the GitLab release:
 #
-#   steam-achievement-caretaker-1.2.3-win-x64-setup.exe      installer
-#   steam-achievement-caretaker-1.2.3-win-x64-portable.zip   unzip and run
-#   steam-achievement-caretaker-1.2.3-win-x86-setup.exe
-#   steam-achievement-caretaker-1.2.3-win-x86-portable.zip
-#   steam-achievement-caretaker_1.2.3_amd64.deb
+#   achievement-caretaker-1.2.3-win-x64-setup.exe      installer
+#   achievement-caretaker-1.2.3-win-x64-portable.zip   unzip and run
+#   achievement-caretaker-1.2.3-win-x86-setup.exe
+#   achievement-caretaker-1.2.3-win-x86-portable.zip
+#   achievement-caretaker_1.2.3_amd64.deb
 #
 # All of them are self-contained: the .NET runtime is inside, so nothing has to
 # be installed first.
@@ -39,10 +34,10 @@ variables:
   DOTNET_NOLOGO: "1"
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
   NUGET_PACKAGES: "$CI_PROJECT_DIR/.nuget"
-  SOLUTION: "SteamAchievementCaretaker.slnx"
-  APP_PROJECT: "SteamAchievementCaretaker.App/SteamAchievementCaretaker.App.csproj"
-  PKG_NAME: "steam-achievement-caretaker"
-  PACKAGE_REGISTRY_URL: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/steam-achievement-caretaker"
+  SOLUTION: "AchievementCaretaker.slnx"
+  APP_PROJECT: "AchievementCaretaker.App/AchievementCaretaker.App.csproj"
+  PKG_NAME: "achievement-caretaker"
+  PACKAGE_REGISTRY_URL: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/achievement-caretaker"
 
 default:
   image: mcr.microsoft.com/dotnet/sdk:10.0
@@ -50,8 +45,8 @@ default:
   cache:
     key:
       files:
-        - SteamAchievementCaretaker.App/SteamAchievementCaretaker.App.csproj
-        - SteamAchievementCaretaker.SteamApi/SteamAchievementCaretaker.SteamApi.csproj
+        - AchievementCaretaker.App/AchievementCaretaker.App.csproj
+        - AchievementCaretaker.SteamApi/AchievementCaretaker.SteamApi.csproj
     paths:
       - .nuget/
 
@@ -247,7 +242,7 @@ release:
     - echo "Releasing $CI_COMMIT_TAG as $VERSION"
   release:
     tag_name: "$CI_COMMIT_TAG"
-    name: "Steam Achievement Caretaker $VERSION"
+    name: "Achievement Caretaker $VERSION"
     description: release-description.md
     assets:
       links:

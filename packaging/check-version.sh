@@ -1,13 +1,8 @@
 #!/usr/bin/env bash
-# SteamAchievementCaretaker
+# AchievementCaretaker
 # Copyright (c) 2026 Yaroslav V Tatarenko
 #
-# This project is based on Steam Achievement Manager (SAM)
-# Copyright (c) 2008-2024 Rick (rick 'at' gibbed 'dot' us)
-# https://github.com/gibbed/SteamAchievementManager
-#
-# An altered source version of that software, plainly marked as such and
-# distributed under the zlib license; see LICENSE.txt in the repository root.
+# See LICENSE in the repository root.
 #
 # Fails unless every place that states a version agrees with the one given.
 #
@@ -42,7 +37,7 @@ expect() {
 
 echo "checking that the repository says $version"
 
-for project in SteamAchievementCaretaker.App SteamAchievementCaretaker.SteamApi; do
+for project in AchievementCaretaker.App AchievementCaretaker.SteamApi; do
     csproj="$project/$project.csproj"
     expect "$project Version"         "$csproj" "<Version>$version</Version>"
     expect "$project AssemblyVersion" "$csproj" "<AssemblyVersion>$assembly</AssemblyVersion>"
@@ -50,11 +45,11 @@ for project in SteamAchievementCaretaker.App SteamAchievementCaretaker.SteamApi;
 done
 
 expect "library window title" \
-    "SteamAchievementCaretaker.App/Views/GamePickerWindow.axaml" \
-    "Steam Achievement Caretaker $title |"
+    "AchievementCaretaker.App/Views/GamePickerWindow.axaml" \
+    "Achievement Caretaker $title |"
 expect "editor window title" \
-    "SteamAchievementCaretaker.App/ViewModels/ManagerViewModel.cs" \
-    "\"Steam Achievement Caretaker $title\""
+    "AchievementCaretaker.App/ViewModels/ManagerViewModel.cs" \
+    "\"Achievement Caretaker $title\""
 
 expect "release notes entry" "docs/RELEASE-NOTES.md" "## $version "
 

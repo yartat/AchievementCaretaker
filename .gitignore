@@ -396,3 +396,5 @@ FodyWeavers.xsd
 /.nuget/
 version.env
 release-description.md
+/docs/GOG-RESEARCH.md
+/docs/EPIC-RESEARCH.md

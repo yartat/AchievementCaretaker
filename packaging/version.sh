@@ -1,13 +1,8 @@
 #!/usr/bin/env bash
-# SteamAchievementCaretaker
+# AchievementCaretaker
 # Copyright (c) 2026 Yaroslav V Tatarenko
 #
-# This project is based on Steam Achievement Manager (SAM)
-# Copyright (c) 2008-2024 Rick (rick 'at' gibbed 'dot' us)
-# https://github.com/gibbed/SteamAchievementManager
-#
-# An altered source version of that software, plainly marked as such and
-# distributed under the zlib license; see LICENSE.txt in the repository root.
+# See LICENSE in the repository root.
 #
 # Prints the version to build, as a dotenv line: VERSION=<x.y.z>.
 #
@@ -27,7 +22,7 @@ root="$(cd "$here/.." && pwd)"
 
 project_version() {
     sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' \
-        "$root/SteamAchievementCaretaker.App/SteamAchievementCaretaker.App.csproj" | head -1
+        "$root/AchievementCaretaker.App/AchievementCaretaker.App.csproj" | head -1
 }
 
 tag="${CI_COMMIT_TAG:-}"
