@@ -1,13 +1,8 @@
 #!/usr/bin/env bash
-# SteamAchievementCaretaker
+# AchievementCaretaker
 # Copyright (c) 2026 Yaroslav V Tatarenko
 #
-# This project is based on Steam Achievement Manager (SAM)
-# Copyright (c) 2008-2024 Rick (rick 'at' gibbed 'dot' us)
-# https://github.com/gibbed/SteamAchievementManager
-#
-# An altered source version of that software, plainly marked as such and
-# distributed under the zlib license; see LICENSE.txt in the repository root.
+# See LICENSE in the repository root.
 #
 #   ./check-pe-arch.sh <published-dir> <win-x64|win-x86|win-arm64>
 #
@@ -55,7 +50,7 @@ name() {
 
 failed=0
 checked=0
-for f in "$dir"/SteamAchievementCaretaker.exe \
+for f in "$dir"/AchievementCaretaker.exe \
          "$dir"/libSkiaSharp.dll "$dir"/libHarfBuzzSharp.dll \
          "$dir"/av_libglesv2.dll "$dir"/e_sqlite3.dll; do
     [ -f "$f" ] || continue

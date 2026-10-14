@@ -1,13 +1,8 @@
 #!/usr/bin/env bash
-# SteamAchievementCaretaker
+# AchievementCaretaker
 # Copyright (c) 2026 Yaroslav V Tatarenko
 #
-# This project is based on Steam Achievement Manager (SAM)
-# Copyright (c) 2008-2024 Rick (rick 'at' gibbed 'dot' us)
-# https://github.com/gibbed/SteamAchievementManager
-#
-# An altered source version of that software, plainly marked as such and
-# distributed under the zlib license; see LICENSE.txt in the repository root.
+# See LICENSE in the repository root.
 #
 # Builds the Windows installer from an already-published directory.
 #
@@ -22,12 +17,12 @@
 
 set -euo pipefail
 
-APPHOST="SteamAchievementCaretaker.exe"
+APPHOST="AchievementCaretaker.exe"
 publish_dir=""
 version=""
 arch=""
 output_dir="dist"
-homepage="${WIN_HOMEPAGE:-https://github.com/yartat/SteamAchievementCaretaker}"
+homepage="${WIN_HOMEPAGE:-https://github.com/yartat/AchievementCaretaker}"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -65,7 +60,7 @@ root="$(cd "$here/../.." && pwd)"
 version4="${version%%[-+~]*}.0"
 
 mkdir -p "$output_dir"
-outfile="$output_dir/steam-achievement-caretaker-${version}-win-${arch}-setup.exe"
+outfile="$output_dir/achievement-caretaker-${version}-win-${arch}-setup.exe"
 
 # NSIS resolves relative paths against its own working directory, so everything
 # handed over is absolute.
@@ -74,7 +69,7 @@ makensis -NOCD -V2 \
     "-DVERSION4=$version4" \
     "-DARCH=$arch" \
     "-DPUBLISH_DIR=$(cd "$publish_dir" && pwd)" \
-    "-DICON=$root/SteamAchievementCaretaker.App/Resources/SteamAchievementCaretaker.ico" \
+    "-DICON=$root/AchievementCaretaker.App/Resources/AchievementCaretaker.ico" \
     "-DLICENSE_FILE=$root/LICENSE.txt" \
     "-DHOMEPAGE=$homepage" \
     "-DOUTFILE=$(cd "$output_dir" && pwd)/$(basename "$outfile")" \

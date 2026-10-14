@@ -1,9 +1,11 @@
 # Release notes
 
-> **Steam Achievement Caretaker is based on
+> **Steam support is based on
 > [Steam Achievement Manager](https://github.com/gibbed/SteamAchievementManager) (SAM) by
 > Rick (gibbed)**, and is an altered source version of it, distributed under the same zlib
-> license. Every release carries that attribution. See [ATTRIBUTION.md](ATTRIBUTION.md).
+> license; GOG support is based on
+> [GOG Achievements Manager](https://github.com/timendum/gog_achievements) by Timendum.
+> Every release carries that attribution. See [ATTRIBUTION.md](ATTRIBUTION.md).
 
 Versions follow `MAJOR.MINOR.PATCH`. Caretaker restarts numbering at 1.0; it succeeds Steam
 Achievement Manager 8.0.

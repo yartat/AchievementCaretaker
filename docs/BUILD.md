@@ -1,8 +1,10 @@
 # Building and releasing
 
-> Steam Achievement Caretaker is based on
+> Steam support in Achievement Caretaker is based on
 > [Steam Achievement Manager](https://github.com/gibbed/SteamAchievementManager) by Rick
-> (gibbed), and is an altered source version of it. See [ATTRIBUTION.md](ATTRIBUTION.md).
+> (gibbed), and is an altered source version of it; GOG support is based on
+> [GOG Achievements Manager](https://github.com/timendum/gog_achievements) by Timendum.
+> See [ATTRIBUTION.md](ATTRIBUTION.md).
 
 ## Prerequisites
 
@@ -11,24 +13,24 @@
   builds drift onto whatever preview SDK happens to be installed.
 - Nothing else. NuGet packages (Avalonia, CommunityToolkit.Mvvm, Microsoft.Data.Sqlite) are
   restored automatically. Visual Studio is optional — 17.14 or newer can open
-  `SteamAchievementCaretaker.slnx` directly, since the `.slnx` solution format needs no
+  `AchievementCaretaker.slnx` directly, since the `.slnx` solution format needs no
   conversion.
 
 ## A normal build
 
 ```bash
-dotnet build SteamAchievementCaretaker.slnx -c Release
+dotnet build AchievementCaretaker.slnx -c Release
 ```
 
 Output goes to `bin/`:
 
 ```
 bin/
-  SteamAchievementCaretaker.exe          the application
-  SteamAchievementCaretaker.dll
-  SteamAchievementCaretaker.SteamApi.dll the Steam interop layer
-  SteamAchievementCaretaker.runtimeconfig.json
-  SteamAchievementCaretaker.deps.json
+  AchievementCaretaker.exe          the application
+  AchievementCaretaker.dll
+  AchievementCaretaker.SteamApi.dll the Steam interop layer
+  AchievementCaretaker.runtimeconfig.json
+  AchievementCaretaker.deps.json
   Avalonia.*.dll, libSkiaSharp.dll, libHarfBuzzSharp.dll, av_libglesv2.dll, …
 ```
 
@@ -40,7 +42,7 @@ A clean build is **0 warnings, 0 errors** on both platforms. Keep it that way.
 ## 32-bit
 
 ```bash
-dotnet build SteamAchievementCaretaker.slnx -c Release -p:Platform=x86
+dotnet build AchievementCaretaker.slnx -c Release -p:Platform=x86
 ```
 
 Output goes to `bin/x86/`. **The two platforms must not share an output directory.** With a
@@ -62,7 +64,7 @@ bash packaging/check-pe-arch.sh out/some-published-dir win-x86
 ```
 
 The solution-to-project platform mapping is written out explicitly in
-`SteamAchievementCaretaker.slnx`:
+`AchievementCaretaker.slnx`:
 
 ```xml
 <Platform Solution="*|x86" Project="x86" />
@@ -76,7 +78,7 @@ does not infer the mapping.
 There is one executable, so there is one publish command:
 
 ```bash
-dotnet publish SteamAchievementCaretaker.App/SteamAchievementCaretaker.App.csproj \
+dotnet publish AchievementCaretaker.App/AchievementCaretaker.App.csproj \
   -c Release -r linux-x64 --self-contained false -o publish/linux-x64
 ```
 
@@ -98,7 +100,7 @@ A normal build is framework-dependent and needs the .NET 10 Desktop Runtime inst
 produce a build that runs without it — at the cost of roughly 120 MB:
 
 ```bash
-dotnet publish SteamAchievementCaretaker.App/SteamAchievementCaretaker.App.csproj \
+dotnet publish AchievementCaretaker.App/AchievementCaretaker.App.csproj \
   -c Release -r win-x64 --self-contained true -o publish/win-x64-selfcontained
 ```
 
@@ -126,7 +128,7 @@ changing how one is cut.
 
 ### The application icon
 
-`SteamAchievementCaretaker.App/Resources/SteamAchievementCaretaker.ico` is both the
+`AchievementCaretaker.App/Resources/AchievementCaretaker.ico` is both the
 executable's icon (`ApplicationIcon`) and the window icon (`avares`), and it carries seven
 entries: 16, 24, 32, 48, 64, 128 and 256. The vector master is
 [`assets/app-icon.svg`](assets/app-icon.svg) — Steam's gear with an achievement star, in
@@ -164,11 +166,11 @@ share the version gate below.
 
 | Artifact | What it is |
 |---|---|
-| `steam-achievement-caretaker-X.Y.Z-win-x64-setup.exe` | Windows installer, 64-bit |
-| `steam-achievement-caretaker-X.Y.Z-win-x64-portable.zip` | unzip and run, 64-bit |
-| `steam-achievement-caretaker-X.Y.Z-win-x86-setup.exe` | Windows installer, 32-bit |
-| `steam-achievement-caretaker-X.Y.Z-win-x86-portable.zip` | unzip and run, 32-bit |
-| `steam-achievement-caretaker_X.Y.Z_amd64.deb` | Debian/Ubuntu package |
+| `achievement-caretaker-X.Y.Z-win-x64-setup.exe` | Windows installer, 64-bit |
+| `achievement-caretaker-X.Y.Z-win-x64-portable.zip` | unzip and run, 64-bit |
+| `achievement-caretaker-X.Y.Z-win-x86-setup.exe` | Windows installer, 32-bit |
+| `achievement-caretaker-X.Y.Z-win-x86-portable.zip` | unzip and run, 32-bit |
+| `achievement-caretaker_X.Y.Z_amd64.deb` | Debian/Ubuntu package |
 
 **All five are self-contained** — the .NET runtime is inside, so nothing has to be
 installed first. For the portable archive that is the whole point; for the installer it is
@@ -229,7 +231,7 @@ bash packaging/windows/build-installer.sh \
   --publish-dir out/win-x64 --version 1.0.0 --arch x64 --output dist
 ```
 
-It installs **per user** into `%LOCALAPPDATA%\Programs\SteamAchievementCaretaker`, which is
+It installs **per user** into `%LOCALAPPDATA%\Programs\AchievementCaretaker`, which is
 deliberate: the payload is self-contained, nothing is registered system-wide, no
 administrator is needed, and it sidesteps the Program Files / Program Files (x86) split so
 the x64 and x86 builds share one location and one Add/Remove Programs entry rather than
@@ -268,7 +270,7 @@ a release - the condition is on the ref, not on the event. On GitLab both packag
 nothing unless a tag is set. Locally:
 
 ```bash
-dotnet publish SteamAchievementCaretaker.App/SteamAchievementCaretaker.App.csproj   -c Release -r linux-x64 --self-contained true -o out/linux-x64
+dotnet publish AchievementCaretaker.App/AchievementCaretaker.App.csproj   -c Release -r linux-x64 --self-contained true -o out/linux-x64
 bash packaging/linux/build-deb.sh --publish-dir out/linux-x64 --version 1.0.0 --output dist
 ```
 
@@ -280,8 +282,8 @@ produce — it installs cleanly and then does nothing at all.
 
 | Path | Holds |
 |---|---|
-| `/usr/lib/steam-achievement-caretaker/` | the self-contained publish, `.pdb` stripped |
-| `/usr/bin/steam-achievement-caretaker` | a wrapper that `exec`s the apphost |
+| `/usr/lib/achievement-caretaker/` | the self-contained publish, `.pdb` stripped |
+| `/usr/bin/achievement-caretaker` | a wrapper that `exec`s the apphost |
 | `/usr/share/applications/….desktop` | the menu entry |
 | `/usr/share/icons/hicolor/scalable/apps/….svg` | the icon, from `docs/assets/app-icon.svg` |
 | `/usr/share/doc/…/copyright` | DEP-5 copyright carrying the SAM attribution and the zlib text |
@@ -319,12 +321,12 @@ environment variable or `--maintainer`.
 
 There are no tests in this repository. What can be checked without a Steam client:
 
-- **The application starts.** Run `bin/SteamAchievementCaretaker.exe` with Steam not
+- **The application starts.** Run `bin/AchievementCaretaker.exe` with Steam not
   running. It must come up showing an error window rather than dying — that proves
   `App.Initialize` loaded every style and resource dictionary, which the compiler does not
   check.
 - **The windows construct and render.** A throwaway console project referencing
-  `SteamAchievementCaretaker.App`, with `Avalonia.Headless` and `Avalonia.Skia` and
+  `AchievementCaretaker.App`, with `Avalonia.Headless` and `Avalonia.Skia` and
   `UseHeadlessDrawing = false`, can call `SetupWithoutStarting()` and then construct, show,
   measure, arrange and `CaptureRenderedFrame()` each window. This catches missing
   `StaticResource` keys and broken `StyleInclude` paths, which compile cleanly and only fail

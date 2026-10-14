@@ -1,0 +1,32 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="AchievementCaretaker.App/AchievementCaretaker.App.csproj">
+    <Platform Solution="*|x86" Project="x86" />
+  </Project>
+  <Project Path="AchievementCaretaker.Providers/AchievementCaretaker.Providers.csproj">
+    <Platform Solution="*|x86" Project="x86" />
+  </Project>
+  <Project Path="AchievementCaretaker.SteamApi/AchievementCaretaker.SteamApi.csproj">
+    <Platform Solution="*|x86" Project="x86" />
+  </Project>
+  <Folder Name="/Documentation/">
+    <File Path="README.md" />
+    <File Path="CLAUDE.md" />
+    <File Path="LICENSE.txt" />
+    <File Path="docs/ARCHITECTURE.md" />
+    <File Path="docs/ATTRIBUTION.md" />
+    <File Path="docs/BUILD.md" />
+    <File Path="docs/EPIC-RESEARCH.md" />
+    <File Path="docs/GOG-RESEARCH.md" />
+    <File Path="docs/RELEASE-NOTES.md" />
+  </Folder>
+  <Folder Name="/Solution Items/">
+    <File Path=".gitattributes" />
+    <File Path=".gitignore" />
+    <File Path="global.json" />
+  </Folder>
+  <Project Path="tools/ProviderProbe/ProviderProbe.csproj" />
+</Solution>

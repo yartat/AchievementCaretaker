@@ -1,15 +1,16 @@
-# Steam Achievement Caretaker
+# Achievement Caretaker
 
-Steam Achievement Caretaker is a lightweight, portable application used to manage
+Achievement Caretaker is a lightweight, portable application used to manage
 achievements and statistics in the PC gaming platform Steam. It requires the
 [Steam client](https://store.steampowered.com/about/), a Steam account and network access.
 Steam must be running and you must be logged in.
 
-> **This project is based on [Steam Achievement Manager](https://github.com/gibbed/SteamAchievementManager)
-> (SAM) by Rick ([gibbed](https://github.com/gibbed)).** Caretaker is an altered source
-> version of that software, distributed under the same zlib license. The original was
-> released closed-source in 2008, saw its last major release in 2011, and was opened later
-> so that those interested could do as they like with it. See
+> **Steam support is based on [Steam Achievement Manager](https://github.com/gibbed/SteamAchievementManager)
+> (SAM) by Rick ([gibbed](https://github.com/gibbed)), and GOG support is based on
+> [GOG Achievements Manager](https://github.com/timendum/gog_achievements) by Timendum.**
+> The Steam code is an altered source version of SAM, distributed under the same zlib
+> license. SAM was released closed-source in 2008, saw its last major release in 2011, and
+> was opened later so that those interested could do as they like with it. See
 > [docs/ATTRIBUTION.md](docs/ATTRIBUTION.md) for the full lineage and licence position.
 
 Caretaker carries a different name because it has diverged far enough to be a different
@@ -18,11 +19,11 @@ program: the two SAM executables were merged into one, the Windows Forms UI was 
 so neither window starts empty, and the game list was rebuilt around achievement
 completion.
 
-[Download latest release](https://github.com/yartat/SteamAchievementCaretaker/releases/latest).
+[Download latest release](https://github.com/yartat/AchievementCaretaker/releases/latest).
 
 ## How it works
 
-There is one executable, `SteamAchievementCaretaker.exe`, and it has two faces:
+There is one executable, `AchievementCaretaker.exe`, and it has two faces:
 
 | Start it… | and you get |
 |---|---|
@@ -112,8 +113,8 @@ changed relative to SAM.
 ## What is different from Steam Achievement Manager
 
 - **One executable instead of two.** `SAM.Picker.exe` and `SAM.Game.exe` are now a single
-  `SteamAchievementCaretaker.exe` that chooses its window from the command line, and
-  `SAM.API.dll` became `SteamAchievementCaretaker.SteamApi.dll`.
+  `AchievementCaretaker.exe` that chooses its window from the command line, and
+  `SAM.API.dll` became `AchievementCaretaker.SteamApi.dll`.
 - **New Library layout.** The library window is a collections rail plus a grid that shows
   how far through each game's achievements you are; the editor pairs the achievement list
   with a detail pane, and gathers uncommitted changes into one bar so you can see what is
@@ -159,7 +160,7 @@ Requires the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0); t
 version is pinned in `global.json`. No Visual Studio installation is required.
 
 ```bash
-dotnet build SteamAchievementCaretaker.slnx -c Release
+dotnet build AchievementCaretaker.slnx -c Release
 ```
 
 The executable is written to `bin\` alongside the Avalonia assemblies and native libraries —
@@ -178,14 +179,23 @@ the whole directory is needed to run, not just the executable. Full instructions
 
 ## Attribution and licence
 
-**Steam Achievement Caretaker is based on
+**Steam support is based on
 [Steam Achievement Manager](https://github.com/gibbed/SteamAchievementManager) by
 [gibbed](https://github.com/gibbed)**, released under the zlib license — see
-[LICENSE.txt](LICENSE.txt). Caretaker is an altered source version of that software and is
-plainly marked as such in every source file. It is not the original software, and it is not
-endorsed by or affiliated with the original author.
+[LICENSE.txt](LICENSE.txt). That part is an altered source version of the software and is
+plainly marked as such in the files derived from it.
 
-Steam is a trademark of Valve Corporation. This project is not affiliated with Valve.
+**GOG support is based on
+[GOG Achievements Manager](https://github.com/timendum/gog_achievements) by Timendum.**
+It reimplements the calls that tool makes to GOG's services, for reading only, and its
+files say so. Epic Games support is written from the endpoints documented by the open-source
+launchers [Legendary](https://github.com/derrod/legendary) and Heroic.
+
+None of this is the original software of those authors, and it is not endorsed by or
+affiliated with them.
+
+Steam is a trademark of Valve Corporation, GOG is a trademark of GOG sp. z o.o., and Epic
+Games is a trademark of Epic Games, Inc. This project is not affiliated with any of them.
 
 The toolbar and status icons are vector geometries drawn for this project. Earlier SAM
 releases used the [Fugue Icons](https://p.yusukekamiyamane.com/) set.

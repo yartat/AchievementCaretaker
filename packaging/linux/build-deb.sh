@@ -1,13 +1,8 @@
 #!/usr/bin/env bash
-# SteamAchievementCaretaker
+# AchievementCaretaker
 # Copyright (c) 2026 Yaroslav V Tatarenko
 #
-# This project is based on Steam Achievement Manager (SAM)
-# Copyright (c) 2008-2024 Rick (rick 'at' gibbed 'dot' us)
-# https://github.com/gibbed/SteamAchievementManager
-#
-# An altered source version of that software, plainly marked as such and
-# distributed under the zlib license; see LICENSE.txt in the repository root.
+# See LICENSE in the repository root.
 #
 # Builds a .deb from an already-published linux-x64 directory.
 #
@@ -15,7 +10,7 @@
 #
 # The publish must be SELF-CONTAINED. A framework-dependent build would have to
 # declare Depends: dotnet-runtime-10.0, which only exists in Microsoft's own apt
-# repository - so `apt install ./steam-achievement-caretaker_*.deb` would fail
+# repository - so `apt install ./achievement-caretaker_*.deb` would fail
 # with an unmet dependency on a stock Debian or Ubuntu. Bundling the runtime
 # costs about 100 MB and makes the package install with nothing else added.
 #
@@ -23,13 +18,13 @@
 
 set -euo pipefail
 
-PACKAGE="steam-achievement-caretaker"
-APPHOST="SteamAchievementCaretaker"
+PACKAGE="achievement-caretaker"
+APPHOST="AchievementCaretaker"
 publish_dir=""
 version=""
 output_dir="dist"
 maintainer="${DEB_MAINTAINER:-Yaroslav V Tatarenko <yaroslavtatarenko@gmail.com>}"
-homepage="${DEB_HOMEPAGE:-https://github.com/yartat/SteamAchievementCaretaker}"
+homepage="${DEB_HOMEPAGE:-https://github.com/yartat/AchievementCaretaker}"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -116,7 +111,7 @@ sed "s|@HOMEPAGE@|$homepage|g" "$here/copyright" \
     > "$stage/usr/share/doc/$PACKAGE/copyright"
 chmod 0644 "$stage/usr/share/doc/$PACKAGE/copyright"
 
-printf '%s (%s) unstable; urgency=low\n\n  * Steam Achievement Caretaker %s. See %s\n\n -- %s  %s\n' \
+printf '%s (%s) unstable; urgency=low\n\n  * Achievement Caretaker %s. See %s\n\n -- %s  %s\n' \
     "$PACKAGE" "$version" "$version" "$homepage" "$maintainer" "$(date -R)" \
     | gzip -9n > "$stage/usr/share/doc/$PACKAGE/changelog.gz"
 chmod 0644 "$stage/usr/share/doc/$PACKAGE/changelog.gz"

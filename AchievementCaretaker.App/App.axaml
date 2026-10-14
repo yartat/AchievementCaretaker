@@ -1,0 +1,28 @@
+<!--
+  AchievementCaretaker
+  Copyright (c) 2026 Yaroslav V Tatarenko
+
+  This project is based on Steam Achievement Manager (SAM)
+  Copyright (c) 2008-2024 Rick (rick 'at' gibbed 'dot' us)
+  https://github.com/gibbed/SteamAchievementManager
+
+  An altered source version of that software, plainly marked as such and
+  distributed under the zlib license; see LICENSE.txt in the repository root.
+-->
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="AchievementCaretaker.App.App"
+             RequestedThemeVariant="Default">
+  <Application.Styles>
+    <FluentTheme />
+    <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml" />
+    <StyleInclude Source="/Resources/Icons.axaml" />
+  </Application.Styles>
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="/Resources/Theme.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
+</Application>

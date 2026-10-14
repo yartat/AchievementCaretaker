@@ -1,9 +1,11 @@
 # Architecture
 
-> Steam Achievement Caretaker is based on
+> Steam support in Achievement Caretaker is based on
 > [Steam Achievement Manager](https://github.com/gibbed/SteamAchievementManager) by Rick
-> (gibbed), and is an altered source version of it. The interop layer described below is
-> substantially the original author's work. See [ATTRIBUTION.md](ATTRIBUTION.md).
+> (gibbed), and is an altered source version of it; GOG support is based on
+> [GOG Achievements Manager](https://github.com/timendum/gog_achievements) by Timendum.
+> The Steam interop layer described below is substantially SAM's work. See
+> [ATTRIBUTION.md](ATTRIBUTION.md).
 
 This document describes how the application is put together and why. It is the condensed,
 human-readable companion to [`CLAUDE.md`](../CLAUDE.md), which carries the same material at
@@ -13,8 +15,8 @@ greater length plus the rules a contributor or coding agent must not break.
 
 | Project | Output | Role |
 |---|---|---|
-| `SteamAchievementCaretaker.SteamApi` | class library | All native interop with Steam. No package references of any kind, and no UI dependency. |
-| `SteamAchievementCaretaker.App` | `SteamAchievementCaretaker.exe` | The whole application: the library window and the achievement editor. |
+| `AchievementCaretaker.SteamApi` | class library | All native interop with Steam. No package references of any kind, and no UI dependency. |
+| `AchievementCaretaker.App` | `AchievementCaretaker.exe` | The whole application: the library window and the achievement editor. |
 
 Both target plain `net10.0` — not `net10.0-windows`. The interop is written against
 `NativeLibrary` rather than `kernel32`, and the Windows registry lookup is guarded by
@@ -45,7 +47,7 @@ is a wait rather than a `SQLITE_BUSY`.
 ## Project layout
 
 ```
-SteamAchievementCaretaker.App/
+AchievementCaretaker.App/
   Program.cs            entry point, command-line dispatch, relaunch
   App.axaml[.cs]        styles, theme, window selection, Steam handshake
   InvariantShorthand.cs the _($"…") invariant-culture helper
@@ -57,7 +59,7 @@ SteamAchievementCaretaker.App/
   Views/                the three windows plus the hand-rolled MessageWindow
   Resources/            Icons.axaml, Theme.axaml, the application icon
 
-SteamAchievementCaretaker.SteamApi/
+AchievementCaretaker.SteamApi/
   Steam.cs              library load and export binding
   Client.cs             pipe, user, interface accessors, callback pump
   NativeWrapper.cs      vtable marshalling
@@ -216,6 +218,30 @@ list, so it cannot run on the UI thread. **Steam client calls therefore do happe
 thread there** — preserved deliberately from the original, not an invitation to add more.
 
 Image downloads use a single-consumer queue, one at a time.
+
+## Epic and GOG
+
+The library window can show an Epic Games or GOG library beside Steam's. They are read-only:
+the owned games, and each game's achievements with the signed-in player's progress. Nothing is
+unlocked or re-locked. How the two stores' endpoints work is in [EPIC-RESEARCH.md](EPIC-RESEARCH.md)
+and [GOG-RESEARCH.md](GOG-RESEARCH.md); this is how the application uses them.
+
+- **`AchievementCaretaker.Providers`** has one `IStoreProvider` per store. It is plain HTTPS
+  with no native code and no packages. Steam is deliberately not behind that interface: its
+  interface is native, scoped to one app id per process, and can write.
+- **One source at a time**, chosen in the rail. Steam's half of the window is unchanged. A store
+  gets its own game type (`StoreGameInfo`), its own view model (`StoreLibraryViewModel`) and its
+  own view (`StoreLibraryView`), because everything on Steam's side is keyed by a numeric app id
+  and leans on playtime, review scores and demo/mod types that a store does not have.
+- **Sign-in happens in the user's browser**, on the store's own page. The user pastes back the
+  code or address the page ends on. The session, which holds a refresh token, is kept in
+  `~/.sac/epic.json` or `~/.sac/gog.json`.
+- **Cached like Steam's**: the library in the `store_games` table of `games.db`, painted at
+  once on start and refreshed afterwards; images in a `store/` folder of the icon cache.
+- **Achievement counts are read on request.** A game's achievements open in a read-only window
+  in the same process, which also fills in that game's meter in the library; **Load progress**
+  does it for every game, a few at a time, and can be cancelled. Until a game has been read its
+  meter is absent rather than empty.
 
 ## What is not covered here
 

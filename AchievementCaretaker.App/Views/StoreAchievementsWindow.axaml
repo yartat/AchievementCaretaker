@@ -1,0 +1,292 @@
+<!--
+  AchievementCaretaker
+  Copyright (c) 2026 Yaroslav V Tatarenko
+
+  See LICENSE in the repository root.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:AchievementCaretaker.App.ViewModels"
+        xmlns:local="using:AchievementCaretaker.App.Achievements"
+        x:Class="AchievementCaretaker.App.Views.StoreAchievementsWindow"
+        x:DataType="vm:StoreAchievementsViewModel"
+        Icon="/Resources/AchievementCaretaker.ico"
+        Width="860" Height="600"
+        MinWidth="640" MinHeight="420"
+        Background="{DynamicResource SamWindowBrush}"
+        Title="{Binding Title}">
+
+  <Window.Styles>
+    <Style Selector="Button.quiet">
+      <Setter Property="Background" Value="{DynamicResource SamPanelBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SamBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="5" />
+      <Setter Property="Padding" Value="10,0" />
+      <Setter Property="Height" Value="28" />
+      <Setter Property="Foreground" Value="{DynamicResource SamSecondaryTextBrush}" />
+    </Style>
+
+    <!-- Filter chips: one of the three is always on. -->
+    <Style Selector="Button.chip">
+      <Setter Property="Background" Value="{DynamicResource SamPanelBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SamBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="13" />
+      <Setter Property="Padding" Value="11,0" />
+      <Setter Property="Height" Value="26" />
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Foreground" Value="{DynamicResource SamSecondaryTextBrush}" />
+    </Style>
+    <Style Selector="Button.chip.on">
+      <Setter Property="Background" Value="{DynamicResource SamAccentSoftBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource SamAccentTextBrush}" />
+    </Style>
+  </Window.Styles>
+
+  <DockPanel>
+
+    <!-- Game header: completion is the headline number -->
+    <Border DockPanel.Dock="Top" Padding="16,14,16,12">
+      <DockPanel>
+        <Button DockPanel.Dock="Right"
+                Classes="quiet"
+                Command="{Binding ReloadCommand}"
+                VerticalAlignment="Center"
+                ToolTip.Tip="Read the achievements again">
+          <PathIcon Data="{StaticResource RefreshIcon}" />
+        </Button>
+
+        <StackPanel Spacing="7" VerticalAlignment="Center">
+          <TextBlock Text="{Binding GameName}"
+                     FontSize="16"
+                     FontWeight="SemiBold"
+                     Foreground="{DynamicResource SamTextBrush}"
+                     TextTrimming="CharacterEllipsis" />
+          <StackPanel Orientation="Horizontal" Spacing="10">
+            <ProgressBar Width="260"
+                         MinWidth="0"
+                         Height="5"
+                         Minimum="0" Maximum="1"
+                         Value="{Binding CompletionFraction}"
+                         Foreground="{DynamicResource SamAccentBrush}"
+                         Background="{DynamicResource SamMeterTrackBrush}"
+                         VerticalAlignment="Center" />
+            <TextBlock Text="{Binding CompletionText}"
+                       FontSize="11.5"
+                       Foreground="{DynamicResource SamSecondaryTextBrush}"
+                       VerticalAlignment="Center" />
+          </StackPanel>
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
+    <!-- Status bar -->
+    <Border DockPanel.Dock="Bottom"
+            Padding="16,5"
+            BorderThickness="0,1,0,0"
+            BorderBrush="{DynamicResource SamBorderBrush}">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Right"
+                    Orientation="Horizontal"
+                    Spacing="8"
+                    IsVisible="{Binding IsProgressVisible}">
+          <PathIcon Data="{StaticResource DownloadIcon}"
+                    Foreground="{DynamicResource SamMutedTextBrush}"
+                    VerticalAlignment="Center" />
+          <TextBlock Text="{Binding ProgressText}"
+                     FontSize="11"
+                     Foreground="{DynamicResource SamMutedTextBrush}"
+                     VerticalAlignment="Center" />
+          <ProgressBar Width="130"
+                       MinWidth="0"
+                       Minimum="0"
+                       Maximum="{Binding ProgressMaximum}"
+                       Value="{Binding ProgressValue}"
+                       IsIndeterminate="{Binding IsProgressIndeterminate}"
+                       Foreground="{DynamicResource SamAccentBrush}"
+                       VerticalAlignment="Center" />
+        </StackPanel>
+        <TextBlock Text="{Binding StatusText}"
+                   FontSize="11"
+                   Foreground="{DynamicResource SamMutedTextBrush}"
+                   VerticalAlignment="Center"
+                   TextTrimming="CharacterEllipsis" />
+      </DockPanel>
+    </Border>
+
+    <Panel Margin="10,0,10,0">
+
+      <!-- Nothing to list yet, or nothing to list at all. -->
+      <TextBlock IsVisible="{Binding IsLoading}"
+                 Text="Reading the achievements..."
+                 FontSize="13"
+                 Foreground="{DynamicResource SamMutedTextBrush}"
+                 HorizontalAlignment="Center"
+                 VerticalAlignment="Center" />
+
+      <TextBlock IsVisible="{Binding IsEmpty}"
+                 Text="This game has no achievements on this store."
+                 FontSize="13"
+                 Foreground="{DynamicResource SamMutedTextBrush}"
+                 HorizontalAlignment="Center"
+                 VerticalAlignment="Center" />
+
+      <StackPanel IsVisible="{Binding IsFailed}"
+                  Spacing="12"
+                  MaxWidth="480"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center">
+        <!-- RatingDislikeBrush is the theme-independent red; there is no error brush. -->
+        <TextBlock Text="{Binding ErrorText}"
+                   FontSize="13"
+                   TextWrapping="Wrap"
+                   Foreground="{StaticResource RatingDislikeBrush}" />
+        <Button Classes="quiet"
+                HorizontalAlignment="Left"
+                Command="{Binding ReloadCommand}"
+                Content="Try again" />
+      </StackPanel>
+
+      <DockPanel IsVisible="{Binding IsReady}">
+
+        <!-- Filters -->
+        <Border DockPanel.Dock="Top" Padding="6,10,6,10">
+          <DockPanel>
+            <TextBox DockPanel.Dock="Right"
+                     Text="{Binding MatchingString}"
+                     Width="180"
+                     Height="26"
+                     FontSize="12"
+                     CornerRadius="13"
+                     PlaceholderText="Filter"
+                     VerticalAlignment="Center" />
+
+            <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+              <Button Classes="chip" Classes.on="{Binding IsShowingAll}"
+                      Command="{Binding ShowFilterCommand}"
+                      CommandParameter="{x:Static local:AchievementFilter.All}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="All" VerticalAlignment="Center" />
+                  <TextBlock Text="{Binding TotalCount}"
+                             Foreground="{DynamicResource SamMutedTextBrush}"
+                             VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" Classes.on="{Binding IsShowingLocked}"
+                      Command="{Binding ShowFilterCommand}"
+                      CommandParameter="{x:Static local:AchievementFilter.Locked}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="Locked" VerticalAlignment="Center" />
+                  <TextBlock Text="{Binding LockedCount}"
+                             Foreground="{DynamicResource SamMutedTextBrush}"
+                             VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" Classes.on="{Binding IsShowingUnlocked}"
+                      Command="{Binding ShowFilterCommand}"
+                      CommandParameter="{x:Static local:AchievementFilter.Unlocked}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock Text="Unlocked" VerticalAlignment="Center" />
+                  <TextBlock Text="{Binding UnlockedCount}"
+                             Foreground="{DynamicResource SamMutedTextBrush}"
+                             VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+            </StackPanel>
+          </DockPanel>
+        </Border>
+
+        <!-- Read-only: a state icon where the Steam editor has a checkbox. The XP and
+             rarity columns share a size group across the rows, so they line up, and
+             collapse together when the store has no such thing (GOG has no XP). -->
+        <ListBox Background="Transparent"
+                 BorderThickness="0"
+                 Padding="0,0,6,0"
+                 Grid.IsSharedSizeScope="True"
+                 ItemsSource="{Binding Achievements}"
+                 SelectedItem="{Binding SelectedAchievement}">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="local:StoreAchievementItem">
+              <Grid MinHeight="36" ToolTip.Tip="{Binding Description}">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="26" />
+                  <ColumnDefinition Width="32" />
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" SharedSizeGroup="Xp" />
+                  <ColumnDefinition Width="Auto" SharedSizeGroup="Rarity" />
+                  <ColumnDefinition Width="96" />
+                </Grid.ColumnDefinitions>
+
+                <Panel Grid.Column="0" VerticalAlignment="Center">
+                  <PathIcon Data="{StaticResource UnlockIcon}"
+                            IsVisible="{Binding Unlocked}"
+                            Foreground="{DynamicResource SamAccentBrush}" />
+                  <PathIcon Data="{StaticResource LockIcon}"
+                            IsVisible="{Binding !Unlocked}"
+                            Opacity="0.45" />
+                </Panel>
+                <Border Grid.Column="1"
+                        Width="26" Height="26"
+                        CornerRadius="4"
+                        ClipToBounds="True"
+                        Background="{DynamicResource SamPlaceholderBrush}">
+                  <Image Source="{Binding Icon}" />
+                </Border>
+                <!-- Name, and the description under it on one trimmed line; the full
+                     text is the row's tooltip. The second line collapses when there is
+                     nothing to say. -->
+                <StackPanel Grid.Column="2"
+                            VerticalAlignment="Center"
+                            Spacing="1"
+                            Margin="8,4,8,4">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock Text="{Binding Name}"
+                               FontSize="12"
+                               Foreground="{DynamicResource SamTextBrush}"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="hidden"
+                               IsVisible="{Binding Hidden}"
+                               FontSize="10"
+                               Foreground="{DynamicResource SamMutedTextBrush}"
+                               VerticalAlignment="Center" />
+                  </StackPanel>
+                  <TextBlock Text="{Binding Description}"
+                             FontSize="11"
+                             Foreground="{DynamicResource SamSecondaryTextBrush}"
+                             TextTrimming="CharacterEllipsis"
+                             IsVisible="{Binding Description, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                </StackPanel>
+                <TextBlock Grid.Column="3"
+                           Text="{Binding XpText}"
+                           IsVisible="{Binding $parent[ListBox].((vm:StoreAchievementsViewModel)DataContext).HasXp}"
+                           FontSize="11"
+                           Foreground="{DynamicResource SamSecondaryTextBrush}"
+                           HorizontalAlignment="Right"
+                           VerticalAlignment="Center"
+                           Margin="8,0" />
+                <TextBlock Grid.Column="4"
+                           Text="{Binding RarityText}"
+                           IsVisible="{Binding $parent[ListBox].((vm:StoreAchievementsViewModel)DataContext).HasRarity}"
+                           ToolTip.Tip="{Binding RarityTooltip}"
+                           FontSize="11"
+                           Foreground="{DynamicResource SamSecondaryTextBrush}"
+                           HorizontalAlignment="Right"
+                           VerticalAlignment="Center"
+                           Margin="8,0" />
+                <!-- Fixed width so the dates line up down the list; 96 holds
+                     "d MMM yyyy" with room for a longer month abbreviation. -->
+                <TextBlock Grid.Column="5"
+                           Text="{Binding UnlockDateText}"
+                           FontSize="11"
+                           Foreground="{DynamicResource SamSecondaryTextBrush}"
+                           VerticalAlignment="Center"
+                           Margin="8,0,0,0" />
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+    </Panel>
+  </DockPanel>
+</Window>
