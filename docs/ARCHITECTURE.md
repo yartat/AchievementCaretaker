@@ -11,14 +11,18 @@ This document describes how the application is put together and why. It is the c
 human-readable companion to [`CLAUDE.md`](../CLAUDE.md), which carries the same material at
 greater length plus the rules a contributor or coding agent must not break.
 
-## The two projects
+## The projects
 
 | Project | Output | Role |
 |---|---|---|
 | `AchievementCaretaker.SteamApi` | class library | All native interop with Steam. No package references of any kind, and no UI dependency. |
-| `AchievementCaretaker.App` | `AchievementCaretaker.exe` | The whole application: the library window and the achievement editor. |
+| `AchievementCaretaker.Providers` | class library | The libraries and achievements of other stores (Epic Games, GOG) over HTTPS, behind `IStoreProvider`. No native code, no packages, no UI dependency. Steam is not a provider; see [Epic and GOG](#epic-and-gog). |
+| `AchievementCaretaker.App` | `AchievementCaretaker.exe` | The whole application: the library window, the achievement editor, and the store windows. |
 
-Both target plain `net10.0` — not `net10.0-windows`. The interop is written against
+`tools/ProviderProbe` is a command-line probe of the providers. It is in the solution so it builds
+with everything and is never published.
+
+All of them target plain `net10.0` — not `net10.0-windows`. The interop is written against
 `NativeLibrary` rather than `kernel32`, and the Windows registry lookup is guarded by
 `OperatingSystem.IsWindows()`.
 
@@ -38,7 +42,9 @@ Caretaker ships one executable and keeps the constraint:
 
 `Program.TryParseAppId` reads the command line, `App.CreateMainWindow` picks the window
 (doing the Steam handshake itself only for the editor), and `Program.LaunchForApp` starts a second copy of the same
-executable (`Environment.ProcessPath`) when the user opens a game.
+executable (`Environment.ProcessPath`) when the user opens a Steam game. A game of another store
+opens in a window of the library's own process instead: a store's HTTPS service has no per-process
+scope, so the constraint above does not apply to it.
 
 A consequence worth remembering: two processes hold the same SQLite database open. The
 schema uses `journal_mode=WAL` and the achievement cache sets a command timeout so overlap
@@ -51,13 +57,24 @@ AchievementCaretaker.App/
   Program.cs            entry point, command-line dispatch, relaunch
   App.axaml[.cs]        styles, theme, window selection, the editor's Steam handshake
   InvariantShorthand.cs the _($"…") invariant-culture helper
-  Common/               AppSettings, IconCache
-  Library/              GameInfo, GameCache, LibraryStats, RatingStore, OwnRating
-  Achievements/         AchievementCache, AchievementFilter
+  Common/               AppSettings, IconCache, StoreImageCache,
+                        SteamConnector, SteamWatch
+  Library/              GameInfo, GameCache, LibraryStats, RatingStore, OwnRating,
+                        StoreGameInfo
+  Achievements/         AchievementCache, AchievementFilter, StoreAchievementItem
     Stats/              the schema model
-  ViewModels/           ProgressViewModel and the three view models
-  Views/                the three windows plus the hand-rolled MessageWindow
+  ViewModels/           ProgressViewModel; the library, editor and settings view models;
+                        StoreLibraryViewModel, StoreAchievementsViewModel
+  Views/                the library, editor and settings windows; StoreLibraryView,
+                        StoreAchievementsWindow, StoreSignInWindow; the hand-rolled
+                        MessageWindow
   Resources/            Icons.axaml, Theme.axaml, the application icon
+
+AchievementCaretaker.Providers/
+  IStoreProvider.cs, IWritableStoreProvider.cs, StoreModels.cs
+  Epic/, Gog/           one provider each, with every unofficial endpoint of its store
+  StoreProviders.cs     the list of stores; adding one means listing it here
+  SessionFile.cs        how a refresh token is kept on disk
 
 AchievementCaretaker.SteamApi/
   Steam.cs              library load and export binding
@@ -130,6 +147,14 @@ the banner again, and the search starts over; a refresh that was running when it
 discards its results rather than treat "nothing owned" on a dead pipe as the truth. The editor
 locks itself when its Steam goes, since it can neither read nor commit without one.
 
+**Only a finished synchronization may delete a game.** The ownership sweep asks Steam about
+every published app ID, and once Steam is gone every remaining call answers "not owned", so a
+sweep cut short looks exactly like an account that owns almost nothing. A refresh therefore
+always adds and updates what it found, and removes games Steam no longer lists only if the sweep
+and the statistics pass both ran to the end under the same Steam. Whether it is still the same
+Steam is asked directly as each pass ends, because the watch only notices every few seconds. The
+cache and the icon pruning follow the same rule.
+
 View models hold all logic and every Steam call; views are XAML plus thin code-behind.
 Because view models have no window to parent a dialog to, they raise `ErrorRaised`,
 `MessageRaised` and `ConfirmRequested` events and the window shows the dialog.
@@ -188,10 +213,20 @@ Neither window starts empty.
 
 | Store | Holds |
 |---|---|
-| `games` table | the owned game list and its statistics |
-| `achievements` table | each visited game's achievement list and unlock state, keyed by account ID **and** language |
+| `games` table | each Steam account's owned game list and its statistics, keyed by account and app ID |
+| `store_games` table | each Epic or GOG account's library and achievement counts, keyed by provider, account and game |
+| `meta` table | which Steam account the library window showed last, so a start without Steam shows it |
+| `achievements` table | each visited Steam game's achievement list and unlock state, keyed by account ID **and** language |
 | `<appid>.img` | capsule art |
 | `<appid>_<icon>` | achievement icons |
+| `store/<provider>/` | store art, named by a hash of the image address |
+
+Every library is saved under its account, so signing out or switching account deletes nothing
+and coming back finds the games and progress where they were. When Steam returns as a different
+account, the window swaps to that account's saved library, and a refresh that began under the
+previous one discards its findings instead of merging them. A database written before accounts
+were recorded is rebuilt: its library tables could not say whose rows they held, and they only
+ever held a cache.
 
 The database and icon directory default under `~/.sac` and are relocatable from Settings;
 `settings.json` and `ratings.json` are not, because `settings.json` is the file that would
@@ -203,8 +238,9 @@ background refresh then merges live data in rather than clearing and rebuilding,
 blank the window and re-download every image.
 
 The achievement icon file naming is load-bearing: `IconCache.Prune` recovers the app ID from
-the file name to delete art for games no longer owned, and files whose name yields no app ID
-are left alone entirely, because the directory is user-chosen and may not be ours.
+the file name to delete art for games no longer owned by **any** saved account, and files whose
+name yields no app ID are left alone entirely, because the directory is user-chosen and may not
+be ours. The `store/` subfolder is outside its reach on purpose, and nothing prunes it.
 
 ## Pending changes in the editor
 
@@ -235,8 +271,8 @@ editor's achievement icons are loaded the same way.
 
 ## Epic and GOG
 
-The library window can show an Epic Games or GOG library beside Steam's: the owned games, and each game's achievements with the signed-in player's
-progress. Epic is read-only. GOG's achievements can also be unlocked and re-locked: the
+The library window can show an Epic Games or GOG library beside Steam's: the owned games, and each
+game's achievements with the signed-in player's progress. Epic is read-only. GOG's achievements can also be unlocked and re-locked: the
 achievements window has the Steam editor's checkboxes, Lock / Invert / Unlock buttons and
 Uncommitted bar, and Commit sends the changes through `IWritableStoreProvider`, which only GOG
 implements. How the two stores' endpoints work is in [EPIC-RESEARCH.md](EPIC-RESEARCH.md)
@@ -249,6 +285,13 @@ and [GOG-RESEARCH.md](GOG-RESEARCH.md); this is how the application uses them.
   gets its own game type (`StoreGameInfo`), its own view model (`StoreLibraryViewModel`) and its
   own view (`StoreLibraryView`), because everything on Steam's side is keyed by a numeric app id
   and leans on playtime, review scores and demo/mod types that a store does not have.
+- **Writing, GOG only.** Changing an achievement needs a token issued to the game's own client,
+  so `GogProvider.SetAchievementsAsync` reads the game's client secret from GOGDB's build record,
+  and only when something is written; listing reads the client id alone. The game token is used
+  for the writes and dropped, and the account's own session is not touched. The window sends the
+  pending changes four at a time, stops at the first failure, and always reads the achievements
+  again afterwards, because a half-applied commit has still changed some. Epic cannot re-lock an
+  achievement, so it does not implement the interface and its window has no checkboxes or buttons.
 - **Sign-in shows the store's own page** in a browser inside the application
   (`StoreSignInWindow`, on `Avalonia.Controls.WebView`) and finishes by itself when the page
   reaches the store's end-of-sign-in address, which the provider recognises. The user's own browser
