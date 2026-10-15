@@ -33,11 +33,11 @@ Caretaker ships one executable and keeps the constraint:
 
 | Command line | Window | `Client.Initialize` |
 |---|---|---|
-| *(no arguments)* | `GamePickerWindow` — the library | app ID `0` |
+| *(no arguments)* | `GamePickerWindow` — the library | app ID `0`, once Steam is there |
 | `<appid>` | `ManagerWindow` — the achievement editor | that app ID |
 
-`Program.TryParseAppId` reads the command line, `App.CreateMainWindow` does the Steam
-handshake and picks the window, and `Program.LaunchForApp` starts a second copy of the same
+`Program.TryParseAppId` reads the command line, `App.CreateMainWindow` picks the window
+(doing the Steam handshake itself only for the editor), and `Program.LaunchForApp` starts a second copy of the same
 executable (`Environment.ProcessPath`) when the user opens a game.
 
 A consequence worth remembering: two processes hold the same SQLite database open. The
@@ -49,7 +49,7 @@ is a wait rather than a `SQLITE_BUSY`.
 ```
 AchievementCaretaker.App/
   Program.cs            entry point, command-line dispatch, relaunch
-  App.axaml[.cs]        styles, theme, window selection, Steam handshake
+  App.axaml[.cs]        styles, theme, window selection, the editor's Steam handshake
   InvariantShorthand.cs the _($"…") invariant-culture helper
   Common/               AppSettings, IconCache
   Library/              GameInfo, GameCache, LibraryStats, RatingStore, OwnRating
@@ -113,10 +113,22 @@ populates itself.
 ## The UI layer
 
 `Program.Main` builds the Avalonia `AppBuilder`;
-`App.OnFrameworkInitializationCompleted` does the Steam handshake and chooses the main
+`App.OnFrameworkInitializationCompleted` chooses the main
 window — the library, the editor, or a `MessageWindow` carrying the error. Avalonia has no
 `MessageBox`, so `Views/MessageWindow.cs` is a hand-rolled stand-in that doubles as the main
-window when the handshake fails.
+window when the editor's handshake fails.
+
+The library does not do the handshake at start. It has other sources than Steam, so it opens at
+once, and `SteamConnector` keeps trying to create the Steam pipe in the background. Only when
+that works does the Steam library refresh; until then the Steam source shows the games saved
+last time under a "No active Steam" banner, with the reason.
+
+It goes on watching after it connects. A pipe to a Steam that quit does not say so, but the
+Steam process does, so the connector compares the process id taken at connection with the one
+running now. When Steam goes, the window stops talking to it, keeps the games on screen, shows
+the banner again, and the search starts over; a refresh that was running when it happened
+discards its results rather than treat "nothing owned" on a dead pipe as the truth. The editor
+locks itself when its Steam goes, since it can neither read nor commit without one.
 
 View models hold all logic and every Steam call; views are XAML plus thin code-behind.
 Because view models have no window to parent a dialog to, they raise `ErrorRaised`,

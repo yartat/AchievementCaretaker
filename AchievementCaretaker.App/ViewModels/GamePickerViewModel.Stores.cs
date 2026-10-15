@@ -53,7 +53,7 @@ namespace AchievementCaretaker.App.ViewModels
 
                 foreach (var name in new[]
                 {
-                    nameof(this.IsSteamSelected), nameof(this.IsStoreSelected),
+                    nameof(this.IsSteamSelected), nameof(this.IsStoreSelected), nameof(this.ShowSteamBanner),
                     nameof(this.ShowSteamTiles), nameof(this.ShowSteamContent),
                     nameof(this.ActiveStatusText), nameof(this.HeaderTitle), nameof(this.HeaderSummary),
                 })
@@ -64,6 +64,22 @@ namespace AchievementCaretaker.App.ViewModels
         }
 
         public bool IsSteamSelected => this.SelectedStoreLibrary == null;
+
+        /// <summary>False until the connector has reached Steam. Cached games are shown meanwhile.</summary>
+        public bool IsSteamConnected => this._SteamClient != null;
+
+        /// <summary>The Steam source is showing, and Steam is not there to refresh it from.</summary>
+        public bool ShowSteamBanner => this.IsSteamSelected == true && this.IsSteamConnected == false;
+
+        /// <summary>Why there is no Steam: not installed, not running, nobody logged in.</summary>
+        public string SteamUnavailableText => this._Steam?.Reason;
+
+        private void NotifySteamState()
+        {
+            this.OnPropertyChanged(nameof(this.IsSteamConnected));
+            this.OnPropertyChanged(nameof(this.ShowSteamBanner));
+            this.OnPropertyChanged(nameof(this.SteamUnavailableText));
+        }
 
         public bool IsStoreSelected => this.SelectedStoreLibrary != null;
 

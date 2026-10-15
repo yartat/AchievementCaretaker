@@ -64,19 +64,21 @@ namespace AchievementCaretaker.App
         }
 
         /// <summary>
-        /// Does the Steam handshake and chooses the window: the library when
-        /// there is no application id on the command line, the achievement
-        /// editor when there is, and an error window when either step fails.
+        /// Chooses the window: the library when there is no application id on the
+        /// command line, the achievement editor when there is, and an error window
+        /// when the command line or the place it is run from is wrong.
         /// Avalonia has no equivalent of a message box shown before the
         /// application loop starts, so the error is a window of its own.
         /// </summary>
+        /// <remarks>
+        /// The library does not do the Steam handshake here. It has other sources
+        /// than Steam, so it opens at once and its <see cref="SteamConnector"/> looks
+        /// for Steam in the background. The editor is one game's Steam session and
+        /// cannot do anything without one, so it still does the handshake up front
+        /// and shows the error if it fails.
+        /// </remarks>
         private Window CreateMainWindow(string[] args)
         {
-            if (SteamApi.SteamPlatform.IsArchitectureSupported == false)
-            {
-                return MessageWindow.CreateError(SteamApi.SteamPlatform.DescribeUnsupportedArchitecture());
-            }
-
             if (Program.IsRunningFromSteamDirectory() == true)
             {
                 return MessageWindow.CreateError("This tool declines to being run from the Steam directory.");
@@ -86,6 +88,18 @@ namespace AchievementCaretaker.App
             {
                 return MessageWindow.CreateError(
                     "Could not parse application ID from command line argument.");
+            }
+
+            // Application id 0 is not a game; it is how the library window asks
+            // Steam for an ownership-wide session, once there is a Steam to ask.
+            if (appId == 0)
+            {
+                return new GamePickerWindow() { DataContext = new GamePickerViewModel(new SteamConnector()) };
+            }
+
+            if (SteamApi.SteamPlatform.IsArchitectureSupported == false)
+            {
+                return MessageWindow.CreateError(SteamApi.SteamPlatform.DescribeUnsupportedArchitecture());
             }
 
             SteamApi.Client client = new();
@@ -105,12 +119,7 @@ namespace AchievementCaretaker.App
             }
 
             this._SteamClient = client;
-
-            // Application id 0 is not a game; it is how the library window asks
-            // Steam for an ownership-wide session.
-            return appId == 0
-                ? new GamePickerWindow() { DataContext = new GamePickerViewModel(client) }
-                : new ManagerWindow() { DataContext = new ManagerViewModel(appId, client) };
+            return new ManagerWindow() { DataContext = new ManagerViewModel(appId, client) };
         }
 
         private static string DescribeInitializeFailure(SteamApi.ClientInitializeException e, long appId)

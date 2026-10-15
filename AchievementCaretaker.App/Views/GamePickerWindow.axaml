@@ -147,6 +147,12 @@
               <DockPanel>
                 <PathIcon DockPanel.Dock="Left" Data="{StaticResource TilesIcon}"
                           Margin="0,0,9,0" VerticalAlignment="Center" />
+                <PathIcon DockPanel.Dock="Right" Classes="small"
+                          Data="{StaticResource ClockIcon}"
+                          IsVisible="{Binding !IsSteamConnected}"
+                          ToolTip.Tip="Waiting for Steam"
+                          Margin="6,0,0,0"
+                          VerticalAlignment="Center" />
                 <TextBlock DockPanel.Dock="Right" Classes="railcount" Text="{Binding AllCount}" />
                 <TextBlock Text="Steam" FontSize="12" VerticalAlignment="Center" />
               </DockPanel>
@@ -502,6 +508,32 @@
                        TextTrimming="CharacterEllipsis" />
           </StackPanel>
         </DockPanel>
+      </Border>
+
+      <!-- Steam is not there (yet). The games from the last time stay on screen below,
+           and the window keeps looking for Steam; this says why there is none. -->
+      <Border DockPanel.Dock="Top"
+              IsVisible="{Binding ShowSteamBanner}"
+              Margin="20,0,20,8"
+              Padding="14,10"
+              CornerRadius="6"
+              Background="{DynamicResource SamPanelBrush}"
+              BorderBrush="{DynamicResource SamBorderBrush}"
+              BorderThickness="1">
+        <StackPanel Spacing="3">
+          <TextBlock Text="No active Steam"
+                     FontSize="13"
+                     FontWeight="SemiBold"
+                     Foreground="{DynamicResource SamTextBrush}" />
+          <TextBlock Text="{Binding SteamUnavailableText}"
+                     FontSize="12"
+                     TextWrapping="Wrap"
+                     Foreground="{DynamicResource SamSecondaryTextBrush}" />
+          <TextBlock Text="Games saved from the last time Steam was available are shown, if there are any. They are refreshed as soon as Steam starts."
+                     FontSize="11"
+                     TextWrapping="Wrap"
+                     Foreground="{DynamicResource SamMutedTextBrush}" />
+        </StackPanel>
       </Border>
 
       <!-- Both views share the space below the header. They sit in one Panel

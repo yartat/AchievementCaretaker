@@ -215,15 +215,19 @@ namespace AchievementCaretaker.App.Library
         /// updated. One transaction, so a crash mid-sync cannot leave a
         /// half-written library behind.
         /// </summary>
-        public void Sync(IReadOnlyCollection<CachedGame> games)
+        /// <param name="removeMissing">
+        /// False adds and updates only. A synchronization that did not finish learned about
+        /// the games it reached and nothing about the rest, so it must not delete them.
+        /// </param>
+        public void Sync(IReadOnlyCollection<CachedGame> games, bool removeMissing = true)
         {
             lock (this._Gate)
             {
-                this.SyncLocked(games);
+                this.SyncLocked(games, removeMissing);
             }
         }
 
-        private void SyncLocked(IReadOnlyCollection<CachedGame> games)
+        private void SyncLocked(IReadOnlyCollection<CachedGame> games, bool removeMissing)
         {
             using var transaction = this._Connection.BeginTransaction();
 
@@ -306,8 +310,9 @@ namespace AchievementCaretaker.App.Library
                 }
             }
 
-            using (var prune = this._Connection.CreateCommand())
+            if (removeMissing == true)
             {
+                using var prune = this._Connection.CreateCommand();
                 prune.Transaction = transaction;
                 prune.CommandText = "DELETE FROM games WHERE id NOT IN (SELECT id FROM keep)";
                 prune.ExecuteNonQuery();

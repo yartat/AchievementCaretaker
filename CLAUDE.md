@@ -132,7 +132,7 @@ one game's achievements. So the executable dispatches on its command line:
 
 | Command line | Window | Steam initialised with |
 |---|---|---|
-| *(no arguments)* | `GamePickerWindow` — the library | app id `0` |
+| *(no arguments)* | `GamePickerWindow` — the library | app id `0`, once Steam is there |
 | `<appid>` | `ManagerWindow` — the achievement editor | that app id |
 
 `Program.LaunchForApp` starts a second copy of **this same executable**
@@ -265,7 +265,9 @@ not mean nothing can be checked without Steam — see "Verifying without Steam" 
 
 ## Running
 
-Requires the Steam client installed, running, and logged in. On Windows the install path
+The Steam features (the Steam library, the achievement editor) need the Steam client
+installed, running, and logged in; the library window itself opens without it. On Windows the
+install path
 comes from `HKLM\Software\Valve\Steam\InstallPath`; elsewhere the candidate directories in
 `SteamPlatform.GetUnixInstallCandidates` are walked. Without a live Steam process
 `Client.Initialize` throws `ClientInitializeException`. You cannot meaningfully exercise
@@ -293,8 +295,10 @@ throwaway console project that references `AchievementCaretaker.App`:
   `RefreshIcon` measures 8.2 wide on a 16 grid and renders 15.
 
 Starting `bin/AchievementCaretaker.exe` with no Steam running is also a real check: it
-must come up showing the error `MessageWindow` rather than dying, which proves
-`App.Initialize` loaded every style and resource dictionary.
+must come up as the library window, with the "No active Steam" banner and the cached games,
+rather than an error or nothing, which proves `App.Initialize` loaded every style and resource
+dictionary. With an app id and no Steam it shows the error `MessageWindow` instead: the
+editor cannot do anything without Steam.
 
 What none of this can reach is anything behind `SteamApi.Client`: the vtable dispatch, the
 schema parse, `LibraryStats`, and every number the windows actually display.
@@ -401,15 +405,51 @@ synchronously.
 ### The UI layer
 
 - `Program.Main` builds the `AppBuilder` and calls `StartWithClassicDesktopLifetime`.
-- `App.OnFrameworkInitializationCompleted` does the Steam handshake and *chooses* the main
-  window: the library, the editor, or a `MessageWindow` carrying the error. This replaces
-  the WinForms pattern of showing a `MessageBox` before `Application.Run`. The
-  `SteamApi.Client` is owned by `App` and disposed on `ShutdownRequested`.
+- `App.OnFrameworkInitializationCompleted` *chooses* the main window: the library, the
+  editor, or a `MessageWindow` carrying the error. This replaces the WinForms pattern of
+  showing a `MessageBox` before `Application.Run`.
+- **Only the editor does the Steam handshake up front.** It is one game's Steam session and
+  is useless without one, so a failure there is the error window; its `SteamApi.Client` is
+  owned by `App` and disposed on `ShutdownRequested`. **The library does not**: it has other
+  sources than Steam, so it opens at once and `SteamConnector` keeps trying to create the
+  Steam pipe in the background (every 3 s, off the UI thread, a fresh `Client` each try).
+  Only when that works does `GamePickerViewModel.ConnectSteam` register the callback, start
+  the callback timer and refresh the library. Until then the Steam source shows the cached
+  games under a "No active Steam" banner with the reason (not installed, not running, nobody
+  logged in), the refresh button is off, and what needs Steam (opening the editor, the App
+  ID box) says so rather than failing. The connector owns the client and the view model
+  disposes it in `Shutdown`.
+  **It keeps watching after it connects.** A pipe to a Steam that quit does not say so, so
+  `SteamWatch` compares the Steam process id taken at connection
+  (`SteamPlatform.GetRunningClientProcessId`: the registry's `ActiveProcess\pid` on Windows,
+  checked against the process list) with the one running now, every 3 s. A Steam that quit and
+  came back has a new id and a dead old pipe. On loss the client is `Abandon`ed, not disposed
+  (releasing a pipe means calling into Steam's library over a dead connection), the view model
+  stops its timer and callback, turns refresh off and shows the banner again, and the connector
+  starts looking again. **A refresh remembers `_SteamGeneration` and throws its results away if
+  it changed**: on a dead pipe the ownership sweep sees nothing owned, and merging that would
+  empty the library and then the cache. The editor watches too and locks itself
+  (`IsInputEnabled`) when its Steam goes, since it can neither read nor commit without one.
+  Not exercised against a real Steam restart: whether the already-loaded client library can open
+  a pipe to a Steam that started after it was loaded; nor the Linux and macOS process lookup.
+
+  **Only a finished synchronization may delete a game.** The ownership sweep is one Steam call
+  per published app id, and once Steam is gone every remaining call answers "not owned", so a
+  sweep cut short looks exactly like an account that owns almost nothing (it once left 48 games
+  of 600). `LoadGamesAsync` therefore always *adds and updates* what it found, and returns true
+  only if the sweep **and** the stats pass both ran to the end under the same Steam; only then
+  are the games Steam no longer lists removed. "Under the same Steam" is asked directly with
+  `SteamConnector.IsSteamStillRunning()` as each pass finishes, because the watch notices a loss
+  only every few seconds, which is long enough for the whole sweep. The cache follows the same
+  rule: `GameCache.Sync(rows, removeMissing: false)` and no `IconCache.Prune` unless the sync
+  completed. A known name is never replaced by an empty one, and a failed download of the
+  published list changes nothing on screen. Not covered: a Steam that stays up but has not
+  finished loading its licences answers incompletely too, and would pass for complete.
 - `ViewModels/` hold all logic and every Steam call. Views are XAML plus thin code-behind.
 - `Views/MessageWindow.cs` is a hand-rolled stand-in for `MessageBox`, which Avalonia has
   no equivalent of. View models cannot show dialogs (no window to parent to), so they raise
   `ErrorRaised` / `MessageRaised` / `ConfirmRequested` and the window handles them. It
-  doubles as the main window when the Steam handshake fails, which is why it sets
+  doubles as the main window when the editor's Steam handshake fails, which is why it sets
   `ShowInTaskbar`; `ShowAsync` returns a completed task when there is no owner to parent to.
 - Bindings are compiled (`AvaloniaUseCompiledBindingsByDefault`), so every `DataTemplate`
   needs an `x:DataType` and binding typos are build errors rather than silent no-ops.

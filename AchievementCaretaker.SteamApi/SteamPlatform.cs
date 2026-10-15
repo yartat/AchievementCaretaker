@@ -30,6 +30,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
@@ -144,6 +145,70 @@ namespace AchievementCaretaker.SteamApi
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// The process id of the running Steam client, or null when none is running or
+        /// it cannot be told. Comparing it with the id from when a connection was made
+        /// is how a Steam that quit, or quit and came back, is noticed: the pipe of the
+        /// first one is dead either way, and the new one has a different id.
+        /// </summary>
+        /// <remarks>
+        /// On Windows Steam keeps its own id in the registry while it runs and writes 0
+        /// when it exits; a crash leaves the old value, so the process is checked too.
+        /// Elsewhere the process is found by name. Like the other Linux and macOS code
+        /// here, that has not been exercised on those platforms.
+        /// </remarks>
+        public static int? GetRunningClientProcessId()
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                var recorded = GetWindowsActiveProcessId();
+                return recorded > 0 && IsSteamProcess(recorded) == true ? recorded : null;
+            }
+
+            var name = OperatingSystem.IsMacOS() == true ? "steam_osx" : "steam";
+            var running = Process.GetProcessesByName(name);
+            try
+            {
+                return running.Length > 0 ? running[0].Id : null;
+            }
+            finally
+            {
+                foreach (var process in running)
+                {
+                    process.Dispose();
+                }
+            }
+        }
+
+        [SupportedOSPlatform("windows")]
+        private static int GetWindowsActiveProcessId()
+        {
+            return Microsoft.Win32.Registry.GetValue(
+                @"HKEY_CURRENT_USER\Software\Valve\Steam\ActiveProcess",
+                "pid",
+                0) is int pid ? pid : 0;
+        }
+
+        private static bool IsSteamProcess(int id)
+        {
+            try
+            {
+                using var process = Process.GetProcessById(id);
+                return process.HasExited == false &&
+                       string.Equals(process.ProcessName, "steam", StringComparison.OrdinalIgnoreCase) == true;
+            }
+            catch (ArgumentException)
+            {
+                // No such process.
+                return false;
+            }
+            catch (InvalidOperationException)
+            {
+                // It exited while being looked at.
+                return false;
+            }
         }
 
         [SupportedOSPlatform("windows")]

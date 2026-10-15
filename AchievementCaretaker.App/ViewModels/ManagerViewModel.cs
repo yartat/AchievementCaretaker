@@ -264,6 +264,8 @@ namespace AchievementCaretaker.App.ViewModels
         /// <summary>Title, message; the handler returns the user's answer.</summary>
         public event Func<string, string, Task<bool>> ConfirmRequested;
 
+        private readonly System.Threading.CancellationTokenSource _SteamStop = new();
+
         public ManagerViewModel(long gameId, SteamApi.Client client)
         {
             this._GameId = gameId;
@@ -289,7 +291,8 @@ namespace AchievementCaretaker.App.ViewModels
             this._CallbackTimer.Start();
 
             Task iconWorker = this.RunIconWorkerAsync();
-            GC.KeepAlive(iconWorker);
+            Task steamWatch = this.WatchSteamAsync();
+            GC.KeepAlive((iconWorker, steamWatch));
 
             this.RefreshStats();
 
@@ -312,8 +315,37 @@ namespace AchievementCaretaker.App.ViewModels
             }
         }
 
+        /// <summary>
+        /// This window is one game's session with one Steam. When that Steam goes it can
+        /// neither read nor write anything, and reading and writing is all it does, so it
+        /// says so and locks rather than letting a Commit go nowhere.
+        /// </summary>
+        private async Task WatchSteamAsync()
+        {
+            try
+            {
+                await SteamWatch.WaitUntilGoneAsync(
+                    SteamApi.SteamPlatform.GetRunningClientProcessId(),
+                    this._SteamStop.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            this._CallbackTimer.Stop();
+            this.IsInputEnabled = false;
+            this.StatusText = "Steam has stopped. Close this window, start Steam and open the game again.";
+            this.MessageRaised?.Invoke(
+                "Steam has stopped, so this window can no longer read or change anything. " +
+                "Changes that were not committed have not been sent.\n\n" +
+                "Start Steam and open the game again.",
+                false);
+        }
+
         public void Shutdown()
         {
+            this._SteamStop.Cancel();
             this._CallbackTimer.Stop();
             this._Cache?.Dispose();
             this._Cache = null;
