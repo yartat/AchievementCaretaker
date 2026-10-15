@@ -229,7 +229,9 @@ wrapped in `Task.Run`: it makes two Steam calls per app ID across the whole publ
 list, so it cannot run on the UI thread. **Steam client calls therefore do happen off the UI
 thread there** — preserved deliberately from the original, not an invitation to add more.
 
-Image downloads use a single-consumer queue, one at a time.
+Capsule art is read, decoded and downloaded by eight workers, off the UI thread, and the disk
+cache is decoded in parallel at start so a warm library shows its art almost at once. The
+editor's achievement icons are loaded the same way.
 
 ## Epic and GOG
 

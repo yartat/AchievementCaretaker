@@ -77,7 +77,10 @@ namespace AchievementCaretaker.App.ViewModels
         // Logos: one consumer, like the Steam window's queue, counted so the bar has a
         // denominator. UI thread only.
         private readonly Channel<StoreGameInfo> _LogoQueue =
-            Channel.CreateUnbounded<StoreGameInfo>(new() { SingleReader = true });
+            Channel.CreateUnbounded<StoreGameInfo>(new() { SingleReader = false });
+
+        /// <summary>How many images are read, decoded or downloaded at once.</summary>
+        private const int LogoWorkers = 8;
         private readonly HashSet<string> _LogosAttempted = new();
         private int _LogosQueued;
         private int _LogosCompleted;
@@ -148,9 +151,9 @@ namespace AchievementCaretaker.App.ViewModels
 
             this.LoadFromCache();
 
-            Task logoWorker = this.RunLogoWorkerAsync();
+            Task[] logoWorkers = Enumerable.Range(0, LogoWorkers).Select(index => this.RunLogoWorkerAsync()).ToArray();
             Task initialLoad = this.RefreshLibraryAsync();
-            GC.KeepAlive((logoWorker, initialLoad));
+            GC.KeepAlive((logoWorkers, initialLoad));
         }
 
         #region Sign-in
@@ -815,8 +818,9 @@ namespace AchievementCaretaker.App.ViewModels
         }
 
         /// <summary>
-        /// Single consumer, one image at a time, as in the Steam window. Every way of
-        /// finishing an item (cached, downloaded, failed) advances the bar by one.
+        /// One of <see cref="LogoWorkers"/> consumers. They all resume on the UI thread after
+        /// each await, so the counters are only touched from it. Every way of finishing an
+        /// item (cached, downloaded, failed) advances the bar by one.
         /// </summary>
         private async Task RunLogoWorkerAsync()
         {

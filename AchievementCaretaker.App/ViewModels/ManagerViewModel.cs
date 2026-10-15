@@ -74,6 +74,18 @@ namespace AchievementCaretaker.App.ViewModels
         private int _IconsQueued;
         private int _IconsCompleted;
         private readonly SemaphoreSlim _IconSignal = new(0);
+
+        /// <summary>
+        /// How many icons are read, decoded or downloaded at once. An achievement list is
+        /// dozens to hundreds of small images, and one at a time left the list bare.
+        /// </summary>
+        private const int IconWorkers = 8;
+
+        /// <summary>
+        /// An icon being fetched, by name, so two achievements that share one do not fetch
+        /// it twice. Touched only on the UI thread, like everything after an await here.
+        /// </summary>
+        private readonly Dictionary<string, Task<Bitmap>> _IconLoads = new();
         private readonly Dictionary<string, Bitmap> _IconBitmaps = new();
 
         /// <summary>The same icon directory the picker keeps its capsules in.</summary>
@@ -290,9 +302,9 @@ namespace AchievementCaretaker.App.ViewModels
             this._CallbackTimer = new(TimeSpan.FromMilliseconds(200), DispatcherPriority.Background, this.OnTimer);
             this._CallbackTimer.Start();
 
-            Task iconWorker = this.RunIconWorkerAsync();
+            Task[] iconWorkers = Enumerable.Range(0, IconWorkers).Select(index => this.RunIconWorkerAsync()).ToArray();
             Task steamWatch = this.WatchSteamAsync();
-            GC.KeepAlive((iconWorker, steamWatch));
+            GC.KeepAlive((iconWorkers, steamWatch));
 
             this.RefreshStats();
 
@@ -1199,27 +1211,32 @@ namespace AchievementCaretaker.App.ViewModels
         }
 
         /// <summary>
-        /// False for a truncated cache file or a reply that is not an image, in
-        /// which case the caller falls through to a download.
+        /// Null for a truncated cache file or a reply that is not an image, in which case
+        /// the caller falls through to a download. Pure, so it runs off the UI thread.
         /// </summary>
-        private bool TryDecodeIcon(string iconName, byte[] data, Stats.AchievementInfo info)
+        private static Bitmap DecodeIcon(byte[] data)
         {
+            if (data == null)
+            {
+                return null;
+            }
             try
             {
                 using MemoryStream stream = new(data, false);
                 // Avalonia's Bitmap copies the decoded pixels, so unlike
                 // System.Drawing it does not need the stream kept alive.
-                Bitmap bitmap = new(stream);
-                this._IconBitmaps[iconName] = bitmap;
-                info.Icon = bitmap;
-                return true;
+                return new Bitmap(stream);
             }
             catch (Exception)
             {
-                return false;
+                return null;
             }
         }
 
+        /// <summary>
+        /// One of <see cref="IconWorkers"/> consumers of the queue. They all resume on the UI
+        /// thread after each await, so the counters are only ever touched from it.
+        /// </summary>
         private async Task RunIconWorkerAsync()
         {
             while (true)
@@ -1237,7 +1254,7 @@ namespace AchievementCaretaker.App.ViewModels
                 // way of finishing an item -- no icon, already decoded, read
                 // from disk, downloaded, or failed -- advances the bar by one.
                 this._IconsCompleted++;
-                if (this._IconQueue.IsEmpty == true)
+                if (this._IconsCompleted == this._IconsQueued)
                 {
                     this.EndProgress();
                     this._IconsQueued = 0;
@@ -1266,27 +1283,54 @@ namespace AchievementCaretaker.App.ViewModels
                 return;
             }
 
+            if (this._IconLoads.TryGetValue(iconName, out var load) == false)
+            {
+                load = this.FetchIconAsync(iconName);
+                this._IconLoads[iconName] = load;
+            }
+
+            var bitmap = await load;
+            if (bitmap == null)
+            {
+                // Not remembered as failed: the next time this icon is wanted it is tried again.
+                this._IconLoads.Remove(iconName);
+                return;
+            }
+
+            this._IconBitmaps[iconName] = bitmap;
+            info.Icon = bitmap;
+        }
+
+        /// <summary>
+        /// The icon from disk if it is there and from the network if not (and then kept).
+        /// Reading and decoding are on the thread pool; the caller assigns the result.
+        /// </summary>
+        private async Task<Bitmap> FetchIconAsync(string iconName)
+        {
             // Disk before network: a warm cache means no request at all.
             var icons = this._IconCache;
             var appId = (uint)this._GameId;
-            var stored = await Task.Run(() => icons.TryRead(appId, iconName));
-            if (stored != null && this.TryDecodeIcon(iconName, stored, info) == true)
+            var stored = await Task.Run(() => DecodeIcon(icons.TryRead(appId, iconName)));
+            if (stored != null)
             {
-                return;
+                return stored;
             }
 
             try
             {
                 var url = _($"https://cdn.steamstatic.com/steamcommunity/public/images/apps/{this._GameId}/{iconName}");
                 var data = await _Http.GetByteArrayAsync(new Uri(url));
-                if (this.TryDecodeIcon(iconName, data, info) == true)
+                var bitmap = await Task.Run(() => DecodeIcon(data));
+                if (bitmap != null)
                 {
                     await Task.Run(() => icons.Write(appId, iconName, data));
                 }
+                return bitmap;
             }
             catch (Exception)
             {
                 // A missing icon is not worth surfacing.
+                return null;
             }
         }
 

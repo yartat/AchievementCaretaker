@@ -87,6 +87,12 @@ namespace AchievementCaretaker.App.ViewModels
         private int _LogosCompleted;
         private readonly SemaphoreSlim _LogoSignal = new(0);
 
+        /// <summary>
+        /// How many capsules are read, decoded or downloaded at once. A warm start is hundreds
+        /// of small files, and one at a time is nowhere near what a disk or a connection can do.
+        /// </summary>
+        private const int LogoWorkers = 8;
+
         public ObservableCollection<GameInfo> FilteredGames { get; } = new();
 
         [ObservableProperty]
@@ -562,9 +568,9 @@ namespace AchievementCaretaker.App.ViewModels
 
             // Discards are spelled out here because `using static
             // InvariantShorthand` puts a method named `_` in scope.
-            Task logoWorker = this.RunLogoWorkerAsync();
+            Task[] logoWorkers = Enumerable.Range(0, LogoWorkers).Select(index => this.RunLogoWorkerAsync()).ToArray();
             Task icons = this.HydrateCachedIconsAsync();
-            GC.KeepAlive((logoWorker, icons));
+            GC.KeepAlive((logoWorkers, icons));
 
             this.CreateStoreLibraries();
 
@@ -872,42 +878,45 @@ namespace AchievementCaretaker.App.ViewModels
             this.BeginProgress("Loading cached icons...");
             this.ReportProgress($"Loading cached icons, 0 of {total:N0}...", 0, total);
 
-            var decoded = await Task.Run(() =>
+            // One task per capsule. The read and the decode run on the thread pool, which is
+            // what bounds how many go at once; everything after the await resumes on the UI
+            // thread, so each capsule goes on screen as soon as it is ready and the counter
+            // needs no locking.
+            var finished = 0;
+            var loadTasks = games.Select(async info =>
             {
-                Dictionary<uint, Bitmap> result = new();
-                var done = 0;
-                foreach (var info in games)
+                var bitmap = await Task.Run(() =>
                 {
-                    done++;
-                    if (done % step == 0)
-                    {
-                        decode.Report(done);
-                    }
                     var bytes = icons.TryRead(info.Id);
                     if (bytes == null)
                     {
-                        continue;
+                        return null;
                     }
                     try
                     {
                         using MemoryStream stream = new(bytes, false);
-                        result[info.Id] = new Bitmap(stream);
+                        return new Bitmap(stream);
                     }
                     catch (Exception)
                     {
                         // A truncated cache file just means a re-download.
+                        return null;
                     }
-                }
-                return result;
-            });
+                });
 
-            foreach (var info in games)
-            {
-                if (decoded.TryGetValue(info.Id, out var bitmap) == true)
+                // Not if the network got there first: it has the newer capsule.
+                if (bitmap != null)
                 {
-                    info.Logo = bitmap;
+                    info.Logo ??= bitmap;
                 }
-            }
+
+                finished++;
+                if (finished % step == 0)
+                {
+                    decode.Report(finished);
+                }
+            }).ToList();
+            await Task.WhenAll(loadTasks);
 
             this.EndProgress();
         }
@@ -1381,8 +1390,8 @@ namespace AchievementCaretaker.App.ViewModels
         }
 
         /// <summary>
-        /// Single consumer, one download at a time — same shape as the
-        /// BackgroundWorker the WinForms build used.
+        /// One of <see cref="LogoWorkers"/> consumers of the queue. They all resume on the UI
+        /// thread after each await, so the counters below are only ever touched from it.
         /// </summary>
         private async Task RunLogoWorkerAsync()
         {
@@ -1401,7 +1410,7 @@ namespace AchievementCaretaker.App.ViewModels
                 // way of finishing an item -- already loaded, read from disk,
                 // downloaded, or failed -- advances the bar by exactly one.
                 this._LogosCompleted++;
-                if (this._LogoQueue.IsEmpty == true)
+                if (this._LogosCompleted == this._LogosQueued)
                 {
                     this.EndProgress();
                     this._LogosQueued = 0;
@@ -1427,28 +1436,42 @@ namespace AchievementCaretaker.App.ViewModels
             // Disk before network: a warm cache means no request at all.
             var icons = this._IconCache;
             var appId = info.Id;
-            var cached = await Task.Run(() => icons.TryRead(appId));
-            if (cached != null)
+            // Read and decoded off the UI thread: decoding a few hundred capsules there
+            // one after another is what made a warm start slow.
+            var cachedLogo = await Task.Run(() =>
             {
+                var bytes = icons.TryRead(appId);
+                if (bytes == null)
+                {
+                    return null;
+                }
                 try
                 {
-                    using MemoryStream stream = new(cached, false);
-                    info.Logo = new Bitmap(stream);
-                    return;
+                    using MemoryStream stream = new(bytes, false);
+                    return new Bitmap(stream);
                 }
                 catch (Exception)
                 {
                     // Fall through and re-download a corrupt cache entry.
+                    return null;
                 }
+            });
+            if (cachedLogo != null)
+            {
+                info.Logo = cachedLogo;
+                return;
             }
 
             try
             {
                 var data = await _Http.GetByteArrayAsync(new Uri(info.ImageUrl));
-                using MemoryStream stream = new(data, false);
                 // Avalonia's Bitmap copies the decoded pixels, so unlike
                 // System.Drawing it does not need the stream kept alive.
-                info.Logo = new Bitmap(stream);
+                info.Logo = await Task.Run(() =>
+                {
+                    using MemoryStream stream = new(data, false);
+                    return new Bitmap(stream);
+                });
                 await Task.Run(() => icons.Write(appId, data));
             }
             catch (Exception)

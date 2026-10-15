@@ -892,8 +892,20 @@ SAM's WinForms build ran it on a `BackgroundWorker` for exactly the same reason.
 means **Steam client calls do happen off the UI thread there** — that is pre-existing
 behaviour, preserved deliberately, not an invitation to add more.
 
-Logo and icon downloads use a single-consumer queue (`ConcurrentQueue` + `SemaphoreSlim`),
-one download at a time, matching the old single-`BackgroundWorker` behaviour.
+Capsule loading uses a queue (`ConcurrentQueue` + `SemaphoreSlim` for Steam, a `Channel` for
+the stores) drained by **eight workers**, not one. The old one-at-a-time shape matched the
+WinForms `BackgroundWorker`, and it made a warm start slow: hundreds of small files, each
+read, **decoded on the UI thread** and shown one after another. Now the read and the decode
+(`new Bitmap`) both happen off the UI thread, `HydrateCachedIconsAsync` decodes the whole disk
+cache with `Parallel.ForEachAsync` and puts each capsule on screen as it finishes, and the
+workers' counters stay safe because every worker resumes on the UI thread after each await.
+The completion test is therefore `completed == queued`, not "the queue is empty", which is
+true while other workers are still busy. Measured against a 626-game library: 624 capsules
+decoded and shown within the first 900 ms of the window. The editor's achievement-icon queue
+(`ManagerViewModel._IconQueue`) has the same eight workers and the same rules, plus
+`_IconLoads`, which keeps two achievements that share an icon from fetching it twice (a failed
+fetch is dropped from it so the next request retries). Not measured: the editor needs a live
+Steam.
 
 ## Conventions
 
