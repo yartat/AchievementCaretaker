@@ -233,9 +233,11 @@ Image downloads use a single-consumer queue, one at a time.
 
 ## Epic and GOG
 
-The library window can show an Epic Games or GOG library beside Steam's. They are read-only:
-the owned games, and each game's achievements with the signed-in player's progress. Nothing is
-unlocked or re-locked. How the two stores' endpoints work is in [EPIC-RESEARCH.md](EPIC-RESEARCH.md)
+The library window can show an Epic Games or GOG library beside Steam's: the owned games, and each game's achievements with the signed-in player's
+progress. Epic is read-only. GOG's achievements can also be unlocked and re-locked: the
+achievements window has the Steam editor's checkboxes, Lock / Invert / Unlock buttons and
+Uncommitted bar, and Commit sends the changes through `IWritableStoreProvider`, which only GOG
+implements. How the two stores' endpoints work is in [EPIC-RESEARCH.md](EPIC-RESEARCH.md)
 and [GOG-RESEARCH.md](GOG-RESEARCH.md); this is how the application uses them.
 
 - **`AchievementCaretaker.Providers`** has one `IStoreProvider` per store. It is plain HTTPS
@@ -250,7 +252,7 @@ and [GOG-RESEARCH.md](GOG-RESEARCH.md); this is how the application uses them.
   `~/.sac/epic.json` or `~/.sac/gog.json`.
 - **Cached like Steam's**: the library in the `store_games` table of `games.db`, painted at
   once on start and refreshed afterwards; images in a `store/` folder of the icon cache.
-- **Achievement counts are read on request.** A game's achievements open in a read-only window
+- **Achievement counts are read on request.** A game's achievements open in a window
   in the same process, which also fills in that game's meter in the library; **Load progress**
   does it for every game, a few at a time, and can be cancelled. Until a game has been read its
   meter is absent rather than empty.

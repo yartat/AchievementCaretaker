@@ -2,7 +2,8 @@
 
 Achievement Caretaker is a lightweight, portable application for your game achievements.
 It edits achievements and statistics in **Steam**, and shows the library and achievements of
-your **Epic Games** and **GOG** accounts, read-only. Steam needs the
+your **Epic Games** and **GOG** accounts. Epic is read-only; GOG achievements can be
+unlocked and locked. Steam needs the
 [Steam client](https://store.steampowered.com/about/), running and logged in, to refresh its
 library and to open the achievement editor; Epic Games and GOG need only a network connection
 and a sign-in. The library window opens without Steam, shows what it saved last time, and
@@ -144,8 +145,9 @@ game, so the list appears as soon as the window does.
 
 ### Epic Games and GOG
 
-These two work the same way. They are **read-only**: you can see which games you own and which
-achievements are unlocked, but not change either. Neither needs the Steam client.
+These two work the same way for browsing: you can see which games you own and which
+achievements are unlocked. Neither needs the Steam client. **Epic is read-only. GOG
+achievements can be changed**, see below.
 
 1. **Sign in.** Select the source. The first time, the main area shows a sign-in panel: press
    the button to open the store's own sign-in page in your browser, sign in there, then paste
@@ -173,8 +175,15 @@ achievements are unlocked, but not change either. Neither needs the Steam client
    the next person to sign in is never shown yours.
 
 What each store gives you differs. GOG has no XP and no progress values, so those columns are
-absent for GOG games. Epic achievements cannot be re-locked by anyone, which is one reason
-nothing here writes to either store.
+absent for GOG games. Epic achievements cannot be re-locked by anyone, so Epic stays read-only.
+
+**Changing GOG achievements.** In a GOG game's window, tick or untick achievements, or use the
+Lock, Invert and Unlock buttons for everything shown. The changes collect in an **Uncommitted**
+bar; **Discard** drops them and **Commit** sends them to GOG, then reads the list again from
+GOG. To do this Caretaker takes the game's own client credentials from GOGDB, a community
+archive, only at the moment you commit. A game GOGDB has no build for cannot be changed. Like
+Steam's editor, this changes your real account. Unlocking and re-locking were checked against
+a live GOG account.
 
 If a session is refused later, Caretaker forgets it and shows the sign-in panel again.
 
@@ -211,8 +220,8 @@ plainly marked as such in the files derived from it.
 
 **GOG support is based on
 [GOG Achievements Manager](https://github.com/timendum/gog_achievements) by Timendum.**
-It reimplements the calls that tool makes to GOG's services, for reading only, and its
-files say so. Epic Games support is written from the endpoints documented by the open-source
+It reimplements the calls that tool makes to GOG's services, for listing, unlocking and
+re-locking, and its files say so. Epic Games support is written from the endpoints documented by the open-source
 launchers [Legendary](https://github.com/derrod/legendary) and Heroic.
 
 None of this is the original software of those authors, and it is not endorsed by or

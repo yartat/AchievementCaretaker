@@ -22,7 +22,8 @@ using AchievementCaretaker.Providers;
 namespace AchievementCaretaker.App.ViewModels
 {
     /// <summary>
-    /// A read-only view of one Epic or GOG game's achievements.
+    /// One Epic or GOG game's achievements. Read-only for Epic; for GOG they can be
+    /// ticked and sent back, as in the Steam editor.
     /// </summary>
     /// <remarks>
     /// Runs in the library's own process. Steam's achievement editor cannot: its
@@ -54,10 +55,16 @@ namespace AchievementCaretaker.App.ViewModels
         public string Title => $"{this._Game.Name} - {this._Provider.DisplayName} achievements";
 
         /// <summary>
-        /// Whether the lock / invert / unlock buttons are shown. GOG's achievements can
-        /// be changed; Epic's cannot be re-locked, so its window has none.
+        /// Whether the checkboxes and the lock / invert / unlock buttons are shown.
+        /// Epic's achievements cannot be re-locked, so its provider cannot write and
+        /// its window has none.
         /// </summary>
-        public bool CanModify => this._Provider.Id == "gog";
+        public bool CanModify => this._Provider is IWritableStoreProvider;
+
+        private bool _IsCommitting;
+
+        /// <summary>False while a commit is on its way, so nothing is ticked under it.</summary>
+        public bool IsInputEnabled => this.CanModify == true && this._IsCommitting == false;
 
         [ObservableProperty]
         private string _StatusText = "";
@@ -93,7 +100,7 @@ namespace AchievementCaretaker.App.ViewModels
         #region Counts and filters
 
         public int TotalCount => this._All.Count;
-        public int UnlockedCount => this._All.Count(a => a.Unlocked == true);
+        public int UnlockedCount => this._All.Count(a => a.OriginalValue == true);
         public int LockedCount => this.TotalCount - this.UnlockedCount;
 
         public double CompletionFraction => this.TotalCount == 0 ? 0.0 : this.UnlockedCount / (double)this.TotalCount;
@@ -162,8 +169,8 @@ namespace AchievementCaretaker.App.ViewModels
             {
                 var wanted = this.Filter switch
                 {
-                    AchievementFilter.Locked => item.Unlocked == false,
-                    AchievementFilter.Unlocked => item.Unlocked == true,
+                    AchievementFilter.Locked => item.IsAchieved == false,
+                    AchievementFilter.Unlocked => item.IsAchieved == true,
                     _ => true,
                 };
                 if (wanted == false)
@@ -194,6 +201,147 @@ namespace AchievementCaretaker.App.ViewModels
             {
                 this.OnPropertyChanged(name);
             }
+        }
+
+        #endregion
+
+        #region Pending changes
+
+        private int ChangedCount => this._All.Count(a => a.IsChanged == true);
+
+        public bool HasPendingChanges => this.ChangedCount > 0;
+
+        public string PendingSummaryText
+        {
+            get
+            {
+                var unlock = this._All.Count(a => a.IsChanged == true && a.IsAchieved == true);
+                var relock = this.ChangedCount - unlock;
+                List<string> parts = new();
+                if (unlock > 0)
+                {
+                    parts.Add($"{unlock} to unlock");
+                }
+                if (relock > 0)
+                {
+                    parts.Add($"{relock} to lock");
+                }
+                return string.Join(", ", parts);
+            }
+        }
+
+        public string CommitText => this.ChangedCount == 1 ? "Commit 1 change" : $"Commit {this.ChangedCount} changes";
+
+        private void OnItemChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(StoreAchievementItem.IsAchieved))
+            {
+                this.RefreshPending();
+            }
+        }
+
+        private void RefreshPending()
+        {
+            this.OnPropertyChanged(nameof(this.HasPendingChanges));
+            this.OnPropertyChanged(nameof(this.PendingSummaryText));
+            this.OnPropertyChanged(nameof(this.CommitText));
+        }
+
+        /// <summary>Sets every achievement on screen, not the whole game.</summary>
+        private void SetShown(Func<StoreAchievementItem, bool> wanted)
+        {
+            foreach (var item in this.Achievements.ToList())
+            {
+                item.IsAchieved = wanted(item);
+            }
+        }
+
+        [RelayCommand(CanExecute = nameof(IsInputEnabled))]
+        private void LockAll() => this.SetShown(item => false);
+
+        [RelayCommand(CanExecute = nameof(IsInputEnabled))]
+        private void UnlockAll() => this.SetShown(item => true);
+
+        [RelayCommand(CanExecute = nameof(IsInputEnabled))]
+        private void InvertAll() => this.SetShown(item => item.IsAchieved == false);
+
+        [RelayCommand(CanExecute = nameof(IsInputEnabled))]
+        private void DiscardChanges()
+        {
+            foreach (var item in this._All)
+            {
+                item.IsAchieved = item.OriginalValue;
+            }
+        }
+
+        /// <summary>
+        /// Sends every pending change to the store, then reads the achievements again
+        /// whatever happened: a commit that failed half-way has still changed some, and
+        /// the store is the only source of truth for which.
+        /// </summary>
+        [RelayCommand(CanExecute = nameof(IsInputEnabled))]
+        private async Task StoreAsync()
+        {
+            if (this._Provider is not IWritableStoreProvider writer)
+            {
+                return;
+            }
+
+            var changes = this._All
+                .Where(a => a.IsChanged == true)
+                .Select(a => new KeyValuePair<string, bool>(a.Source.Id, a.IsAchieved))
+                .ToList();
+            if (changes.Count == 0)
+            {
+                return;
+            }
+
+            this.SetCommitting(true);
+            this.BeginProgress("Sending changes...");
+            this.StatusText = $"Sending {changes.Count} change(s) to {this._Provider.DisplayName}...";
+            string failure = null;
+            try
+            {
+                await writer.SetAchievementsAsync(this._Game.Key, changes, this._Lifetime.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (ProviderException e)
+            {
+                failure = e.ErrorCode == "login_required"
+                    ? $"You are signed out of {this._Provider.DisplayName}. Sign in again from the library."
+                    : e.Message;
+            }
+            catch (Exception e)
+            {
+                failure = $"Could not reach {this._Provider.DisplayName}: {e.Message}";
+            }
+            finally
+            {
+                this.EndProgress();
+                this.SetCommitting(false);
+            }
+
+            await this.ReloadAsync();
+            if (this.State == StoreAchievementsState.Ready)
+            {
+                this.StatusText = failure == null
+                    ? $"Sent {changes.Count} change(s). {this.UnlockedCount} of {this.TotalCount} unlocked."
+                    : $"Not everything was sent: {failure}";
+            }
+        }
+
+        private void SetCommitting(bool value)
+        {
+            this._IsCommitting = value;
+            this.OnPropertyChanged(nameof(this.IsInputEnabled));
+            this.LockAllCommand.NotifyCanExecuteChanged();
+            this.UnlockAllCommand.NotifyCanExecuteChanged();
+            this.InvertAllCommand.NotifyCanExecuteChanged();
+            this.DiscardChangesCommand.NotifyCanExecuteChanged();
+            this.StoreCommand.NotifyCanExecuteChanged();
         }
 
         #endregion
@@ -231,8 +379,17 @@ namespace AchievementCaretaker.App.ViewModels
             {
                 var achievements = await this._Provider.GetAchievementsAsync(this._Game.Key, "en", token);
 
+                foreach (var old in this._All)
+                {
+                    old.PropertyChanged -= this.OnItemChanged;
+                }
                 this._All.Clear();
                 this._All.AddRange(achievements.Select(a => new StoreAchievementItem(a)));
+                foreach (var item in this._All)
+                {
+                    item.PropertyChanged += this.OnItemChanged;
+                }
+                this.RefreshPending();
                 this.RefreshCounts();
                 this.RefreshList();
 

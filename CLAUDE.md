@@ -58,10 +58,17 @@ The rules:
 - **Steam is not a provider.** Its interface is native, scoped to one app id per process,
   and can write. A store reached over HTTPS with the user's own sign-in has none of those
   properties, and hiding them behind one interface would hide what shapes how Steam is used.
-- **Read-only.** No unlocking, no re-locking, no EOS SDK, and no reading a game's client
-  secret. Epic cannot re-lock an achievement anyway, and the tools that unlock inject into
-  the game or need that secret. GOG's build records carry the secret next to the client id;
-  `GogProvider` reads the id and nothing else from them.
+- **Epic is read-only; GOG can write.** Epic: no unlocking, no re-locking, no EOS SDK, no
+  reading a game's client secret. Epic cannot re-lock an achievement anyway, and the tools that
+  unlock inject into the game or need that secret. GOG: changing an achievement needs a token
+  issued to the *game's* client, so `GogProvider.SetAchievementsAsync` reads the client secret
+  from GOGDB's build record, **only when something is written**. Listing reads the client id
+  and nothing else. The secret and the game token are never logged, kept on disk or put in an
+  error message, and the account's own session is not touched by the game token. Writing is a
+  separate interface, `IWritableStoreProvider`, which only GOG implements; the achievements
+  window shows the checkboxes and the Lock / Invert / Unlock buttons only for a provider that
+  has it, and sends the pending changes with Commit as the Steam editor does. Verified against a
+  live GOG account (unlock and re-lock), unlike Steam's write path.
 - **Every unofficial endpoint lives in its store's one `*Provider.cs`.** They are the
   stores' own and can change; keep them in one file each.
 - **A session file holds a refresh token**, a credential for the whole store account:
@@ -862,7 +869,7 @@ Match the surrounding style; it is consistent and deliberate even where it is un
     version" marking, and the full zlib notice. A licence condition, not a style rule.
   - *Based on GOG Achievements Manager* (`Gog/`): the Caretaker copyright, the "based on GOG
     Achievements Manager by Timendum" attribution with both upstream URLs, and a note that it
-    reimplements the calls for reading only.
+    reimplements the calls it makes: listing, and unlocking and re-locking.
   - *Everything else* (`Epic/`, the shared store code, the store windows and view models,
     `tools/`, CI and packaging): the Caretaker copyright, `See LICENSE in the repository
     root.`, and for `Epic/` a line saying it is written from the endpoints Legendary and
