@@ -6,8 +6,8 @@
  * https://github.com/timendum/gog_achievements
  * https://github.com/timendum/gog-achievements-gui
  *
- * It reimplements in C# the calls those tools make to GOG's services, for reading
- * only. See docs/ATTRIBUTION.md.
+ * It reimplements in C# the calls those tools make to GOG's services: listing, and
+ * unlocking and re-locking. See docs/ATTRIBUTION.md.
  *
  * See LICENSE in the repository root.
  */

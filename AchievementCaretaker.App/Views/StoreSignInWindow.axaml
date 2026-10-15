@@ -1,0 +1,57 @@
+<!--
+  AchievementCaretaker
+  Copyright (c) 2026 Yaroslav V Tatarenko
+
+  See LICENSE in the repository root.
+-->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AchievementCaretaker.App.Views.StoreSignInWindow"
+        Icon="/Resources/AchievementCaretaker.ico"
+        Width="520" Height="720"
+        MinWidth="420" MinHeight="520"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource SamWindowBrush}">
+
+  <DockPanel>
+
+    <Border DockPanel.Dock="Bottom"
+            Padding="16,9"
+            BorderThickness="0,1,0,0"
+            BorderBrush="{DynamicResource SamBorderBrush}">
+      <DockPanel>
+        <Button DockPanel.Dock="Right"
+                Content="Cancel"
+                Click="OnCancelClicked" />
+        <TextBlock x:Name="Note"
+                   FontSize="11"
+                   TextWrapping="Wrap"
+                   Foreground="{DynamicResource SamMutedTextBrush}"
+                   VerticalAlignment="Center" />
+      </DockPanel>
+    </Border>
+
+    <Panel>
+      <NativeWebView x:Name="Browser" />
+
+      <!-- Over the browser when it could not start. -->
+      <Border x:Name="Unavailable"
+              IsVisible="False"
+              Background="{DynamicResource SamWindowBrush}"
+              Padding="26">
+        <StackPanel Spacing="12"
+                    MaxWidth="380"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+          <TextBlock x:Name="UnavailableText"
+                     FontSize="13"
+                     TextWrapping="Wrap"
+                     Foreground="{DynamicResource SamTextBrush}" />
+          <Button Content="Sign in with my own browser"
+                  HorizontalAlignment="Left"
+                  Click="OnUseOwnBrowserClicked" />
+        </StackPanel>
+      </Border>
+    </Panel>
+  </DockPanel>
+</Window>

@@ -6,8 +6,8 @@
  * https://github.com/timendum/gog_achievements
  * https://github.com/timendum/gog-achievements-gui
  *
- * It reimplements in C# the calls those tools make to GOG's services, for reading
- * only. See docs/ATTRIBUTION.md.
+ * It reimplements in C# the calls those tools make to GOG's services: listing, and
+ * unlocking and re-locking. See docs/ATTRIBUTION.md.
  *
  * See LICENSE in the repository root.
  */
@@ -29,8 +29,8 @@ using static AchievementCaretaker.Providers.JsonHelpers;
 namespace AchievementCaretaker.Providers.Gog
 {
     /// <summary>
-    /// Read-only access to a GOG account: sign-in, the owned library and each
-    /// game's achievements.
+    /// Access to a GOG account: sign-in, the owned library, each game's achievements,
+    /// and unlocking and re-locking them.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -40,12 +40,13 @@ namespace AchievementCaretaker.Providers.Gog
     /// notice. See <c>docs/GOG-RESEARCH.md</c>.
     /// </para>
     /// <para>
-    /// Nothing here writes to the account. Those tools also unlock and re-lock
-    /// achievements, which needs the game's own client secret; this provider never
-    /// reads that secret and is deliberately read-only.
+    /// Changing an achievement needs a token issued to the <em>game's</em> client, which
+    /// needs that game's client secret. The secret is read from GOGDB's build record
+    /// only when something is written, never for listing, and it is never logged or put
+    /// in a message.
     /// </para>
     /// </remarks>
-    public sealed class GogProvider : IStoreProvider
+    public sealed class GogProvider : IWritableStoreProvider
     {
         private const string AuthHost = "https://auth.gog.com";
         private const string EmbedHost = "https://embed.gog.com";
@@ -77,6 +78,9 @@ namespace AchievementCaretaker.Providers.Gog
         /// </summary>
         private readonly ConcurrentDictionary<string, string> _ClientIds = new();
 
+        /// <summary>Product id to the game's client secret, read only by a write.</summary>
+        private readonly ConcurrentDictionary<string, string> _ClientSecrets = new();
+
         public GogSession Session { get; private set; }
 
         public string Id => "gog";
@@ -94,9 +98,19 @@ namespace AchievementCaretaker.Providers.Gog
 
         public string SignInHint => "the address the browser ends on (it contains \"code=\"), or just the code";
 
+        public SignInResultKind GetSignInResultKind(Uri address) =>
+            address != null &&
+            address.Host.Equals("embed.gog.com", StringComparison.OrdinalIgnoreCase) &&
+            address.AbsolutePath.StartsWith("/on_login_success", StringComparison.OrdinalIgnoreCase) &&
+            Regex.IsMatch(address.Query, @"[?&]code=[A-Za-z0-9_\-]+")
+                ? SignInResultKind.Address
+                : SignInResultKind.None;
+
         public bool IsSignedIn => this.Session?.HasRefreshToken == true;
 
         public string AccountName => this.Session?.DisplayName;
+
+        public string AccountId => this.IsSignedIn == true ? this.Session.UserId : null;
 
         public GogProvider(string sessionPath)
         {
@@ -320,8 +334,7 @@ namespace AchievementCaretaker.Providers.Gog
             }
 
             // Reading takes the account's own token. Only changing an achievement
-            // needs a token issued to the game's client, which is the part this
-            // provider does not do.
+            // needs a token issued to the game's client, see SetAchievementsAsync.
             using var document = await this.GetJsonAsync(
                 $"{GameplayHost}/clients/{Uri.EscapeDataString(clientId)}" +
                 $"/users/{Uri.EscapeDataString(this.Session.UserId)}/achievements",
@@ -370,8 +383,8 @@ namespace AchievementCaretaker.Providers.Gog
         /// there. Returns null when the game has no builds, and so no achievements.
         /// </summary>
         /// <remarks>
-        /// The build record also carries the game's client <em>secret</em>. It is not
-        /// read: only a write needs it.
+        /// The build record also carries the game's client <em>secret</em>. Listing does
+        /// not read it: only a write does, in <see cref="GetClientSecretAsync"/>.
         /// </remarks>
         private async Task<string> GetClientIdAsync(string productId, CancellationToken cancellationToken)
         {
@@ -380,22 +393,23 @@ namespace AchievementCaretaker.Providers.Gog
                 return cached;
             }
 
-            var clientId = "";
-            var path = $"{GogDbHost}/data/products/{Uri.EscapeDataString(productId)}";
-            using (var product = await this.GetJsonAsync(
-                $"{path}/product.json", false, cancellationToken, nullOnNotFound: true))
-            {
-                var buildId = product == null ? null : NewestBuildId(product.RootElement);
-                if (buildId != null)
-                {
-                    using var build = await this.GetJsonAsync(
-                        $"{path}/builds/{buildId}.json", false, cancellationToken, nullOnNotFound: true);
-                    clientId = build == null ? "" : GetString(build.RootElement, "clientId") ?? "";
-                }
-            }
+            using var build = await this.GetNewestBuildAsync(productId, cancellationToken);
+            var clientId = build == null ? "" : GetString(build.RootElement, "clientId") ?? "";
 
             this._ClientIds[productId] = clientId;
             return clientId;
+        }
+
+        /// <summary>The newest build's record from GOGDB, or null when the game has none.</summary>
+        private async Task<JsonDocument> GetNewestBuildAsync(string productId, CancellationToken cancellationToken)
+        {
+            var path = $"{GogDbHost}/data/products/{Uri.EscapeDataString(productId)}";
+            using var product = await this.GetJsonAsync(
+                $"{path}/product.json", false, cancellationToken, nullOnNotFound: true);
+            var buildId = product == null ? null : NewestBuildId(product.RootElement);
+            return buildId == null
+                ? null
+                : await this.GetJsonAsync($"{path}/builds/{buildId}.json", false, cancellationToken, nullOnNotFound: true);
         }
 
         /// <summary>
@@ -417,6 +431,104 @@ namespace AchievementCaretaker.Providers.Gog
                 .ThenByDescending(b => GetString(b, "date_published"), StringComparer.Ordinal)
                 .Select(b => b.GetProperty("id").GetRawText())
                 .FirstOrDefault();
+        }
+
+        #endregion
+
+        #region Changing achievements
+
+        /// <summary>
+        /// Unlocks or re-locks achievements as the signed-in player. Not part of
+        /// listing: it is the one place the game's client secret is read.
+        /// </summary>
+        public async Task SetAchievementsAsync(
+            string gameKey,
+            IReadOnlyCollection<KeyValuePair<string, bool>> changes,
+            CancellationToken cancellationToken = default)
+        {
+            if (changes.Count == 0)
+            {
+                return;
+            }
+
+            await this.EnsureSignedInAsync(cancellationToken);
+            var clientId = await this.GetClientIdAsync(gameKey, cancellationToken);
+            var secret = await this.GetClientSecretAsync(gameKey, cancellationToken);
+            if (string.IsNullOrEmpty(clientId) == true || string.IsNullOrEmpty(secret) == true)
+            {
+                throw new ProviderException("no_client", "GOG has no build of this game that achievements can be changed through.");
+            }
+
+            var gameToken = await this.RequestGameTokenAsync(clientId, secret, cancellationToken);
+
+            // GOG refuses a date in the future, and a clock a little ahead of GOG's is
+            // enough for that: the reference tools back it off by a few seconds.
+            var unlockedAt = DateTimeOffset.UtcNow.AddSeconds(-3)
+                .ToString("yyyy-MM-dd'T'HH:mm:ss'+0000'", CultureInfo.InvariantCulture);
+
+            await Parallel.ForEachAsync(
+                changes,
+                new ParallelOptions { MaxDegreeOfParallelism = 4, CancellationToken = cancellationToken },
+                async (change, token) =>
+                {
+                    var body = change.Value == true
+                        ? JsonSerializer.Serialize(new { date_unlocked = unlockedAt })
+                        : "{\"date_unlocked\":null}";
+                    using var request = new HttpRequestMessage(
+                        HttpMethod.Post,
+                        $"{GameplayHost}/clients/{Uri.EscapeDataString(clientId)}" +
+                        $"/users/{Uri.EscapeDataString(this.Session.UserId)}" +
+                        $"/achievements/{Uri.EscapeDataString(change.Key)}");
+                    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", gameToken);
+                    request.Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
+
+                    using var response = await this._Http.SendAsync(request, token);
+                    ThrowIfError(response, await response.Content.ReadAsStringAsync(token));
+                });
+        }
+
+        private async Task<string> GetClientSecretAsync(string productId, CancellationToken cancellationToken)
+        {
+            if (this._ClientSecrets.TryGetValue(productId, out var cached) == true)
+            {
+                return cached;
+            }
+
+            using var build = await this.GetNewestBuildAsync(productId, cancellationToken);
+            var secret = build == null ? "" : GetString(build.RootElement, "clientSecret") ?? "";
+            this._ClientSecrets[productId] = secret;
+            return secret;
+        }
+
+        /// <summary>
+        /// A token issued to one game's client for the signed-in player. It is used for
+        /// the writes and thrown away; the account's own session is left as it is.
+        /// </summary>
+        private async Task<string> RequestGameTokenAsync(string clientId, string clientSecret, CancellationToken cancellationToken)
+        {
+            Dictionary<string, string> parameters = new()
+            {
+                ["grant_type"] = "refresh_token",
+                ["refresh_token"] = this.Session.RefreshToken,
+                ["client_id"] = clientId,
+                ["client_secret"] = clientSecret,
+                ["without_new_session"] = "1",
+            };
+            var query = string.Join("&", parameters.Select(p => $"{p.Key}={Uri.EscapeDataString(p.Value)}"));
+
+            // As with the account token, the URL carries secrets and is never put in
+            // an error message.
+            using var response = await this._Http.GetAsync($"{AuthHost}/token?{query}", cancellationToken);
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            ThrowIfError(response, body);
+
+            using var document = JsonDocument.Parse(body);
+            var token = GetString(document.RootElement, "access_token");
+            if (string.IsNullOrEmpty(token) == true)
+            {
+                throw new ProviderException("bad_response", "GOG did not return a token for this game.");
+            }
+            return token;
         }
 
         #endregion

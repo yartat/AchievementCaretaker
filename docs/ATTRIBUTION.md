@@ -76,9 +76,10 @@ Two things were deliberately **not** taken:
 - **Their sign-in.** Both tools read GOG Galaxy's refresh token out of the Windows registry,
   which is another application's stored credential. Caretaker has the user sign in on GOG's
   own page instead.
-- **Writing.** The provider is read-only. Unlocking needs a token issued to the game's own
-  client, which needs that game's client secret; the provider reads the client id from
-  GOGDB's build records and never the secret beside it.
+- **Their registry token, and their storage of secrets.** The account token comes from the
+  user's own sign-in. Unlocking and re-locking are taken from them (see
+  [GOG-RESEARCH.md](GOG-RESEARCH.md#writing)): the game's client secret is read from GOGDB's
+  build record only when something is written, and is never logged or saved.
 
 **Neither repository publishes a licence.** By default that leaves all rights with the
 author. This section credits their work and says where this one comes from; it is not a

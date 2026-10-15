@@ -7,6 +7,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using AchievementCaretaker.App.Common;
@@ -53,7 +54,7 @@ namespace AchievementCaretaker.App.ViewModels
 
                 foreach (var name in new[]
                 {
-                    nameof(this.IsSteamSelected), nameof(this.IsStoreSelected),
+                    nameof(this.IsSteamSelected), nameof(this.IsStoreSelected), nameof(this.ShowSteamBanner),
                     nameof(this.ShowSteamTiles), nameof(this.ShowSteamContent),
                     nameof(this.ActiveStatusText), nameof(this.HeaderTitle), nameof(this.HeaderSummary),
                 })
@@ -64,6 +65,22 @@ namespace AchievementCaretaker.App.ViewModels
         }
 
         public bool IsSteamSelected => this.SelectedStoreLibrary == null;
+
+        /// <summary>False until the connector has reached Steam. Cached games are shown meanwhile.</summary>
+        public bool IsSteamConnected => this._SteamClient != null;
+
+        /// <summary>The Steam source is showing, and Steam is not there to refresh it from.</summary>
+        public bool ShowSteamBanner => this.IsSteamSelected == true && this.IsSteamConnected == false;
+
+        /// <summary>Why there is no Steam: not installed, not running, nobody logged in.</summary>
+        public string SteamUnavailableText => this._Steam?.Reason;
+
+        private void NotifySteamState()
+        {
+            this.OnPropertyChanged(nameof(this.IsSteamConnected));
+            this.OnPropertyChanged(nameof(this.ShowSteamBanner));
+            this.OnPropertyChanged(nameof(this.SteamUnavailableText));
+        }
 
         public bool IsStoreSelected => this.SelectedStoreLibrary != null;
 
@@ -87,6 +104,12 @@ namespace AchievementCaretaker.App.ViewModels
 
         /// <summary>Raised when a store game's achievements should be shown; the window owns the window.</summary>
         public event Action<StoreAchievementsViewModel> StoreAchievementsRequested;
+
+        /// <summary>Raised to sign in to a store in a browser inside the application.</summary>
+        public event Func<IStoreProvider, Task<BrowserSignInResult>> BrowserSignInRequested;
+
+        /// <summary>Raised before a sign-out; the window asks the user.</summary>
+        public event Func<string, string, Task<bool>> ConfirmRequested;
 
         [RelayCommand]
         private void SelectSteam()
@@ -117,6 +140,10 @@ namespace AchievementCaretaker.App.ViewModels
                 };
                 store.ErrorRaised += message => this.ErrorRaised?.Invoke(message);
                 store.AchievementsRequested += viewer => this.StoreAchievementsRequested?.Invoke(viewer);
+                store.BrowserSignInRequested += requested =>
+                    this.BrowserSignInRequested?.Invoke(requested) ?? Task.FromResult(new BrowserSignInResult(null, true));
+                store.ConfirmRequested += (title, message) =>
+                    this.ConfirmRequested?.Invoke(title, message) ?? Task.FromResult(true);
                 store.PropertyChanged += this.OnStorePropertyChanged;
                 stores.Add(store);
             }

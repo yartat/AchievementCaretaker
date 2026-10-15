@@ -1,9 +1,13 @@
 # Achievement Caretaker
 
-Achievement Caretaker is a lightweight, portable application used to manage
-achievements and statistics in the PC gaming platform Steam. It requires the
-[Steam client](https://store.steampowered.com/about/), a Steam account and network access.
-Steam must be running and you must be logged in.
+Achievement Caretaker is a lightweight, portable application for your game achievements.
+It edits achievements and statistics in **Steam**, and shows the library and achievements of
+your **Epic Games** and **GOG** accounts. Epic is read-only; GOG achievements can be
+unlocked and locked. Steam needs the
+[Steam client](https://store.steampowered.com/about/), running and logged in, to refresh its
+library and to open the achievement editor; Epic Games and GOG need only a network connection
+and a sign-in. The library window opens without Steam, shows what it saved last time, and
+starts refreshing as soon as Steam is available. See [Using the sources](#using-the-sources).
 
 > **Steam support is based on [Steam Achievement Manager](https://github.com/gibbed/SteamAchievementManager)
 > (SAM) by Rick ([gibbed](https://github.com/gibbed)), and GOG support is based on
@@ -12,12 +16,6 @@ Steam must be running and you must be logged in.
 > license. SAM was released closed-source in 2008, saw its last major release in 2011, and
 > was opened later so that those interested could do as they like with it. See
 > [docs/ATTRIBUTION.md](docs/ATTRIBUTION.md) for the full lineage and licence position.
-
-Caretaker carries a different name because it has diverged far enough to be a different
-program: the two SAM executables were merged into one, the Windows Forms UI was replaced by
-[Avalonia](https://avaloniaui.net/), the library and achievement lists are cached in SQLite
-so neither window starts empty, and the game list was rebuilt around achievement
-completion.
 
 [Download latest release](https://github.com/yartat/AchievementCaretaker/releases/latest).
 
@@ -49,7 +47,8 @@ ratings in `~/.sac` alone.
 
 ## Requirements
 
-- The [Steam client](https://store.steampowered.com/about/), running and logged in
+- The [Steam client](https://store.steampowered.com/about/), running and logged in — for the
+  Steam library and the achievement editor; the Epic Games and GOG sources do not need it
 
 ### Linux
 
@@ -106,53 +105,98 @@ time Caretaker runs.
 
 ## Versioning
 
-Current version: **1.1.0**. Caretaker restarts version numbering at 1.0; it succeeds Steam
-Achievement Manager 8.0, and [docs/RELEASE-NOTES.md](docs/RELEASE-NOTES.md) records what
-changed relative to SAM.
+Current version: **1.1.0**. [docs/RELEASE-NOTES.md](docs/RELEASE-NOTES.md) records what
+changed in each release.
 
-## What is different from Steam Achievement Manager
+## Using the sources
 
-- **One executable instead of two.** `SAM.Picker.exe` and `SAM.Game.exe` are now a single
-  `AchievementCaretaker.exe` that chooses its window from the command line, and
-  `SAM.API.dll` became `AchievementCaretaker.SteamApi.dll`.
-- **New Library layout.** The library window is a collections rail plus a grid that shows
-  how far through each game's achievements you are; the editor pairs the achievement list
-  with a detail pane, and gathers uncommitted changes into one bar so you can see what is
-  about to be sent to Steam before you send it. Both follow the theme chosen in Settings.
-- **All icons are vector,** so they take the theme's foreground colour and stay legible in
-  dark mode. Earlier SAM releases used the Fugue Icons bitmaps.
-- **Two library view modes.** *Tiles* shows capsule art with a completion meter. *Content*
-  shows a row per game with a small icon, the name, release date, when you last played, the
-  Steam review score, earned/total achievements, and your own like/dislike. Sort by any of
-  those from the toolbar or by clicking a column header. This data is read from Steam's
-  local caches, so it is only available for games Steam has already fetched data for;
-  anything else shows `—`.
-- **The library is cached, so the window opens straight away.** Games and their statistics
-  go into a SQLite database at `~/.sac/games.db`, capsule art into `~/.sac/icons`. On launch
-  the cached library is shown immediately while the list is re-checked against Steam in the
-  background.
-- **Achievements are cached too.** The first time you open a game, Caretaker waits for Steam
-  and then stores that game's achievement list and its icons. After that the list appears as
-  soon as the window does. Icons are only downloaded once.
-- **Progress is shown while loading,** in both windows, instead of appearing to hang on a
-  large library.
-- **A theme setting.** **Settings → Appearance** offers *Follow system*, *Light* or *Dark*.
-  The choice is previewed as you make it and remembered between runs; SAM always followed
-  the system.
-- **Migrated from .NET Framework 4.8 to .NET 10** and from Windows Forms to Avalonia. The
-  interop layer was not rewritten.
-- **64-bit support.** `steamclient64.dll` is loaded when running as a 64-bit process, and
-  the projects build for `AnyCPU` as well as `x86`.
-- **Cross-platform builds.** The interop layer no longer depends on `kernel32` or the
-  Windows registry: it uses `NativeLibrary` and per-OS Steam path discovery, so the projects
-  target plain `net10.0` and publish for Windows, Linux and macOS.
-- Support for the current `UserGameStatsSchema` format, alongside the older one.
-- The achievement list shows each description under its name, and the date it was unlocked.
-- Fixed a long-standing bug in the `ISteamClient::GetISteamApps` interop signature, which
-  was missing the `this` pointer. It went unnoticed for years in 32-bit builds but returns a
-  null interface in 64-bit ones.
+The library shows one source at a time. Pick it in the **Source** section of the left rail:
+Steam, Epic Games or GOG. Each has its own games, its own collections and its own sign-in.
+Search, the Tiles / Content switch and sorting work the same way in all of them.
 
-The full list, per release, is in [docs/RELEASE-NOTES.md](docs/RELEASE-NOTES.md).
+### Steam
+
+Steam is the only source that can change anything: the achievement editor unlocks and
+re-locks achievements and edits statistics. Everything else on this tab is read from Steam
+and from the caches Steam keeps on disk.
+
+**Starting without Steam is fine.** If Steam is not installed, not running, or running with no
+account logged in, the library still opens. It shows the games saved last time, with their
+capsule art, under a **No active Steam** banner that says why. In the background Caretaker
+tries to reach Steam every few seconds; the moment it can, the banner goes and the library
+refreshes by itself. While Steam is missing, Refresh is off, and typing an app ID or opening
+the editor tells you Steam is needed instead of failing.
+
+**Steam going away is noticed.** If you quit Steam while Caretaker is open, the banner comes
+back, the games stay on screen, and Caretaker starts looking for Steam again. An editor window
+that was open for that Steam locks itself rather than let you tick achievements it can no
+longer send; reopen it once Steam is back.
+
+**A refresh that was cut short never deletes games.** Checking ownership asks Steam about
+every published app ID, and once Steam stops answering, every remaining game looks "not owned".
+So a refresh that finishes adds new games and updates known ones, but removes games Steam no
+longer lists only when the whole check, including the statistics pass, ran to the end under
+the same Steam. If Steam closed half-way, you keep every game you had and the missing ones are
+checked again next time. A game whose name could not be read keeps its old name, and a failed
+download of the published game list changes nothing.
+
+Picking a game starts the editor for it. Achievements are cached the first time you open a
+game, so the list appears as soon as the window does.
+
+### Epic Games and GOG
+
+These two work the same way for browsing: you can see which games you own and which
+achievements are unlocked. Neither needs the Steam client. **Epic is read-only. GOG
+achievements can be changed**, see below.
+
+1. **Sign in.** Select the source and press **Sign in**, here or under the source's name in
+   the left panel. The store's own sign-in page opens in a window of Caretaker and closes by
+   itself when you are signed in; nothing needs copying. Caretaker never sees your password,
+   and that window keeps nothing afterwards. If the window cannot start (on Windows it needs
+   the WebView2 runtime, on Linux WebKitGTK or WPE), Caretaker offers your own browser: open
+   the page there and paste back the code (Epic shows a page with an `authorizationCode`) or the
+   address the browser ends on (GOG). The session is kept in `~/.sac/epic.json` or
+   `~/.sac/gog.json` (a token for the whole store account; treat it like a password).
+2. **The library loads and is cached.** Your games are listed with their capsule art. They are
+   saved in `games.db`, so the next start shows them at once, and then refreshes in the
+   background. If a refresh fails, the cached list stays and the status bar says why. Epic's
+   list leaves out Fab and Unreal Engine marketplace assets, which are not games.
+3. **Achievement counts.** A store's game list carries no counts, and reading them costs one
+   request or more per game. Right after you sign in, Caretaker reads them for every game whose
+   count it does not have yet, a few at a time; for a large library that takes a few minutes,
+   shows in the status bar and can be cancelled. Signing back in to an account it already knows
+   reads only what is new. It never does this on its own at other times. A game's meter stays
+   absent until its count is known, because "unknown" is not "none earned". You can also fill
+   it in yourself:
+   - **Open a game** (double-click, or Enter) to see its achievements: name, description,
+     unlock date, and XP and rarity where the store has them. Opening it also records the
+     game's count in the library.
+   - **Load progress** does what the sign-in did, again: it reads the counts that are still
+     missing, for example after a cancel or for games that failed. The counts already read are
+     kept, and a restart does not lose them. If your session has expired the run stops and
+     asks you to sign in again.
+4. **Browse.** Stores offer the collections All games, Has achievements and Perfect games, and
+   sorting by name or completion. They have no playtime, last played, review score, likes or
+   demo/mod filters, so those do not appear.
+5. **Account.** Under each store's name in the left panel is the signed-in account, with a
+   **⋯** menu. **Sign out…** asks first, and forgets the session only: the account's games and
+   achievement counts stay saved on this computer and are there again when you sign in. **Switch
+   account…** asks first, opens the sign-in window, and shows the new account's library once you
+   have signed in; closing the window leaves the current account as it was. Each account, in
+   each store and in Steam, keeps its own saved library, and one is never shown under another.
+
+What each store gives you differs. GOG has no XP and no progress values, so those columns are
+absent for GOG games. Epic achievements cannot be re-locked by anyone, so Epic stays read-only.
+
+**Changing GOG achievements.** In a GOG game's window, tick or untick achievements, or use the
+Lock, Invert and Unlock buttons for everything shown. The changes collect in an **Uncommitted**
+bar; **Discard** drops them and **Commit** sends them to GOG, then reads the list again from
+GOG. To do this Caretaker takes the game's own client credentials from GOGDB, a community
+archive, only at the moment you commit. A game GOGDB has no build for cannot be changed. Like
+Steam's editor, this changes your real account. Unlocking and re-locking were checked against
+a live GOG account.
+
+If a session is refused later, Caretaker forgets it and shows the sign-in panel again.
 
 ## Building
 
@@ -187,8 +231,8 @@ plainly marked as such in the files derived from it.
 
 **GOG support is based on
 [GOG Achievements Manager](https://github.com/timendum/gog_achievements) by Timendum.**
-It reimplements the calls that tool makes to GOG's services, for reading only, and its
-files say so. Epic Games support is written from the endpoints documented by the open-source
+It reimplements the calls that tool makes to GOG's services, for listing, unlocking and
+re-locking, and its files say so. Epic Games support is written from the endpoints documented by the open-source
 launchers [Legendary](https://github.com/derrod/legendary) and Heroic.
 
 None of this is the original software of those authors, and it is not endorsed by or
@@ -197,7 +241,6 @@ affiliated with them.
 Steam is a trademark of Valve Corporation, GOG is a trademark of GOG sp. z o.o., and Epic
 Games is a trademark of Epic Games, Inc. This project is not affiliated with any of them.
 
-The toolbar and status icons are vector geometries drawn for this project. Earlier SAM
-releases used the [Fugue Icons](https://p.yusukekamiyamane.com/) set.
+The toolbar and status icons are vector geometries drawn for this project.
 
 See [docs/ATTRIBUTION.md](docs/ATTRIBUTION.md) for the full statement.

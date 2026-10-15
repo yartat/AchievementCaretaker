@@ -130,6 +130,20 @@ namespace AchievementCaretaker.SteamApi
             GC.SuppressFinalize(this);
         }
 
+        /// <summary>
+        /// Lets go of the client without telling Steam, for when Steam is gone.
+        /// </summary>
+        /// <remarks>
+        /// Releasing the user and the pipe are calls into Steam's library over a pipe
+        /// with nothing left on the other end, so they are not made, here or from the
+        /// finalizer. There is nothing to release: the process that held it has ended.
+        /// </remarks>
+        public void Abandon()
+        {
+            this._IsDisposed = true;
+            GC.SuppressFinalize(this);
+        }
+
         public TCallback CreateAndRegisterCallback<TCallback>()
             where TCallback : ICallback, new()
         {

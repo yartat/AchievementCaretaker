@@ -33,11 +33,11 @@ Caretaker ships one executable and keeps the constraint:
 
 | Command line | Window | `Client.Initialize` |
 |---|---|---|
-| *(no arguments)* | `GamePickerWindow` — the library | app ID `0` |
+| *(no arguments)* | `GamePickerWindow` — the library | app ID `0`, once Steam is there |
 | `<appid>` | `ManagerWindow` — the achievement editor | that app ID |
 
-`Program.TryParseAppId` reads the command line, `App.CreateMainWindow` does the Steam
-handshake and picks the window, and `Program.LaunchForApp` starts a second copy of the same
+`Program.TryParseAppId` reads the command line, `App.CreateMainWindow` picks the window
+(doing the Steam handshake itself only for the editor), and `Program.LaunchForApp` starts a second copy of the same
 executable (`Environment.ProcessPath`) when the user opens a game.
 
 A consequence worth remembering: two processes hold the same SQLite database open. The
@@ -49,7 +49,7 @@ is a wait rather than a `SQLITE_BUSY`.
 ```
 AchievementCaretaker.App/
   Program.cs            entry point, command-line dispatch, relaunch
-  App.axaml[.cs]        styles, theme, window selection, Steam handshake
+  App.axaml[.cs]        styles, theme, window selection, the editor's Steam handshake
   InvariantShorthand.cs the _($"…") invariant-culture helper
   Common/               AppSettings, IconCache
   Library/              GameInfo, GameCache, LibraryStats, RatingStore, OwnRating
@@ -113,10 +113,22 @@ populates itself.
 ## The UI layer
 
 `Program.Main` builds the Avalonia `AppBuilder`;
-`App.OnFrameworkInitializationCompleted` does the Steam handshake and chooses the main
+`App.OnFrameworkInitializationCompleted` chooses the main
 window — the library, the editor, or a `MessageWindow` carrying the error. Avalonia has no
 `MessageBox`, so `Views/MessageWindow.cs` is a hand-rolled stand-in that doubles as the main
-window when the handshake fails.
+window when the editor's handshake fails.
+
+The library does not do the handshake at start. It has other sources than Steam, so it opens at
+once, and `SteamConnector` keeps trying to create the Steam pipe in the background. Only when
+that works does the Steam library refresh; until then the Steam source shows the games saved
+last time under a "No active Steam" banner, with the reason.
+
+It goes on watching after it connects. A pipe to a Steam that quit does not say so, but the
+Steam process does, so the connector compares the process id taken at connection with the one
+running now. When Steam goes, the window stops talking to it, keeps the games on screen, shows
+the banner again, and the search starts over; a refresh that was running when it happened
+discards its results rather than treat "nothing owned" on a dead pipe as the truth. The editor
+locks itself when its Steam goes, since it can neither read nor commit without one.
 
 View models hold all logic and every Steam call; views are XAML plus thin code-behind.
 Because view models have no window to parent a dialog to, they raise `ErrorRaised`,
@@ -217,13 +229,17 @@ wrapped in `Task.Run`: it makes two Steam calls per app ID across the whole publ
 list, so it cannot run on the UI thread. **Steam client calls therefore do happen off the UI
 thread there** — preserved deliberately from the original, not an invitation to add more.
 
-Image downloads use a single-consumer queue, one at a time.
+Capsule art is read, decoded and downloaded by eight workers, off the UI thread, and the disk
+cache is decoded in parallel at start so a warm library shows its art almost at once. The
+editor's achievement icons are loaded the same way.
 
 ## Epic and GOG
 
-The library window can show an Epic Games or GOG library beside Steam's. They are read-only:
-the owned games, and each game's achievements with the signed-in player's progress. Nothing is
-unlocked or re-locked. How the two stores' endpoints work is in [EPIC-RESEARCH.md](EPIC-RESEARCH.md)
+The library window can show an Epic Games or GOG library beside Steam's: the owned games, and each game's achievements with the signed-in player's
+progress. Epic is read-only. GOG's achievements can also be unlocked and re-locked: the
+achievements window has the Steam editor's checkboxes, Lock / Invert / Unlock buttons and
+Uncommitted bar, and Commit sends the changes through `IWritableStoreProvider`, which only GOG
+implements. How the two stores' endpoints work is in [EPIC-RESEARCH.md](EPIC-RESEARCH.md)
 and [GOG-RESEARCH.md](GOG-RESEARCH.md); this is how the application uses them.
 
 - **`AchievementCaretaker.Providers`** has one `IStoreProvider` per store. It is plain HTTPS
@@ -233,15 +249,25 @@ and [GOG-RESEARCH.md](GOG-RESEARCH.md); this is how the application uses them.
   gets its own game type (`StoreGameInfo`), its own view model (`StoreLibraryViewModel`) and its
   own view (`StoreLibraryView`), because everything on Steam's side is keyed by a numeric app id
   and leans on playtime, review scores and demo/mod types that a store does not have.
-- **Sign-in happens in the user's browser**, on the store's own page. The user pastes back the
-  code or address the page ends on. The session, which holds a refresh token, is kept in
-  `~/.sac/epic.json` or `~/.sac/gog.json`.
-- **Cached like Steam's**: the library in the `store_games` table of `games.db`, painted at
-  once on start and refreshed afterwards; images in a `store/` folder of the icon cache.
-- **Achievement counts are read on request.** A game's achievements open in a read-only window
-  in the same process, which also fills in that game's meter in the library; **Load progress**
-  does it for every game, a few at a time, and can be cancelled. Until a game has been read its
-  meter is absent rather than empty.
+- **Sign-in shows the store's own page** in a browser inside the application
+  (`StoreSignInWindow`, on `Avalonia.Controls.WebView`) and finishes by itself when the page
+  reaches the store's end-of-sign-in address, which the provider recognises. The user's own browser
+  and a pasted code remain as the fallback when the embedded browser cannot start. The session,
+  which holds a refresh token, is kept in `~/.sac/epic.json` or `~/.sac/gog.json`.
+- **The account is in the rail**, under its source, with a menu to switch account or sign out;
+  both ask for confirmation. Switching signs in first and forgets the old account only once the
+  new sign-in has succeeded.
+- **Cached like Steam's, and per account**: the library in the `store_games` table of
+  `games.db`, keyed by provider, account and game, painted at once on start and refreshed
+  afterwards; images in a `store/` folder of the icon cache. Steam's `games` table is keyed by
+  Steam account too. Signing out or switching account deletes nothing: each account's library
+  and progress stay saved, and are shown again when that account is.
+- **Achievement counts are read on request, and once at sign-in.** A game's achievements open
+  in a window in the same process, which also fills in that game's meter in the library;
+  **Load progress** does it for every game whose count is missing, a few at a time, and can be
+  cancelled. Signing in starts that run by itself, so a new account fills in without a click and
+  an account that is already known costs almost nothing. Until a game has been read its meter
+  is absent rather than empty.
 
 ## What is not covered here
 

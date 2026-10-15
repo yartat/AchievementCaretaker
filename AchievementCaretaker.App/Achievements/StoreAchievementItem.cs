@@ -13,12 +13,12 @@ using AchievementCaretaker.Providers;
 namespace AchievementCaretaker.App.Achievements
 {
     /// <summary>
-    /// One row of the read-only achievement list for an Epic or GOG game.
+    /// One row of the achievement list for an Epic or GOG game.
     /// </summary>
     /// <remarks>
-    /// Read-only in every sense: nothing here can be ticked, and the type has no
-    /// pending state. The Steam editor's <c>AchievementInfo</c> is the model for
-    /// the column formats.
+    /// <see cref="IsAchieved"/> can be ticked, but the window only allows it for a store
+    /// that can write (GOG). The Steam editor's <c>AchievementInfo</c> is the model for
+    /// the pending state and the column formats.
     /// </remarks>
     internal sealed partial class StoreAchievementItem : ObservableObject
     {
@@ -31,6 +31,7 @@ namespace AchievementCaretaker.App.Achievements
         public StoreAchievementItem(StoreAchievement source)
         {
             this.Source = source;
+            this._IsAchieved = source.Unlocked;
         }
 
         public string Name => this.Source.DisplayName;
@@ -40,7 +41,17 @@ namespace AchievementCaretaker.App.Achievements
 
         public string IconUrl => this.Source.IconUrl;
 
-        public bool Unlocked => this.Source.Unlocked;
+        /// <summary>What the store reported; <see cref="IsAchieved"/> is what is on screen.</summary>
+        public bool OriginalValue => this.Source.Unlocked;
+
+        /// <summary>The state on screen: the store's, unless the user has ticked it since.</summary>
+        [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(IsChanged))]
+        [NotifyPropertyChangedFor(nameof(StateText))]
+        private bool _IsAchieved;
+
+        /// <summary>True while this row differs from what the store reported.</summary>
+        public bool IsChanged => this.IsAchieved != this.OriginalValue;
 
         public bool Hidden => this.Source.Hidden;
 
@@ -53,6 +64,17 @@ namespace AchievementCaretaker.App.Achievements
             this.Source.UnlockDate.HasValue == true
                 ? this.Source.UnlockDate.Value.ToLocalTime().ToString("d MMM yyyy", CultureInfo.CurrentCulture)
                 : this.Source.Unlocked == true ? "—" : "";
+
+        /// <summary>A pending change reads as an intention: nothing is sent until Commit.</summary>
+        public string StateText => this.IsChanged == true
+            ? (this.IsAchieved == true ? "Will unlock" : "Will lock")
+            : (this.IsAchieved == true ? "Unlocked" : "Locked");
+
+        /// <summary>Full date and time for the detail pane; blank when the store gives none.</summary>
+        public string UnlockTimeText =>
+            this.Source.UnlockDate.HasValue == true
+                ? this.Source.UnlockDate.Value.ToLocalTime().ToString(CultureInfo.CurrentCulture)
+                : "";
 
         /// <summary>Blank when the store has no XP, as GOG has none. Not "0 XP".</summary>
         public string XpText =>

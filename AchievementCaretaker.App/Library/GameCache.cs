@@ -37,7 +37,8 @@ using Microsoft.Data.Sqlite;
 namespace AchievementCaretaker.App.Library
 {
     /// <summary>
-    /// A row of the cached library, as stored in SQLite.
+    /// A row of the cached Steam library, as stored in SQLite. The account it belongs
+    /// to is not on the row: every call names it.
     /// </summary>
     internal sealed class CachedGame
     {
@@ -80,6 +81,14 @@ namespace AchievementCaretaker.App.Library
     /// a network round trip and a few hundred Steam calls.
     /// </summary>
     /// <remarks>
+    /// Every library is saved under the account it belongs to (Steam's 32-bit account id,
+    /// or a store's account id), so signing out or switching account forgets nothing:
+    /// coming back to an account finds its games and progress where they were.
+    /// <para>
+    /// A database written before accounts were recorded has no way to say whose rows
+    /// they are, so its library tables are dropped and rebuilt; they only ever held a
+    /// cache.
+    /// </para>
     /// Deliberately raw ADO.NET rather than EF Core: this is two tables and a
     /// handful of statements, and <c>AchievementCaretaker.SteamApi</c>'s no-dependency character is
     /// worth preserving in the apps too.
@@ -122,8 +131,23 @@ namespace AchievementCaretaker.App.Library
             {
                 command.CommandText = """
                     PRAGMA journal_mode=WAL;
+                    CREATE TABLE IF NOT EXISTS meta (
+                        key                TEXT PRIMARY KEY,
+                        value              TEXT
+                    );
+                    """;
+                command.ExecuteNonQuery();
+            }
+
+            DropIfWithoutAccount(connection, "games");
+            DropIfWithoutAccount(connection, "store_games");
+
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = """
                     CREATE TABLE IF NOT EXISTS games (
-                        id                 INTEGER PRIMARY KEY,
+                        account            INTEGER NOT NULL,
+                        id                 INTEGER NOT NULL,
                         type               TEXT,
                         name               TEXT,
                         image_url          TEXT,
@@ -135,10 +159,12 @@ namespace AchievementCaretaker.App.Library
                         ach_total          INTEGER NOT NULL DEFAULT -1,
                         ach_earned         INTEGER NOT NULL DEFAULT -1,
                         has_stats          INTEGER NOT NULL DEFAULT 0,
-                        updated_utc        INTEGER NOT NULL DEFAULT 0
+                        updated_utc        INTEGER NOT NULL DEFAULT 0,
+                        PRIMARY KEY (account, id)
                     );
                     CREATE TABLE IF NOT EXISTS store_games (
                         provider           TEXT NOT NULL,
+                        account            TEXT NOT NULL,
                         id                 TEXT NOT NULL,
                         game_key           TEXT NOT NULL,
                         name               TEXT,
@@ -147,7 +173,7 @@ namespace AchievementCaretaker.App.Library
                         ach_earned         INTEGER NOT NULL DEFAULT -1,
                         has_progress       INTEGER NOT NULL DEFAULT 0,
                         updated_utc        INTEGER NOT NULL DEFAULT 0,
-                        PRIMARY KEY (provider, id)
+                        PRIMARY KEY (provider, account, id)
                     );
                     """;
                 command.ExecuteNonQuery();
@@ -156,15 +182,74 @@ namespace AchievementCaretaker.App.Library
             return new(connection, databasePath);
         }
 
-        public List<CachedGame> LoadAll()
+        private static void DropIfWithoutAccount(SqliteConnection connection, string table)
         {
-            lock (this._Gate)
+            using var command = connection.CreateCommand();
+            command.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('{table}')";
+            var columns = Convert.ToInt32(command.ExecuteScalar());
+            command.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = 'account'";
+            var hasAccount = Convert.ToInt32(command.ExecuteScalar()) > 0;
+            if (columns > 0 && hasAccount == false)
             {
-                return this.LoadAllLocked();
+                command.CommandText = $"DROP TABLE {table}";
+                command.ExecuteNonQuery();
             }
         }
 
-        private List<CachedGame> LoadAllLocked()
+        /// <summary>The Steam account the library window last showed, or 0 if none yet.</summary>
+        public uint GetLastSteamAccount()
+        {
+            lock (this._Gate)
+            {
+                using var command = this._Connection.CreateCommand();
+                command.CommandText = "SELECT value FROM meta WHERE key = 'last_steam_account'";
+                return uint.TryParse(command.ExecuteScalar() as string, out var account) ? account : 0;
+            }
+        }
+
+        public void SetLastSteamAccount(uint account)
+        {
+            lock (this._Gate)
+            {
+                using var command = this._Connection.CreateCommand();
+                command.CommandText = """
+                    INSERT INTO meta (key, value) VALUES ('last_steam_account', $value)
+                    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                    """;
+                command.Parameters.AddWithValue("$value", account.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                command.ExecuteNonQuery();
+            }
+        }
+
+        /// <summary>
+        /// Every app id any account has cached. What the icon cache must keep: art that
+        /// belongs to a game one account owns is not stale just because another does not.
+        /// </summary>
+        public HashSet<uint> LoadAllGameIds()
+        {
+            lock (this._Gate)
+            {
+                HashSet<uint> ids = new();
+                using var command = this._Connection.CreateCommand();
+                command.CommandText = "SELECT DISTINCT id FROM games";
+                using var reader = command.ExecuteReader();
+                while (reader.Read() == true)
+                {
+                    ids.Add((uint)reader.GetInt64(0));
+                }
+                return ids;
+            }
+        }
+
+        public List<CachedGame> LoadAll(uint account)
+        {
+            lock (this._Gate)
+            {
+                return this.LoadAllLocked(account);
+            }
+        }
+
+        private List<CachedGame> LoadAllLocked(uint account)
         {
             List<CachedGame> result = new();
             using var command = this._Connection.CreateCommand();
@@ -172,7 +257,9 @@ namespace AchievementCaretaker.App.Library
                 SELECT id, type, name, image_url, release_date, rating_percent, rating_score,
                        playtime_minutes, last_played, ach_total, ach_earned, has_stats
                 FROM games
+                WHERE account = $account
                 """;
+            command.Parameters.AddWithValue("$account", (long)account);
             using var reader = command.ExecuteReader();
             while (reader.Read() == true)
             {
@@ -210,20 +297,24 @@ namespace AchievementCaretaker.App.Library
         }
 
         /// <summary>
-        /// Makes the table match <paramref name="games"/> exactly: rows for
-        /// games no longer owned are deleted, new ones inserted, existing ones
-        /// updated. One transaction, so a crash mid-sync cannot leave a
-        /// half-written library behind.
+        /// Makes one account's rows match <paramref name="games"/> exactly: rows for
+        /// games it no longer owns are deleted, new ones inserted, existing ones
+        /// updated. Other accounts' rows are not touched. One transaction, so a crash
+        /// mid-sync cannot leave a half-written library behind.
         /// </summary>
-        public void Sync(IReadOnlyCollection<CachedGame> games)
+        /// <param name="removeMissing">
+        /// False adds and updates only. A synchronization that did not finish learned about
+        /// the games it reached and nothing about the rest, so it must not delete them.
+        /// </param>
+        public void Sync(uint account, IReadOnlyCollection<CachedGame> games, bool removeMissing = true)
         {
             lock (this._Gate)
             {
-                this.SyncLocked(games);
+                this.SyncLocked(account, games, removeMissing);
             }
         }
 
-        private void SyncLocked(IReadOnlyCollection<CachedGame> games)
+        private void SyncLocked(uint account, IReadOnlyCollection<CachedGame> games, bool removeMissing)
         {
             using var transaction = this._Connection.BeginTransaction();
 
@@ -253,12 +344,12 @@ namespace AchievementCaretaker.App.Library
             {
                 upsert.Transaction = transaction;
                 upsert.CommandText = """
-                    INSERT INTO games (id, type, name, image_url, release_date, rating_percent,
+                    INSERT INTO games (account, id, type, name, image_url, release_date, rating_percent,
                                        rating_score, playtime_minutes, last_played, ach_total,
                                        ach_earned, has_stats, updated_utc)
-                    VALUES ($id, $type, $name, $url, $released, $percent, $score, $playtime,
+                    VALUES ($account, $id, $type, $name, $url, $released, $percent, $score, $playtime,
                             $lastPlayed, $total, $earned, $hasStats, $updated)
-                    ON CONFLICT(id) DO UPDATE SET
+                    ON CONFLICT(account, id) DO UPDATE SET
                         type = excluded.type,
                         name = excluded.name,
                         image_url = excluded.image_url,
@@ -276,7 +367,7 @@ namespace AchievementCaretaker.App.Library
                 var parameters = new Dictionary<string, SqliteParameter>();
                 foreach (var name in new[]
                 {
-                    "$id", "$type", "$name", "$url", "$released", "$percent", "$score",
+                    "$account", "$id", "$type", "$name", "$url", "$released", "$percent", "$score",
                     "$playtime", "$lastPlayed", "$total", "$earned", "$hasStats", "$updated",
                 })
                 {
@@ -289,6 +380,7 @@ namespace AchievementCaretaker.App.Library
                 var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                 foreach (var game in games)
                 {
+                    parameters["$account"].Value = (long)account;
                     parameters["$id"].Value = (long)game.Id;
                     parameters["$type"].Value = (object)game.Type ?? DBNull.Value;
                     parameters["$name"].Value = (object)game.Name ?? DBNull.Value;
@@ -306,10 +398,12 @@ namespace AchievementCaretaker.App.Library
                 }
             }
 
-            using (var prune = this._Connection.CreateCommand())
+            if (removeMissing == true)
             {
+                using var prune = this._Connection.CreateCommand();
                 prune.Transaction = transaction;
-                prune.CommandText = "DELETE FROM games WHERE id NOT IN (SELECT id FROM keep)";
+                prune.CommandText = "DELETE FROM games WHERE account = $account AND id NOT IN (SELECT id FROM keep)";
+                prune.Parameters.AddWithValue("$account", (long)account);
                 prune.ExecuteNonQuery();
             }
 
@@ -330,7 +424,7 @@ namespace AchievementCaretaker.App.Library
 
         #region Store libraries
 
-        public List<CachedStoreGame> LoadStoreGames(string provider)
+        public List<CachedStoreGame> LoadStoreGames(string provider, string account)
         {
             lock (this._Gate)
             {
@@ -339,9 +433,10 @@ namespace AchievementCaretaker.App.Library
                 command.CommandText = """
                     SELECT id, game_key, name, image_url, ach_total, ach_earned, has_progress
                     FROM store_games
-                    WHERE provider = $provider
+                    WHERE provider = $provider AND account = $account
                     """;
                 command.Parameters.AddWithValue("$provider", provider);
+                command.Parameters.AddWithValue("$account", account);
                 using var reader = command.ExecuteReader();
                 while (reader.Read() == true)
                 {
@@ -361,16 +456,17 @@ namespace AchievementCaretaker.App.Library
         }
 
         /// <summary>
-        /// Makes one provider's rows match <paramref name="games"/>: games no longer
-        /// owned are deleted, new ones inserted, existing ones renamed or re-imaged.
-        /// Other providers' rows, and the Steam table, are not touched.
+        /// Makes one account's rows at one provider match <paramref name="games"/>: games
+        /// no longer owned are deleted, new ones inserted, existing ones renamed or
+        /// re-imaged. Other accounts' and providers' rows, and the Steam table, are not
+        /// touched.
         /// </summary>
         /// <remarks>
         /// The achievement counts of a game that is still owned are <em>kept</em>.
         /// A refreshed list says nothing about progress, and finding it out again
         /// costs requests to the store for every game.
         /// </remarks>
-        public void SyncStoreGames(string provider, IReadOnlyCollection<CachedStoreGame> games)
+        public void SyncStoreGames(string provider, string account, IReadOnlyCollection<CachedStoreGame> games)
         {
             lock (this._Gate)
             {
@@ -395,16 +491,16 @@ namespace AchievementCaretaker.App.Library
 
                     upsert.Transaction = transaction;
                     upsert.CommandText = """
-                        INSERT INTO store_games (provider, id, game_key, name, image_url, updated_utc)
-                        VALUES ($provider, $id, $key, $name, $url, $updated)
-                        ON CONFLICT(provider, id) DO UPDATE SET
+                        INSERT INTO store_games (provider, account, id, game_key, name, image_url, updated_utc)
+                        VALUES ($provider, $account, $id, $key, $name, $url, $updated)
+                        ON CONFLICT(provider, account, id) DO UPDATE SET
                             game_key = excluded.game_key,
                             name = excluded.name,
                             image_url = excluded.image_url,
                             updated_utc = excluded.updated_utc
                         """;
                     var parameters = new Dictionary<string, SqliteParameter>();
-                    foreach (var name in new[] { "$provider", "$id", "$key", "$name", "$url", "$updated" })
+                    foreach (var name in new[] { "$provider", "$account", "$id", "$key", "$name", "$url", "$updated" })
                     {
                         var parameter = upsert.CreateParameter();
                         parameter.ParameterName = name;
@@ -419,6 +515,7 @@ namespace AchievementCaretaker.App.Library
                         keep.ExecuteNonQuery();
 
                         parameters["$provider"].Value = provider;
+                        parameters["$account"].Value = account;
                         parameters["$id"].Value = game.Id;
                         parameters["$key"].Value = game.Key;
                         parameters["$name"].Value = (object)game.Name ?? DBNull.Value;
@@ -432,8 +529,10 @@ namespace AchievementCaretaker.App.Library
                 {
                     prune.Transaction = transaction;
                     prune.CommandText =
-                        "DELETE FROM store_games WHERE provider = $provider AND id NOT IN (SELECT id FROM store_keep)";
+                        "DELETE FROM store_games WHERE provider = $provider AND account = $account " +
+                        "AND id NOT IN (SELECT id FROM store_keep)";
                     prune.Parameters.AddWithValue("$provider", provider);
+                    prune.Parameters.AddWithValue("$account", account);
                     prune.ExecuteNonQuery();
                 }
 
@@ -442,26 +541,10 @@ namespace AchievementCaretaker.App.Library
         }
 
         /// <summary>
-        /// Forgets one provider's library, including the progress in it. Done on
-        /// sign-out: progress belongs to an account, so keeping it would show the next
-        /// account to sign in the previous one's numbers.
-        /// </summary>
-        public void ClearStoreGames(string provider)
-        {
-            lock (this._Gate)
-            {
-                using var command = this._Connection.CreateCommand();
-                command.CommandText = "DELETE FROM store_games WHERE provider = $provider";
-                command.Parameters.AddWithValue("$provider", provider);
-                command.ExecuteNonQuery();
-            }
-        }
-
-        /// <summary>
         /// Records how far through their achievements the user is, for games whose
         /// achievements have just been read. One transaction for the batch.
         /// </summary>
-        public void SaveStoreProgress(string provider, IEnumerable<(string Id, int Earned, int Total)> progress)
+        public void SaveStoreProgress(string provider, string account, IEnumerable<(string Id, int Earned, int Total)> progress)
         {
             lock (this._Gate)
             {
@@ -472,10 +555,10 @@ namespace AchievementCaretaker.App.Library
                     command.CommandText = """
                         UPDATE store_games
                         SET ach_total = $total, ach_earned = $earned, has_progress = 1
-                        WHERE provider = $provider AND id = $id
+                        WHERE provider = $provider AND account = $account AND id = $id
                         """;
                     var parameters = new Dictionary<string, SqliteParameter>();
-                    foreach (var name in new[] { "$provider", "$id", "$total", "$earned" })
+                    foreach (var name in new[] { "$provider", "$account", "$id", "$total", "$earned" })
                     {
                         var parameter = command.CreateParameter();
                         parameter.ParameterName = name;
@@ -486,6 +569,7 @@ namespace AchievementCaretaker.App.Library
                     foreach (var (id, earned, total) in progress)
                     {
                         parameters["$provider"].Value = provider;
+                        parameters["$account"].Value = account;
                         parameters["$id"].Value = id;
                         parameters["$total"].Value = total;
                         parameters["$earned"].Value = earned;

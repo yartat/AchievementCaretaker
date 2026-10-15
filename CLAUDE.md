@@ -58,10 +58,17 @@ The rules:
 - **Steam is not a provider.** Its interface is native, scoped to one app id per process,
   and can write. A store reached over HTTPS with the user's own sign-in has none of those
   properties, and hiding them behind one interface would hide what shapes how Steam is used.
-- **Read-only.** No unlocking, no re-locking, no EOS SDK, and no reading a game's client
-  secret. Epic cannot re-lock an achievement anyway, and the tools that unlock inject into
-  the game or need that secret. GOG's build records carry the secret next to the client id;
-  `GogProvider` reads the id and nothing else from them.
+- **Epic is read-only; GOG can write.** Epic: no unlocking, no re-locking, no EOS SDK, no
+  reading a game's client secret. Epic cannot re-lock an achievement anyway, and the tools that
+  unlock inject into the game or need that secret. GOG: changing an achievement needs a token
+  issued to the *game's* client, so `GogProvider.SetAchievementsAsync` reads the client secret
+  from GOGDB's build record, **only when something is written**. Listing reads the client id
+  and nothing else. The secret and the game token are never logged, kept on disk or put in an
+  error message, and the account's own session is not touched by the game token. Writing is a
+  separate interface, `IWritableStoreProvider`, which only GOG implements; the achievements
+  window shows the checkboxes and the Lock / Invert / Unlock buttons only for a provider that
+  has it, and sends the pending changes with Commit as the Steam editor does. Verified against a
+  live GOG account (unlock and re-lock), unlike Steam's write path.
 - **Every unofficial endpoint lives in its store's one `*Provider.cs`.** They are the
   stores' own and can change; keep them in one file each.
 - **A session file holds a refresh token**, a credential for the whole store account:
@@ -70,9 +77,29 @@ The rules:
   `ThrowIfEpicError` and `ThrowIfError` deliberately do not echo response bodies, and
   GOG's token request carries the code or refresh token in its URL, so that URL is never
   part of a message either.
-- **Sign in with the store's own page, in the user's browser.** Caretaker never sees a
-  password and never reads another application's stored credentials. GOG Galaxy keeps its
-  refresh token in the registry and the reference tools take it from there; this does not.
+- **Sign in with the store's own page.** Caretaker never reads a password and never reads
+  another application's stored credentials. GOG Galaxy keeps its refresh token in the
+  registry and the reference tools take it from there; this does not. The page is shown in a
+  browser inside the application (`StoreSignInWindow`, the official `Avalonia.Controls.WebView`
+  package: WebView2, WebKitGTK or WPE, WKWebView) so nothing has to be copied back: the window
+  only watches the addresses the page moves through, and the provider says which one ends the
+  sign-in (`IStoreProvider.GetSignInResultKind`: GOG's redirect carries `code=` in the address,
+  Epic's redirect page carries the code in its text, read with `InvokeScript`). That browser runs
+  in private mode where the platform has one (`EnvironmentRequested`), so closing it keeps
+  nothing and a second account can sign in without being logged straight back into the first.
+  **The user's own browser plus a pasted code stays as the fallback**, and is what is offered
+  when the embedded browser does not start within a few seconds (no WebView2 runtime, no
+  WebKitGTK): that failure reports nothing, the page just never loads. The WPE backend has no
+  private-mode switch here, so on Linux with WPE a previous login may persist. The embedded
+  sign-in was verified by the project owner against live Epic and GOG accounts (on Windows).
+  Not exercised: Linux and macOS, the fallback with a missing WebView2 runtime, and switching
+  between two real accounts.
+- **The account is always in the rail**, under its source: its name with a menu for
+  **Switch account…** and **Sign out…**, or **Sign in**. Both ask first. Switching signs in
+  *before* it lets go of anything, so backing out of the page leaves the old account
+  untouched; only a successful sign-in replaces the session and the library on screen
+  (`ClearLibrary`, as opposed to `ForgetAccount`, which also drops the session). **Neither
+  deletes saved data**, see the next item.
 - **Unknown is null, not zero.** `StoreAchievement.XP`, `Progress` and `RarityPercent` are
   nullable because a store may not have them: GOG has no XP and no progress.
 - **Adding a store** means implementing `IStoreProvider` and listing it in
@@ -102,16 +129,34 @@ SOURCE section; Steam is the default and is `SelectedStoreLibrary == null`, not 
   (`StoreAchievementsWindow`), not through `Program.LaunchForApp`. The one-process-per-game
   rule exists because `ISteamUserStats` is scoped to the app id a process initialised with;
   a store's HTTPS service has no such scope.
-- **Progress is read on request, never automatically.** A library listing carries no
-  achievement counts, and reading them costs a request or more per game (GOG's two more to
-  GOGDB, which is run by volunteers). A game's counts are known once its window has been
-  opened or **Load progress** has covered it; until then the meter is absent, not empty.
-  Unknown is `null`, never 0.
-- **Sign-out and an expired session forget the account's library**, including the cached
-  progress: progress belongs to an account, and the next account to sign in must not be shown
-  the previous one's numbers. A dead session is forgotten too, or the sign-in panel would
-  never come back; `EpicProvider` and `GogProvider` both report a refused refresh as
-  `login_required` for that.
+- **Progress is read on request, and once when an account signs in.** A library listing
+  carries no achievement counts, and reading them costs a request or more per game (GOG's two
+  more to GOGDB, which is run by volunteers). A game's counts are known once its window has
+  been opened or **Load progress** has covered it; until then the meter is absent, not empty.
+  Unknown is `null`, never 0. The one automatic run is a **sign-in** (the browser sign-in, the
+  switch and the pasted code all end in `CompleteSignInAsync`), which starts **Load progress**
+  by itself after the library has loaded. It reads only the games whose count is not saved,
+  so signing back in to a known account is nearly free, and a new account on a large library
+  is hundreds of requests (about 1,200 on Epic, 600 on GOG at last count): it shows in the
+  status bar, can be cancelled, and keeps what it has. A start with a session already saved
+  never starts one. Do not add more triggers without the same thought for that cost.
+- **Every library is saved under its account**, so signing out or switching deletes nothing
+  and coming back to an account finds its games and progress as they were. `store_games` is
+  keyed `(provider, account, id)`, from `IStoreProvider.AccountId` (GOG's user id, Epic's
+  account id; null when signed out, and then there is no library to show). Steam's `games`
+  is keyed `(account, id)` by the 32-bit Steam account id, and `meta` remembers the account
+  last shown, so a start without Steam shows that account's library. When Steam comes back
+  as a different account, `UseSteamAccount` swaps what is on screen for that account's saved
+  library, and a refresh that began under another account throws its findings away rather
+  than merge them into this one. Progress belongs to the account it was read for and is
+  never shown to another. `IconCache.Prune` keeps art for the union of every saved account's
+  games (`GameCache.LoadAllGameIds`), not just the current one's. A dead session is still
+  forgotten, or the sign-in panel would never come back; `EpicProvider` and `GogProvider`
+  both report a refused refresh as `login_required` for that. A database from before accounts
+  were recorded has no way to say whose rows its library tables hold, so `GameCache.Open`
+  drops `games` and `store_games` when they lack the `account` column and rebuilds them:
+  they were only ever a cache, and nothing else is migrated. `AchievementCache` was already
+  per account and language.
 - **An element's own bindings read from its own `DataContext`.** The store view is hosted
   with `DataContext="{Binding SelectedStoreLibrary}"`, so its visibility is on a wrapper
   `Panel`, not on the view itself, or `IsVisible="{Binding IsStoreSelected}"` is looked up on
@@ -132,7 +177,7 @@ one game's achievements. So the executable dispatches on its command line:
 
 | Command line | Window | Steam initialised with |
 |---|---|---|
-| *(no arguments)* | `GamePickerWindow` — the library | app id `0` |
+| *(no arguments)* | `GamePickerWindow` — the library | app id `0`, once Steam is there |
 | `<appid>` | `ManagerWindow` — the achievement editor | that app id |
 
 `Program.LaunchForApp` starts a second copy of **this same executable**
@@ -265,7 +310,9 @@ not mean nothing can be checked without Steam — see "Verifying without Steam" 
 
 ## Running
 
-Requires the Steam client installed, running, and logged in. On Windows the install path
+The Steam features (the Steam library, the achievement editor) need the Steam client
+installed, running, and logged in; the library window itself opens without it. On Windows the
+install path
 comes from `HKLM\Software\Valve\Steam\InstallPath`; elsewhere the candidate directories in
 `SteamPlatform.GetUnixInstallCandidates` are walked. Without a live Steam process
 `Client.Initialize` throws `ClientInitializeException`. You cannot meaningfully exercise
@@ -293,8 +340,10 @@ throwaway console project that references `AchievementCaretaker.App`:
   `RefreshIcon` measures 8.2 wide on a 16 grid and renders 15.
 
 Starting `bin/AchievementCaretaker.exe` with no Steam running is also a real check: it
-must come up showing the error `MessageWindow` rather than dying, which proves
-`App.Initialize` loaded every style and resource dictionary.
+must come up as the library window, with the "No active Steam" banner and the cached games,
+rather than an error or nothing, which proves `App.Initialize` loaded every style and resource
+dictionary. With an app id and no Steam it shows the error `MessageWindow` instead: the
+editor cannot do anything without Steam.
 
 What none of this can reach is anything behind `SteamApi.Client`: the vtable dispatch, the
 schema parse, `LibraryStats`, and every number the windows actually display.
@@ -401,15 +450,51 @@ synchronously.
 ### The UI layer
 
 - `Program.Main` builds the `AppBuilder` and calls `StartWithClassicDesktopLifetime`.
-- `App.OnFrameworkInitializationCompleted` does the Steam handshake and *chooses* the main
-  window: the library, the editor, or a `MessageWindow` carrying the error. This replaces
-  the WinForms pattern of showing a `MessageBox` before `Application.Run`. The
-  `SteamApi.Client` is owned by `App` and disposed on `ShutdownRequested`.
+- `App.OnFrameworkInitializationCompleted` *chooses* the main window: the library, the
+  editor, or a `MessageWindow` carrying the error. This replaces the WinForms pattern of
+  showing a `MessageBox` before `Application.Run`.
+- **Only the editor does the Steam handshake up front.** It is one game's Steam session and
+  is useless without one, so a failure there is the error window; its `SteamApi.Client` is
+  owned by `App` and disposed on `ShutdownRequested`. **The library does not**: it has other
+  sources than Steam, so it opens at once and `SteamConnector` keeps trying to create the
+  Steam pipe in the background (every 3 s, off the UI thread, a fresh `Client` each try).
+  Only when that works does `GamePickerViewModel.ConnectSteam` register the callback, start
+  the callback timer and refresh the library. Until then the Steam source shows the cached
+  games under a "No active Steam" banner with the reason (not installed, not running, nobody
+  logged in), the refresh button is off, and what needs Steam (opening the editor, the App
+  ID box) says so rather than failing. The connector owns the client and the view model
+  disposes it in `Shutdown`.
+  **It keeps watching after it connects.** A pipe to a Steam that quit does not say so, so
+  `SteamWatch` compares the Steam process id taken at connection
+  (`SteamPlatform.GetRunningClientProcessId`: the registry's `ActiveProcess\pid` on Windows,
+  checked against the process list) with the one running now, every 3 s. A Steam that quit and
+  came back has a new id and a dead old pipe. On loss the client is `Abandon`ed, not disposed
+  (releasing a pipe means calling into Steam's library over a dead connection), the view model
+  stops its timer and callback, turns refresh off and shows the banner again, and the connector
+  starts looking again. **A refresh remembers `_SteamGeneration` and throws its results away if
+  it changed**: on a dead pipe the ownership sweep sees nothing owned, and merging that would
+  empty the library and then the cache. The editor watches too and locks itself
+  (`IsInputEnabled`) when its Steam goes, since it can neither read nor commit without one.
+  Not exercised against a real Steam restart: whether the already-loaded client library can open
+  a pipe to a Steam that started after it was loaded; nor the Linux and macOS process lookup.
+
+  **Only a finished synchronization may delete a game.** The ownership sweep is one Steam call
+  per published app id, and once Steam is gone every remaining call answers "not owned", so a
+  sweep cut short looks exactly like an account that owns almost nothing (it once left 48 games
+  of 600). `LoadGamesAsync` therefore always *adds and updates* what it found, and returns true
+  only if the sweep **and** the stats pass both ran to the end under the same Steam; only then
+  are the games Steam no longer lists removed. "Under the same Steam" is asked directly with
+  `SteamConnector.IsSteamStillRunning()` as each pass finishes, because the watch notices a loss
+  only every few seconds, which is long enough for the whole sweep. The cache follows the same
+  rule: `GameCache.Sync(rows, removeMissing: false)` and no `IconCache.Prune` unless the sync
+  completed. A known name is never replaced by an empty one, and a failed download of the
+  published list changes nothing on screen. Not covered: a Steam that stays up but has not
+  finished loading its licences answers incompletely too, and would pass for complete.
 - `ViewModels/` hold all logic and every Steam call. Views are XAML plus thin code-behind.
 - `Views/MessageWindow.cs` is a hand-rolled stand-in for `MessageBox`, which Avalonia has
   no equivalent of. View models cannot show dialogs (no window to parent to), so they raise
   `ErrorRaised` / `MessageRaised` / `ConfirmRequested` and the window handles them. It
-  doubles as the main window when the Steam handshake fails, which is why it sets
+  doubles as the main window when the editor's Steam handshake fails, which is why it sets
   `ShowInTaskbar`; `ShowAsync` returns a completed task when there is no owner to parent to.
 - Bindings are compiled (`AvaloniaUseCompiledBindingsByDefault`), so every `DataTemplate`
   needs an `x:DataType` and binding typos are build errors rather than silent no-ops.
@@ -638,7 +723,7 @@ Two things about it are easy to get wrong:
 
 | Store | Owner | Holds |
 |---|---|---|
-| `games` table | `Library/GameCache.cs` | the owned game list and its stats |
+| `games` table | `Library/GameCache.cs` | each Steam account's owned game list and its stats |
 | `achievements` table | `Achievements/AchievementCache.cs` | one game's achievement list and its unlock state |
 | `<appid>.img` | `Common/IconCache.cs` | capsule art, one file per app id |
 | `<appid>_<icon>` | `Common/IconCache.cs` | achievement icons, one file per app id and icon name |
@@ -807,8 +892,20 @@ SAM's WinForms build ran it on a `BackgroundWorker` for exactly the same reason.
 means **Steam client calls do happen off the UI thread there** — that is pre-existing
 behaviour, preserved deliberately, not an invitation to add more.
 
-Logo and icon downloads use a single-consumer queue (`ConcurrentQueue` + `SemaphoreSlim`),
-one download at a time, matching the old single-`BackgroundWorker` behaviour.
+Capsule loading uses a queue (`ConcurrentQueue` + `SemaphoreSlim` for Steam, a `Channel` for
+the stores) drained by **eight workers**, not one. The old one-at-a-time shape matched the
+WinForms `BackgroundWorker`, and it made a warm start slow: hundreds of small files, each
+read, **decoded on the UI thread** and shown one after another. Now the read and the decode
+(`new Bitmap`) both happen off the UI thread, `HydrateCachedIconsAsync` decodes the whole disk
+cache with `Parallel.ForEachAsync` and puts each capsule on screen as it finishes, and the
+workers' counters stay safe because every worker resumes on the UI thread after each await.
+The completion test is therefore `completed == queued`, not "the queue is empty", which is
+true while other workers are still busy. Measured against a 626-game library: 624 capsules
+decoded and shown within the first 900 ms of the window. The editor's achievement-icon queue
+(`ManagerViewModel._IconQueue`) has the same eight workers and the same rules, plus
+`_IconLoads`, which keeps two achievements that share an icon from fetching it twice (a failed
+fetch is dropped from it so the next request retries). Not measured: the editor needs a live
+Steam.
 
 ## Conventions
 
@@ -822,7 +919,7 @@ Match the surrounding style; it is consistent and deliberate even where it is un
     version" marking, and the full zlib notice. A licence condition, not a style rule.
   - *Based on GOG Achievements Manager* (`Gog/`): the Caretaker copyright, the "based on GOG
     Achievements Manager by Timendum" attribution with both upstream URLs, and a note that it
-    reimplements the calls for reading only.
+    reimplements the calls it makes: listing, and unlocking and re-locking.
   - *Everything else* (`Epic/`, the shared store code, the store windows and view models,
     `tools/`, CI and packaging): the Caretaker copyright, `See LICENSE in the repository
     root.`, and for `Epic/` a line saying it is written from the endpoints Legendary and
