@@ -98,9 +98,19 @@ namespace AchievementCaretaker.Providers.Gog
 
         public string SignInHint => "the address the browser ends on (it contains \"code=\"), or just the code";
 
+        public SignInResultKind GetSignInResultKind(Uri address) =>
+            address != null &&
+            address.Host.Equals("embed.gog.com", StringComparison.OrdinalIgnoreCase) &&
+            address.AbsolutePath.StartsWith("/on_login_success", StringComparison.OrdinalIgnoreCase) &&
+            Regex.IsMatch(address.Query, @"[?&]code=[A-Za-z0-9_\-]+")
+                ? SignInResultKind.Address
+                : SignInResultKind.None;
+
         public bool IsSignedIn => this.Session?.HasRefreshToken == true;
 
         public string AccountName => this.Session?.DisplayName;
+
+        public string AccountId => this.IsSignedIn == true ? this.Session.UserId : null;
 
         public GogProvider(string sessionPath)
         {

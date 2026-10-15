@@ -166,6 +166,7 @@
               </ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:StoreLibraryViewModel">
+                  <StackPanel>
                   <Button Classes="rail" Classes.on="{Binding IsSelected}"
                           Command="{Binding $parent[ItemsControl].((vm:GamePickerViewModel)DataContext).SelectStoreCommand}"
                           CommandParameter="{Binding}">
@@ -184,6 +185,43 @@
                       <TextBlock Text="{Binding DisplayName}" FontSize="12" VerticalAlignment="Center" />
                     </DockPanel>
                   </Button>
+
+                  <!-- The account, always in view: who is signed in and the menu to switch
+                       or sign out; or, when nobody is, the way in. -->
+                  <Grid ColumnDefinitions="*,Auto" Margin="32,0,0,3">
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6"
+                                IsVisible="{Binding IsSignedIn}" VerticalAlignment="Center">
+                      <Ellipse Width="7" Height="7" Fill="{DynamicResource SamAccentBrush}"
+                               VerticalAlignment="Center" />
+                      <TextBlock Text="{Binding RailAccountText}" FontSize="11"
+                                 Foreground="{DynamicResource SamSecondaryTextBrush}"
+                                 TextTrimming="CharacterEllipsis" MaxWidth="110"
+                                 ToolTip.Tip="{Binding AccountText}" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Padding="6,1" FontSize="11"
+                            Background="Transparent" BorderThickness="0"
+                            Foreground="{DynamicResource SamSecondaryTextBrush}"
+                            IsVisible="{Binding IsSignedIn}"
+                            ToolTip.Tip="Switch account or sign out">
+                      <TextBlock Text="⋯" FontSize="14" />
+                      <Button.Flyout>
+                        <MenuFlyout>
+                          <MenuItem Header="Switch account…" Command="{Binding SwitchAccountCommand}" />
+                          <MenuItem Header="Sign out…" Command="{Binding SignOutCommand}" />
+                        </MenuFlyout>
+                      </Button.Flyout>
+                    </Button>
+                    <Button Grid.ColumnSpan="2" Padding="0,1" FontSize="11"
+                            HorizontalAlignment="Left"
+                            Background="Transparent" BorderThickness="0"
+                            Foreground="{DynamicResource SamAccentTextBrush}"
+                            IsVisible="{Binding IsSignedOut}"
+                            Command="{Binding SignInWithBrowserCommand}"
+                            ToolTip.Tip="Sign in to this store">
+                      <TextBlock Text="Sign in" FontSize="11" />
+                    </Button>
+                  </Grid>
+                  </StackPanel>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
@@ -487,12 +525,6 @@
               </ToggleSplitButton.Flyout>
             </ToggleSplitButton>
 
-            <Button Classes="quiet"
-                    Command="{Binding SelectedStoreLibrary.SignOutCommand}"
-                    IsVisible="{Binding SelectedStoreLibrary.IsSignedIn}"
-                    ToolTip.Tip="Forget this account on this computer">
-              <TextBlock Text="Sign out" FontSize="12" VerticalAlignment="Center" />
-            </Button>
           </StackPanel>
 
           <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">

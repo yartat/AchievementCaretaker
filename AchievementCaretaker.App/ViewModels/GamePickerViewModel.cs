@@ -69,6 +69,13 @@ namespace AchievementCaretaker.App.ViewModels
         // and then the cache.
         private int _SteamGeneration;
 
+        /// <summary>
+        /// The Steam account (32-bit id) whose library is on screen and is saved to, or 0
+        /// before any Steam has been seen. The cache holds a library per account; this is
+        /// which one is showing. Without Steam it is the account shown last time.
+        /// </summary>
+        private uint _SteamAccount;
+
         private readonly Dictionary<uint, GameInfo> _Games = new();
         private readonly HashSet<string> _LogosAttempted = new();
         private readonly ConcurrentQueue<GameInfo> _LogoQueue = new();
@@ -539,6 +546,14 @@ namespace AchievementCaretaker.App.ViewModels
             this._Settings = AppSettings.Load();
             this._IconCache = new(this._Settings.IconCachePath);
             this.OpenCache();
+            try
+            {
+                this._SteamAccount = this._Cache?.GetLastSteamAccount() ?? 0;
+            }
+            catch (Exception)
+            {
+                this._SteamAccount = 0;
+            }
 
             // Cached rows are loaded synchronously so the window has content
             // the moment it is shown; everything that touches the network or
@@ -611,7 +626,9 @@ namespace AchievementCaretaker.App.ViewModels
             this._AppDataChangedCallback = client.CreateAndRegisterCallback<SteamApi.Callbacks.AppDataChanged>();
             this._AppDataChangedCallback.OnRun += this.OnAppDataChanged;
 
-            this._LibraryStats = LibraryStats.Create(client.SteamUser.GetSteamId());
+            var steamId = client.SteamUser.GetSteamId();
+            this._LibraryStats = LibraryStats.Create(steamId);
+            this.UseSteamAccount((uint)(steamId & 0xFFFFFFFF));
 
             // The WinForms build pumped callbacks from a Forms.Timer; the
             // dispatcher timer is the direct equivalent and keeps callbacks on
@@ -621,6 +638,37 @@ namespace AchievementCaretaker.App.ViewModels
 
             Task initialLoad = this.RefreshLibraryAsync();
             GC.KeepAlive(initialLoad);
+        }
+
+        /// <summary>
+        /// Makes <paramref name="account"/> the one on screen. Steam may have come back as a
+        /// different account than the one shown from the cache; that account's own saved
+        /// library goes up, and the previous one's stays saved under its id for next time.
+        /// </summary>
+        private void UseSteamAccount(uint account)
+        {
+            if (account == 0 || account == this._SteamAccount)
+            {
+                return;
+            }
+
+            this._SteamAccount = account;
+            try
+            {
+                this._Cache?.SetLastSteamAccount(account);
+            }
+            catch (Exception)
+            {
+                // Only decides what is shown when Steam is missing at the next start.
+            }
+
+            this._Games.Clear();
+            this.LoadFromCache();
+            this.RefreshCollectionCounts();
+            this.RefreshGames();
+
+            Task decode = this.HydrateCachedIconsAsync();
+            GC.KeepAlive(decode);
         }
 
         private void OpenCache()
@@ -655,7 +703,7 @@ namespace AchievementCaretaker.App.ViewModels
             List<CachedGame> rows;
             try
             {
-                rows = this._Cache.LoadAll();
+                rows = this._Cache.LoadAll(this._SteamAccount);
             }
             catch (Exception)
             {
@@ -759,7 +807,8 @@ namespace AchievementCaretaker.App.ViewModels
         /// </param>
         private async Task SaveCacheAsync(bool complete)
         {
-            if (this._Cache == null)
+            var account = this._SteamAccount;
+            if (this._Cache == null || account == 0)
             {
                 return;
             }
@@ -780,7 +829,6 @@ namespace AchievementCaretaker.App.ViewModels
                 HasStats = info.Stats.HasValue,
             }).ToList();
 
-            var owned = this._Games.Keys.ToHashSet();
             var cache = this._Cache;
             var icons = this._IconCache;
 
@@ -790,10 +838,11 @@ namespace AchievementCaretaker.App.ViewModels
                 // cached capsules go with them.
                 await Task.Run(() =>
                 {
-                    cache.Sync(rows, removeMissing: complete);
+                    cache.Sync(account, rows, removeMissing: complete);
                     if (complete == true)
                     {
-                        icons.Prune(owned);
+                        // Art is kept for every game any saved account owns, not just this one.
+                        icons.Prune(cache.LoadAllGameIds());
                     }
                 });
             }
@@ -878,6 +927,7 @@ namespace AchievementCaretaker.App.ViewModels
             // This refresh's Steam: the field may be null by the time the sweep runs.
             var client = this._SteamClient;
             var generation = this._SteamGeneration;
+            var account = this._SteamAccount;
             this.CanRefresh = false;
             this.StatusText = "Downloading game list...";
             this.BeginProgress("Downloading game list...");
@@ -943,6 +993,14 @@ namespace AchievementCaretaker.App.ViewModels
 
             // Complete only if it was the same Steam from start to finish.
             var complete = steamHeld == true && generation == this._SteamGeneration;
+
+            // Steam came back as someone else while this ran: what it found belongs to the
+            // account that was on screen when it started, not to the one on screen now.
+            if (account != this._SteamAccount)
+            {
+                this.EndProgress();
+                return false;
+            }
 
             // What was found is kept either way: Steam said those are owned. Merged rather
             // than rebuilt, because the cached entries already on screen carry decoded

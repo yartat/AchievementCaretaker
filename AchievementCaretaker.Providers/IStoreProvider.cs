@@ -40,11 +40,24 @@ namespace AchievementCaretaker.Providers
         /// <summary>What to copy back from the browser after signing in.</summary>
         string SignInHint { get; }
 
+        /// <summary>
+        /// What an address the sign-in page lands on means, so a browser embedded in the
+        /// application can finish the sign-in without the user pasting anything. Each
+        /// store ends its sign-in differently, so each says how.
+        /// </summary>
+        SignInResultKind GetSignInResultKind(Uri address);
+
         /// <summary>True when a saved session exists that can still be refreshed.</summary>
         bool IsSignedIn { get; }
 
         /// <summary>The signed-in account's name, or null.</summary>
         string AccountName { get; }
+
+        /// <summary>
+        /// A stable id for the signed-in account, or null when nobody is. What a library
+        /// and its progress are saved under, so each account keeps its own.
+        /// </summary>
+        string AccountId { get; }
 
         /// <summary>
         /// Completes sign-in from what the user pasted: the bare code, or the whole

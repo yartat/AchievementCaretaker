@@ -149,30 +149,41 @@ These two work the same way for browsing: you can see which games you own and wh
 achievements are unlocked. Neither needs the Steam client. **Epic is read-only. GOG
 achievements can be changed**, see below.
 
-1. **Sign in.** Select the source. The first time, the main area shows a sign-in panel: press
-   the button to open the store's own sign-in page in your browser, sign in there, then paste
-   the code (Epic shows a page with an authorizationCode) or the address the browser ends on (GOG) back into Caretaker and press Continue.
-   Caretaker never sees your password. The session is kept in `~/.sac/epic.json` or
+1. **Sign in.** Select the source and press **Sign in**, here or under the source's name in
+   the left panel. The store's own sign-in page opens in a window of Caretaker and closes by
+   itself when you are signed in; nothing needs copying. Caretaker never sees your password,
+   and that window keeps nothing afterwards. If the window cannot start (on Windows it needs
+   the WebView2 runtime, on Linux WebKitGTK or WPE), Caretaker offers your own browser: open
+   the page there and paste back the code (Epic shows a page with an `authorizationCode`) or the
+   address the browser ends on (GOG). The session is kept in `~/.sac/epic.json` or
    `~/.sac/gog.json` (a token for the whole store account; treat it like a password).
 2. **The library loads and is cached.** Your games are listed with their capsule art. They are
    saved in `games.db`, so the next start shows them at once, and then refreshes in the
    background. If a refresh fails, the cached list stays and the status bar says why. Epic's
    list leaves out Fab and Unreal Engine marketplace assets, which are not games.
-3. **Achievement counts are loaded when you ask.** A store's game list carries no counts, and
-   reading them costs one request or more per game, so Caretaker does not do it on its own. A
-   game's meter stays absent until its count is known, because "unknown" is not "none earned".
-   Two ways to fill it in:
+3. **Achievement counts.** A store's game list carries no counts, and reading them costs one
+   request or more per game. Right after you sign in, Caretaker reads them for every game whose
+   count it does not have yet, a few at a time; for a large library that takes a few minutes,
+   shows in the status bar and can be cancelled. Signing back in to an account it already knows
+   reads only what is new. It never does this on its own at other times. A game's meter stays
+   absent until its count is known, because "unknown" is not "none earned". You can also fill
+   it in yourself:
    - **Open a game** (double-click, or Enter) to see its achievements: name, description,
      unlock date, and XP and rarity where the store has them. Opening it also records the
      game's count in the library.
-   - **Load progress** reads the counts for every game in the source, a few at a time. It can
-     be cancelled; the counts already read are kept, and a restart does not lose them. If your
-     session has expired the run stops and asks you to sign in again.
+   - **Load progress** does what the sign-in did, again: it reads the counts that are still
+     missing, for example after a cancel or for games that failed. The counts already read are
+     kept, and a restart does not lose them. If your session has expired the run stops and
+     asks you to sign in again.
 4. **Browse.** Stores offer the collections All games, Has achievements and Perfect games, and
    sorting by name or completion. They have no playtime, last played, review score, likes or
    demo/mod filters, so those do not appear.
-5. **Sign out** from the toolbar. It also removes that account's saved library and counts, so
-   the next person to sign in is never shown yours.
+5. **Account.** Under each store's name in the left panel is the signed-in account, with a
+   **⋯** menu. **Sign out…** asks first, and forgets the session only: the account's games and
+   achievement counts stay saved on this computer and are there again when you sign in. **Switch
+   account…** asks first, opens the sign-in window, and shows the new account's library once you
+   have signed in; closing the window leaves the current account as it was. Each account, in
+   each store and in Steam, keeps its own saved library, and one is never shown under another.
 
 What each store gives you differs. GOG has no XP and no progress values, so those columns are
 absent for GOG games. Epic achievements cannot be re-locked by anyone, so Epic stays read-only.

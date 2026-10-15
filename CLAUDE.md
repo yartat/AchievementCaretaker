@@ -77,9 +77,29 @@ The rules:
   `ThrowIfEpicError` and `ThrowIfError` deliberately do not echo response bodies, and
   GOG's token request carries the code or refresh token in its URL, so that URL is never
   part of a message either.
-- **Sign in with the store's own page, in the user's browser.** Caretaker never sees a
-  password and never reads another application's stored credentials. GOG Galaxy keeps its
-  refresh token in the registry and the reference tools take it from there; this does not.
+- **Sign in with the store's own page.** Caretaker never reads a password and never reads
+  another application's stored credentials. GOG Galaxy keeps its refresh token in the
+  registry and the reference tools take it from there; this does not. The page is shown in a
+  browser inside the application (`StoreSignInWindow`, the official `Avalonia.Controls.WebView`
+  package: WebView2, WebKitGTK or WPE, WKWebView) so nothing has to be copied back: the window
+  only watches the addresses the page moves through, and the provider says which one ends the
+  sign-in (`IStoreProvider.GetSignInResultKind`: GOG's redirect carries `code=` in the address,
+  Epic's redirect page carries the code in its text, read with `InvokeScript`). That browser runs
+  in private mode where the platform has one (`EnvironmentRequested`), so closing it keeps
+  nothing and a second account can sign in without being logged straight back into the first.
+  **The user's own browser plus a pasted code stays as the fallback**, and is what is offered
+  when the embedded browser does not start within a few seconds (no WebView2 runtime, no
+  WebKitGTK): that failure reports nothing, the page just never loads. The WPE backend has no
+  private-mode switch here, so on Linux with WPE a previous login may persist. The embedded
+  sign-in was verified by the project owner against live Epic and GOG accounts (on Windows).
+  Not exercised: Linux and macOS, the fallback with a missing WebView2 runtime, and switching
+  between two real accounts.
+- **The account is always in the rail**, under its source: its name with a menu for
+  **Switch account…** and **Sign out…**, or **Sign in**. Both ask first. Switching signs in
+  *before* it lets go of anything, so backing out of the page leaves the old account
+  untouched; only a successful sign-in replaces the session and the library on screen
+  (`ClearLibrary`, as opposed to `ForgetAccount`, which also drops the session). **Neither
+  deletes saved data**, see the next item.
 - **Unknown is null, not zero.** `StoreAchievement.XP`, `Progress` and `RarityPercent` are
   nullable because a store may not have them: GOG has no XP and no progress.
 - **Adding a store** means implementing `IStoreProvider` and listing it in
@@ -109,16 +129,34 @@ SOURCE section; Steam is the default and is `SelectedStoreLibrary == null`, not 
   (`StoreAchievementsWindow`), not through `Program.LaunchForApp`. The one-process-per-game
   rule exists because `ISteamUserStats` is scoped to the app id a process initialised with;
   a store's HTTPS service has no such scope.
-- **Progress is read on request, never automatically.** A library listing carries no
-  achievement counts, and reading them costs a request or more per game (GOG's two more to
-  GOGDB, which is run by volunteers). A game's counts are known once its window has been
-  opened or **Load progress** has covered it; until then the meter is absent, not empty.
-  Unknown is `null`, never 0.
-- **Sign-out and an expired session forget the account's library**, including the cached
-  progress: progress belongs to an account, and the next account to sign in must not be shown
-  the previous one's numbers. A dead session is forgotten too, or the sign-in panel would
-  never come back; `EpicProvider` and `GogProvider` both report a refused refresh as
-  `login_required` for that.
+- **Progress is read on request, and once when an account signs in.** A library listing
+  carries no achievement counts, and reading them costs a request or more per game (GOG's two
+  more to GOGDB, which is run by volunteers). A game's counts are known once its window has
+  been opened or **Load progress** has covered it; until then the meter is absent, not empty.
+  Unknown is `null`, never 0. The one automatic run is a **sign-in** (the browser sign-in, the
+  switch and the pasted code all end in `CompleteSignInAsync`), which starts **Load progress**
+  by itself after the library has loaded. It reads only the games whose count is not saved,
+  so signing back in to a known account is nearly free, and a new account on a large library
+  is hundreds of requests (about 1,200 on Epic, 600 on GOG at last count): it shows in the
+  status bar, can be cancelled, and keeps what it has. A start with a session already saved
+  never starts one. Do not add more triggers without the same thought for that cost.
+- **Every library is saved under its account**, so signing out or switching deletes nothing
+  and coming back to an account finds its games and progress as they were. `store_games` is
+  keyed `(provider, account, id)`, from `IStoreProvider.AccountId` (GOG's user id, Epic's
+  account id; null when signed out, and then there is no library to show). Steam's `games`
+  is keyed `(account, id)` by the 32-bit Steam account id, and `meta` remembers the account
+  last shown, so a start without Steam shows that account's library. When Steam comes back
+  as a different account, `UseSteamAccount` swaps what is on screen for that account's saved
+  library, and a refresh that began under another account throws its findings away rather
+  than merge them into this one. Progress belongs to the account it was read for and is
+  never shown to another. `IconCache.Prune` keeps art for the union of every saved account's
+  games (`GameCache.LoadAllGameIds`), not just the current one's. A dead session is still
+  forgotten, or the sign-in panel would never come back; `EpicProvider` and `GogProvider`
+  both report a refused refresh as `login_required` for that. A database from before accounts
+  were recorded has no way to say whose rows its library tables hold, so `GameCache.Open`
+  drops `games` and `store_games` when they lack the `account` column and rebuilds them:
+  they were only ever a cache, and nothing else is migrated. `AchievementCache` was already
+  per account and language.
 - **An element's own bindings read from its own `DataContext`.** The store view is hosted
   with `DataContext="{Binding SelectedStoreLibrary}"`, so its visibility is on a wrapper
   `Panel`, not on the view itself, or `IsVisible="{Binding IsStoreSelected}"` is looked up on
@@ -685,7 +723,7 @@ Two things about it are easy to get wrong:
 
 | Store | Owner | Holds |
 |---|---|---|
-| `games` table | `Library/GameCache.cs` | the owned game list and its stats |
+| `games` table | `Library/GameCache.cs` | each Steam account's owned game list and its stats |
 | `achievements` table | `Achievements/AchievementCache.cs` | one game's achievement list and its unlock state |
 | `<appid>.img` | `Common/IconCache.cs` | capsule art, one file per app id |
 | `<appid>_<icon>` | `Common/IconCache.cs` | achievement icons, one file per app id and icon name |

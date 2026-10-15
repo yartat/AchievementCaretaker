@@ -52,6 +52,8 @@ namespace AchievementCaretaker.App.Views
             {
                 this._ViewModel.ErrorRaised -= this.OnErrorRaised;
                 this._ViewModel.StoreAchievementsRequested -= this.OnStoreAchievementsRequested;
+                this._ViewModel.BrowserSignInRequested -= this.OnBrowserSignInRequested;
+                this._ViewModel.ConfirmRequested -= this.OnConfirmRequested;
             }
 
             this._ViewModel = this.DataContext as GamePickerViewModel;
@@ -61,6 +63,8 @@ namespace AchievementCaretaker.App.Views
                 this._ViewModel.ErrorRaised += this.OnErrorRaised;
                 this._ViewModel.SettingsRequested += this.OnSettingsRequested;
                 this._ViewModel.StoreAchievementsRequested += this.OnStoreAchievementsRequested;
+                this._ViewModel.BrowserSignInRequested += this.OnBrowserSignInRequested;
+                this._ViewModel.ConfirmRequested += this.OnConfirmRequested;
             }
 
             base.OnDataContextChanged(e);
@@ -81,6 +85,8 @@ namespace AchievementCaretaker.App.Views
                 this._ViewModel.ErrorRaised -= this.OnErrorRaised;
                 this._ViewModel.SettingsRequested -= this.OnSettingsRequested;
                 this._ViewModel.StoreAchievementsRequested -= this.OnStoreAchievementsRequested;
+                this._ViewModel.BrowserSignInRequested -= this.OnBrowserSignInRequested;
+                this._ViewModel.ConfirmRequested -= this.OnConfirmRequested;
                 this._ViewModel.Shutdown();
             }
             base.OnClosed(e);
@@ -94,6 +100,16 @@ namespace AchievementCaretaker.App.Views
         {
             StoreAchievementsWindow window = new() { DataContext = viewer };
             window.Show(this);
+        }
+
+        private System.Threading.Tasks.Task<BrowserSignInResult> OnBrowserSignInRequested(AchievementCaretaker.Providers.IStoreProvider provider)
+        {
+            return StoreSignInWindow.RunAsync(this, provider);
+        }
+
+        private System.Threading.Tasks.Task<bool> OnConfirmRequested(string title, string message)
+        {
+            return MessageWindow.ShowConfirmAsync(this, title, message);
         }
 
         private void OnErrorRaised(string message)

@@ -50,26 +50,10 @@
                    FontSize="17"
                    FontWeight="SemiBold"
                    Foreground="{DynamicResource SamTextBrush}" />
-        <TextBlock Text="{Binding SignInPrompt}"
+        <TextBlock Text="{Binding SignInIntro}"
                    FontSize="12"
                    TextWrapping="Wrap"
                    Foreground="{DynamicResource SamSecondaryTextBrush}" />
-
-        <Button Classes="quiet"
-                HorizontalAlignment="Left"
-                Command="{Binding OpenSignInPageCommand}">
-          <TextBlock Text="Open the sign-in page" FontSize="12" VerticalAlignment="Center" />
-        </Button>
-
-        <TextBox Text="{Binding PastedCode}"
-                 Height="30"
-                 FontSize="12"
-                 CornerRadius="5"
-                 PlaceholderText="Paste it here">
-          <TextBox.KeyBindings>
-            <KeyBinding Gesture="Enter" Command="{Binding SignInCommand}" />
-          </TextBox.KeyBindings>
-        </TextBox>
 
         <Button HorizontalAlignment="Left"
                 Height="30"
@@ -79,9 +63,43 @@
                 Foreground="{DynamicResource SamOnAccentBrush}"
                 BorderThickness="0"
                 IsEnabled="{Binding !IsBusy}"
-                Command="{Binding SignInCommand}">
-          <TextBlock Text="Continue" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+                Command="{Binding SignInWithBrowserCommand}">
+          <TextBlock Text="Sign in" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
         </Button>
+
+        <!-- The way that always works, and the only one where the built-in browser
+             cannot start: sign in elsewhere and paste what the page ends on. -->
+        <Expander Header="Or sign in with your own browser" FontSize="12">
+          <StackPanel Spacing="10" Margin="0,6,0,0">
+            <TextBlock Text="{Binding SignInPrompt}"
+                       FontSize="12"
+                       TextWrapping="Wrap"
+                       Foreground="{DynamicResource SamSecondaryTextBrush}" />
+
+            <Button Classes="quiet"
+                    HorizontalAlignment="Left"
+                    Command="{Binding OpenSignInPageCommand}">
+              <TextBlock Text="Open the sign-in page" FontSize="12" VerticalAlignment="Center" />
+            </Button>
+
+            <TextBox Text="{Binding PastedCode}"
+                     Height="30"
+                     FontSize="12"
+                     CornerRadius="5"
+                     PlaceholderText="Paste it here">
+              <TextBox.KeyBindings>
+                <KeyBinding Gesture="Enter" Command="{Binding SignInCommand}" />
+              </TextBox.KeyBindings>
+            </TextBox>
+
+            <Button Classes="quiet"
+                    HorizontalAlignment="Left"
+                    IsEnabled="{Binding !IsBusy}"
+                    Command="{Binding SignInCommand}">
+              <TextBlock Text="Continue" FontSize="12" VerticalAlignment="Center" />
+            </Button>
+          </StackPanel>
+        </Expander>
 
         <!-- RatingDislikeBrush is the theme-independent red; there is no error brush. -->
         <TextBlock Text="{Binding ErrorText}"

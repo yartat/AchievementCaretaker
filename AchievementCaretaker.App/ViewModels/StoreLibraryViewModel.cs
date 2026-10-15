@@ -96,6 +96,15 @@ namespace AchievementCaretaker.App.ViewModels
         /// <summary>The window opens the achievement viewer from this.</summary>
         public event Action<StoreAchievementsViewModel> AchievementsRequested;
 
+        /// <summary>
+        /// Raised to sign in with the store's own page in a browser inside the
+        /// application; the window owns the window. Returns what the page ended on.
+        /// </summary>
+        public event Func<IStoreProvider, Task<BrowserSignInResult>> BrowserSignInRequested;
+
+        /// <summary>Raised before something the user may not want; the window asks.</summary>
+        public event Func<string, string, Task<bool>> ConfirmRequested;
+
         [ObservableProperty]
         private StoreGameInfo _SelectedGame;
 
@@ -148,12 +157,20 @@ namespace AchievementCaretaker.App.ViewModels
 
         public string SignInTitle => $"Sign in to {this.DisplayName}";
 
+        public string SignInIntro => $"Sign in with your {this.DisplayName} account. The sign-in page opens in a window of Caretaker.";
+
         /// <summary>What <see cref="PastedCode"/> is for, from the provider.</summary>
         public string SignInPrompt => $"Sign in with your {this.DisplayName} account in the browser, then paste {this._Provider.SignInHint}.";
 
         public bool IsSignedIn => this._Provider.IsSignedIn;
 
         public bool IsSignedOut => this._Provider.IsSignedIn == false;
+
+        /// <summary>The rail's account line: who is signed in, or the way to sign in.</summary>
+        public string RailAccountText =>
+            this.IsSignedIn == true
+                ? this._Provider.AccountName ?? "Signed in"
+                : "Sign in";
 
         public string AccountText =>
             this._Provider.AccountName == null
@@ -189,7 +206,7 @@ namespace AchievementCaretaker.App.ViewModels
             foreach (var name in new[]
             {
                 nameof(this.IsSignedIn), nameof(this.IsSignedOut), nameof(this.AccountText),
-                nameof(this.CanRefresh), nameof(this.CanLoadProgress),
+                nameof(this.RailAccountText), nameof(this.CanRefresh), nameof(this.CanLoadProgress),
             })
             {
                 this.OnPropertyChanged(name);
@@ -209,14 +226,81 @@ namespace AchievementCaretaker.App.ViewModels
             }
         }
 
+        /// <summary>The fallback: the user signed in elsewhere and pasted the result.</summary>
         [RelayCommand]
-        private async Task SignInAsync()
+        private Task SignInAsync()
+        {
+            return this.CompleteSignInAsync(this.PastedCode);
+        }
+
+        /// <summary>Signs in with the store's own page, in a browser inside the application.</summary>
+        [RelayCommand]
+        private Task SignInWithBrowserAsync()
+        {
+            return this.BrowserSignInAsync();
+        }
+
+        /// <summary>
+        /// Signs in as a different account. The current one stays until the new sign-in
+        /// has succeeded, so backing out of the page costs nothing.
+        /// </summary>
+        [RelayCommand]
+        private async Task SwitchAccountAsync()
         {
             if (this.IsBusy == true)
             {
                 return;
             }
-            if (string.IsNullOrWhiteSpace(this.PastedCode) == true)
+            if (await this.ConfirmAsync(
+                "Switch account",
+                $"Sign in to a different {this.DisplayName} account? Its games and achievements replace " +
+                $"{this._Provider.AccountName ?? "the current account"}'s on screen once you have signed in. " +
+                "What is saved for each account stays on this computer, and the current account stays signed in " +
+                "until the new sign-in succeeds.") == false)
+            {
+                return;
+            }
+            await this.BrowserSignInAsync();
+        }
+
+        private async Task BrowserSignInAsync()
+        {
+            if (this.IsBusy == true || this.BrowserSignInRequested == null)
+            {
+                return;
+            }
+
+            this.ErrorText = "";
+            var result = await this.BrowserSignInRequested(this._Provider);
+            if (result.Pasted != null)
+            {
+                await this.CompleteSignInAsync(result.Pasted);
+            }
+            else if (result.Unavailable == true)
+            {
+                if (this.IsSignedIn == true)
+                {
+                    this.ErrorRaised?.Invoke(
+                        "The browser built into Caretaker could not start. Sign out, then sign in with your own browser.");
+                    return;
+                }
+                this.OpenSignInPage();
+                this.ErrorText = $"The built-in browser could not start, so your own browser was opened. Paste {this._Provider.SignInHint} below.";
+            }
+        }
+
+        private async Task<bool> ConfirmAsync(string title, string message)
+        {
+            return this.ConfirmRequested == null || await this.ConfirmRequested(title, message);
+        }
+
+        private async Task CompleteSignInAsync(string pasted)
+        {
+            if (this.IsBusy == true)
+            {
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(pasted) == true)
             {
                 this.ErrorText = $"Paste {this._Provider.SignInHint} first.";
                 return;
@@ -224,11 +308,19 @@ namespace AchievementCaretaker.App.ViewModels
 
             this.IsBusy = true;
             this.ErrorText = "";
+            var signedIn = false;
             try
             {
-                await this._Provider.SignInAsync(this.PastedCode, this._Lifetime.Token);
+                await this._Provider.SignInAsync(pasted, this._Lifetime.Token);
                 this.PastedCode = "";
+
+                // Whatever is on screen belongs to the previous account, if there was one.
+                // The new account's saved library, if it has one, goes up straight away.
+                this.CancelProgress();
+                this.ClearLibrary();
+                this.LoadFromCache();
                 this.NotifySignInChanged();
+                signedIn = true;
                 await this.RefreshLibraryCoreAsync();
             }
             catch (OperationCanceledException)
@@ -246,11 +338,30 @@ namespace AchievementCaretaker.App.ViewModels
             {
                 this.IsBusy = false;
             }
+
+            // A new sign-in reads the achievement counts without being asked: it is the one
+            // moment the user has just chosen this account, and it only covers games whose
+            // count is not already saved, so signing back in to a known account is cheap.
+            // Not after a failed library load, which would only report "nothing to read".
+            if (signedIn == true && this._Games.Count > 0)
+            {
+                Task progress = this.LoadProgressAsync();
+                GC.KeepAlive(progress);
+            }
         }
 
         [RelayCommand]
-        private void SignOut()
+        private async Task SignOutAsync()
         {
+            if (await this.ConfirmAsync(
+                "Sign out",
+                $"Sign out of {this.DisplayName}{(this._Provider.AccountName == null ? "" : " as " + this._Provider.AccountName)}? " +
+                "Its games and achievement counts stay saved on this computer and come back when you sign in again. " +
+                $"Nothing changes on {this.DisplayName}.") == false)
+            {
+                return;
+            }
+
             this.ForgetAccount();
             this.StatusText = $"Signed out of {this.DisplayName}.";
         }
@@ -264,27 +375,24 @@ namespace AchievementCaretaker.App.ViewModels
         }
 
         /// <summary>
-        /// Drops the session, and with it everything shown for the account. Progress
-        /// belongs to an account: keeping the games and their counts would show the
-        /// next account to sign in the previous one's numbers. A dead session is
-        /// forgotten too, or the sign-in panel would never come back.
+        /// Drops the session and stops showing the account's library. What is saved for
+        /// the account stays in the database under its account id, so signing back in
+        /// finds it; it is never shown to another account, which looks under its own id.
+        /// A dead session is forgotten too, or the sign-in panel would never come back.
         /// </summary>
         private void ForgetAccount()
         {
             this.CancelProgress();
             this._Provider.SignOut();
+            this.ClearLibrary();
+        }
 
+        /// <summary>Stops showing the account's library. Neither the session nor the saved rows are touched.</summary>
+        private void ClearLibrary()
+        {
             this._Games.Clear();
             this.FilteredGames.Clear();
             this.SelectedGame = null;
-            try
-            {
-                this._Cache()?.ClearStoreGames(this.Id);
-            }
-            catch (Exception)
-            {
-                // Best effort: the rows are replaced when the next account signs in.
-            }
 
             this.RefreshCollectionCounts();
             this.ErrorText = "";
@@ -299,6 +407,13 @@ namespace AchievementCaretaker.App.ViewModels
 
         private void LoadFromCache()
         {
+            // Nobody signed in, nobody's library to show.
+            var account = this._Provider.AccountId;
+            if (account == null)
+            {
+                return;
+            }
+
             List<CachedStoreGame> rows;
             try
             {
@@ -307,7 +422,7 @@ namespace AchievementCaretaker.App.ViewModels
                 {
                     return;
                 }
-                rows = cache.LoadStoreGames(this.Id);
+                rows = cache.LoadStoreGames(this.Id, account);
             }
             catch (Exception)
             {
@@ -448,7 +563,8 @@ namespace AchievementCaretaker.App.ViewModels
         private async Task SaveLibraryAsync()
         {
             var cache = this._Cache();
-            if (cache == null)
+            var account = this._Provider.AccountId;
+            if (cache == null || account == null)
             {
                 return;
             }
@@ -463,7 +579,7 @@ namespace AchievementCaretaker.App.ViewModels
 
             try
             {
-                await Task.Run(() => cache.SyncStoreGames(this.Id, rows));
+                await Task.Run(() => cache.SyncStoreGames(this.Id, account, rows));
             }
             catch (Exception e)
             {
@@ -776,7 +892,8 @@ namespace AchievementCaretaker.App.ViewModels
         private void SaveProgress(IReadOnlyCollection<(string Id, int Earned, int Total)> results)
         {
             var cache = this._Cache();
-            if (cache == null || results.Count == 0)
+            var account = this._Provider.AccountId;
+            if (cache == null || account == null || results.Count == 0)
             {
                 return;
             }
@@ -787,7 +904,7 @@ namespace AchievementCaretaker.App.ViewModels
             {
                 try
                 {
-                    cache.SaveStoreProgress(this.Id, results);
+                    cache.SaveStoreProgress(this.Id, account, results);
                 }
                 catch (Exception)
                 {
@@ -935,4 +1052,11 @@ namespace AchievementCaretaker.App.ViewModels
             this._Provider.Dispose();
         }
     }
+
+    /// <summary>
+    /// What the in-application sign-in page ended with: the text for the provider, or
+    /// nothing because the user closed it, or <see cref="Unavailable"/> because the
+    /// browser could not start and the user should be offered their own.
+    /// </summary>
+    internal readonly record struct BrowserSignInResult(string Pasted, bool Unavailable);
 }

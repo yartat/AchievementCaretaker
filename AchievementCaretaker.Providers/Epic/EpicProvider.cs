@@ -83,9 +83,18 @@ namespace AchievementCaretaker.Providers.Epic
 
         public string SignInHint => "the page that shows \"authorizationCode\" (or just the code)";
 
+        public SignInResultKind GetSignInResultKind(Uri address) =>
+            address != null &&
+            address.Host.EndsWith("epicgames.com", StringComparison.OrdinalIgnoreCase) &&
+            address.AbsolutePath.StartsWith("/id/api/redirect", StringComparison.OrdinalIgnoreCase)
+                ? SignInResultKind.PageText
+                : SignInResultKind.None;
+
         public bool IsSignedIn => this.Session?.IsRefreshTokenValid == true;
 
         public string AccountName => this.Session?.DisplayName;
+
+        public string AccountId => this.IsSignedIn == true ? this.Session.AccountId : null;
 
         public EpicProvider(string sessionPath)
         {
