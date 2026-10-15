@@ -193,14 +193,42 @@
                              VerticalAlignment="Center" />
                 </StackPanel>
               </Button>
+
+              <!-- The Steam editor's lock / invert / unlock buttons. Only for a store
+                   whose achievements can be changed (GOG); Epic's are not shown. They
+                   stay disabled until the code behind them exists. -->
+              <Rectangle Width="1" Margin="4,4"
+                         IsVisible="{Binding CanModify}"
+                         Fill="{DynamicResource SamBorderBrush}" />
+              <Button Classes="quiet" Height="26"
+                      IsVisible="{Binding CanModify}"
+                      IsEnabled="False"
+                      ToolTip.Tip="Lock every achievement shown">
+                <PathIcon Data="{StaticResource LockIcon}" />
+              </Button>
+              <Button Classes="quiet" Height="26"
+                      IsVisible="{Binding CanModify}"
+                      IsEnabled="False"
+                      ToolTip.Tip="Invert every achievement shown">
+                <PathIcon Data="{StaticResource InvertIcon}" />
+              </Button>
+              <Button Classes="quiet" Height="26"
+                      IsVisible="{Binding CanModify}"
+                      IsEnabled="False"
+                      ToolTip.Tip="Unlock every achievement shown">
+                <PathIcon Data="{StaticResource UnlockIcon}" />
+              </Button>
             </StackPanel>
           </DockPanel>
         </Border>
 
-        <!-- Read-only: a state icon where the Steam editor has a checkbox. The XP and
-             rarity columns share a size group across the rows, so they line up, and
-             collapse together when the store has no such thing (GOG has no XP). -->
-        <ListBox Background="Transparent"
+        <!-- List and detail, as in the Steam editor. -->
+        <Grid ColumnDefinitions="*,272">
+
+        <!-- The XP and rarity columns share a size group across the rows, so they line
+             up, and collapse together when the store has no such thing (GOG has no XP). -->
+        <ListBox Grid.Column="0"
+                 Background="Transparent"
                  BorderThickness="0"
                  Padding="0,0,6,0"
                  Grid.IsSharedSizeScope="True"
@@ -218,14 +246,10 @@
                   <ColumnDefinition Width="96" />
                 </Grid.ColumnDefinitions>
 
-                <Panel Grid.Column="0" VerticalAlignment="Center">
-                  <PathIcon Data="{StaticResource UnlockIcon}"
-                            IsVisible="{Binding Unlocked}"
-                            Foreground="{DynamicResource SamAccentBrush}" />
-                  <PathIcon Data="{StaticResource LockIcon}"
-                            IsVisible="{Binding !Unlocked}"
-                            Opacity="0.45" />
-                </Panel>
+                <CheckBox Grid.Column="0"
+                          IsChecked="{Binding Unlocked, Mode=OneWay}"
+                          IsEnabled="False"
+                          VerticalAlignment="Center" />
                 <Border Grid.Column="1"
                         Width="26" Height="26"
                         CornerRadius="4"
@@ -286,6 +310,72 @@
             </DataTemplate>
           </ListBox.ItemTemplate>
         </ListBox>
+
+        <!-- The description in full, as in the Steam editor. -->
+        <Border Grid.Column="1"
+                Background="{DynamicResource SamRailBrush}"
+                BorderThickness="1,0,0,0"
+                BorderBrush="{DynamicResource SamBorderBrush}"
+                Padding="16">
+          <ScrollViewer>
+            <StackPanel Spacing="14" DataContext="{Binding SelectedAchievement}"
+                        x:DataType="local:StoreAchievementItem">
+              <Border Width="56" Height="56"
+                      CornerRadius="8"
+                      HorizontalAlignment="Left"
+                      ClipToBounds="True"
+                      Background="{DynamicResource SamPlaceholderBrush}">
+                <Image Source="{Binding Icon}" />
+              </Border>
+
+              <StackPanel Spacing="7">
+                <TextBlock Text="{Binding Name}"
+                           FontSize="14"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource SamTextBrush}"
+                           TextWrapping="Wrap" />
+                <TextBlock Text="{Binding Description}"
+                           FontSize="11.5"
+                           LineHeight="17"
+                           Foreground="{DynamicResource SamSecondaryTextBrush}"
+                           TextWrapping="Wrap" />
+              </StackPanel>
+
+              <StackPanel Spacing="8">
+                <Rectangle Height="1" Fill="{DynamicResource SamBorderBrush}" />
+                <DockPanel>
+                  <TextBlock DockPanel.Dock="Left" Text="State" FontSize="11"
+                             Foreground="{DynamicResource SamMutedTextBrush}" />
+                  <TextBlock Text="{Binding StateText}" FontSize="11"
+                             HorizontalAlignment="Right"
+                             Foreground="{DynamicResource SamSecondaryTextBrush}" />
+                </DockPanel>
+                <DockPanel>
+                  <TextBlock DockPanel.Dock="Left" Text="Unlock time" FontSize="11"
+                             Foreground="{DynamicResource SamMutedTextBrush}" />
+                  <TextBlock Text="{Binding UnlockTimeText}" FontSize="11"
+                             HorizontalAlignment="Right"
+                             Foreground="{DynamicResource SamSecondaryTextBrush}" />
+                </DockPanel>
+                <DockPanel IsVisible="{Binding XpText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                  <TextBlock DockPanel.Dock="Left" Text="XP" FontSize="11"
+                             Foreground="{DynamicResource SamMutedTextBrush}" />
+                  <TextBlock Text="{Binding XpText}" FontSize="11"
+                             HorizontalAlignment="Right"
+                             Foreground="{DynamicResource SamSecondaryTextBrush}" />
+                </DockPanel>
+                <DockPanel IsVisible="{Binding RarityText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                  <TextBlock DockPanel.Dock="Left" Text="Rarity" FontSize="11"
+                             Foreground="{DynamicResource SamMutedTextBrush}" />
+                  <TextBlock Text="{Binding RarityText}" FontSize="11"
+                             HorizontalAlignment="Right"
+                             Foreground="{DynamicResource SamSecondaryTextBrush}" />
+                </DockPanel>
+              </StackPanel>
+            </StackPanel>
+          </ScrollViewer>
+        </Border>
+        </Grid>
       </DockPanel>
     </Panel>
   </DockPanel>

@@ -54,6 +54,14 @@ namespace AchievementCaretaker.App.Achievements
                 ? this.Source.UnlockDate.Value.ToLocalTime().ToString("d MMM yyyy", CultureInfo.CurrentCulture)
                 : this.Source.Unlocked == true ? "—" : "";
 
+        public string StateText => this.Source.Unlocked == true ? "Unlocked" : "Locked";
+
+        /// <summary>Full date and time for the detail pane; blank when the store gives none.</summary>
+        public string UnlockTimeText =>
+            this.Source.UnlockDate.HasValue == true
+                ? this.Source.UnlockDate.Value.ToLocalTime().ToString(CultureInfo.CurrentCulture)
+                : "";
+
         /// <summary>Blank when the store has no XP, as GOG has none. Not "0 XP".</summary>
         public string XpText =>
             this.Source.XP.HasValue == true

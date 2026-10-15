@@ -53,6 +53,12 @@ namespace AchievementCaretaker.App.ViewModels
 
         public string Title => $"{this._Game.Name} - {this._Provider.DisplayName} achievements";
 
+        /// <summary>
+        /// Whether the lock / invert / unlock buttons are shown. GOG's achievements can
+        /// be changed; Epic's cannot be re-locked, so its window has none.
+        /// </summary>
+        public bool CanModify => this._Provider.Id == "gog";
+
         [ObservableProperty]
         private string _StatusText = "";
 
