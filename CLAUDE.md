@@ -41,13 +41,13 @@ to a file is.
 |---|---|---|
 | `AchievementCaretaker.SteamApi` | `AchievementCaretaker.SteamApi.dll` (class library) | All native interop. Loads `steamclient.dll`, resolves vtables, marshals calls, pumps callbacks. Also owns the Valve KeyValues parsers (`KeyValue` binary, `TextKeyValue` text). |
 | `AchievementCaretaker.App` | `bin/AchievementCaretaker.exe` (WinExe) | The whole application: the library window and the per-game achievement editor, in one binary. |
-| `AchievementCaretaker.Providers` | `AchievementCaretaker.Providers.dll` (class library) | **Branch `feature/epic-achievements` only.** Read-only library and achievements of other stores (Epic Games, GOG) over HTTPS, behind `IStoreProvider`. Shown by the library window as the Epic and GOG sources. |
+| `AchievementCaretaker.Providers` | `AchievementCaretaker.Providers.dll` (class library) | Library and achievements (read-only for Epic; GOG can also unlock and lock) of other stores (Epic Games, GOG) over HTTPS, behind `IStoreProvider`. Shown by the library window as the Epic and GOG sources. |
 
 `AchievementCaretaker.slnx` is the solution, in the **`.slnx`** format. There is no
 `.sln`; do not add one back. Its `Documentation` folder carries `README.md`, `CLAUDE.md`,
 `LICENSE.txt` and everything under `docs/`.
 
-### Store providers (research branch)
+### Store providers
 
 `AchievementCaretaker.Providers` reads the library and achievements of other stores,
 each behind `IStoreProvider`: `Epic/EpicProvider` and `Gog/GogProvider`. It and the
@@ -161,8 +161,6 @@ SOURCE section; Steam is the default and is `SelectedStoreLibrary == null`, not 
   with `DataContext="{Binding SelectedStoreLibrary}"`, so its visibility is on a wrapper
   `Panel`, not on the view itself, or `IsVisible="{Binding IsStoreSelected}"` is looked up on
   the store.
-- `packaging/check-version.sh` checks the App and SteamApi projects only. When this ships,
-  add `AchievementCaretaker.Providers`, or its version silently stays behind.
 
 ### One executable, two windows
 

@@ -6,7 +6,7 @@
 #
 # Fails unless every place that states a version agrees with the one given.
 #
-# The version lives in more places than it should: both projects, and two
+# The version lives in more places than it should: the three projects, and two
 # window-title literals that are not generated from the assembly version. Rather
 # than paper over that in CI by overriding the version from the tag - which
 # would leave the titles saying something else - this refuses to release until
@@ -37,7 +37,7 @@ expect() {
 
 echo "checking that the repository says $version"
 
-for project in AchievementCaretaker.App AchievementCaretaker.SteamApi; do
+for project in AchievementCaretaker.App AchievementCaretaker.SteamApi AchievementCaretaker.Providers; do
     csproj="$project/$project.csproj"
     expect "$project Version"         "$csproj" "<Version>$version</Version>"
     expect "$project AssemblyVersion" "$csproj" "<AssemblyVersion>$assembly</AssemblyVersion>"

@@ -12,6 +12,119 @@ Achievement Manager 8.0.
 
 ---
 
+## 2.0.0 — 2026-10-15
+
+A major release. Caretaker is no longer only a Steam tool: it shows your **Epic Games** and
+**GOG** libraries beside Steam's, can **unlock and re-lock GOG achievements**, opens without
+Steam running, and keeps a separate saved library for every account. The Steam interop layer is
+unchanged; what is new is around it.
+
+### Highlights
+
+- **Epic Games and GOG in the library window.** Pick a source in the left panel: your games, and
+  how far through each one's achievements you are. Epic is read-only; GOG achievements can be
+  unlocked and locked from a window that works like the Steam editor.
+- **Sign in without copying anything.** The store's own sign-in page opens in a window of
+  Caretaker and closes by itself when you are in. Caretaker never reads your password.
+- **The library opens without Steam.** It shows the games saved last time under a "No active
+  Steam" banner and refreshes by itself as soon as Steam is available. If Steam quits, the
+  window notices and carries on.
+- **One saved library per account**, in Steam, GOG and Epic. Signing out or switching account
+  deletes nothing.
+- **Cached art loads in a fraction of the time.** Capsules and achievement icons are read,
+  decoded and downloaded in parallel.
+
+### Downloads
+
+| If you are on | Take |
+|---|---|
+| 64-bit Windows | `achievement-caretaker-2.0.0-win-x64-setup.exe` to install, or `…-win-x64-portable.zip` to unzip and run |
+| 32-bit Windows | `…-win-x86-setup.exe` or `…-win-x86-portable.zip` |
+| Debian or Ubuntu (amd64) | `achievement-caretaker_2.0.0_amd64.deb` — `sudo apt install ./achievement-caretaker_2.0.0_amd64.deb` |
+| Windows on Arm | the x64 download — Valve ships no ARM build of the Steam client, and Windows emulates both |
+
+Every download bundles the .NET runtime. The portable archives unzip to a folder that has to
+stay together. The installer is per user and installs into
+`%LOCALAPPDATA%\Programs\AchievementCaretaker`.
+
+### Upgrading from 1.1.0
+
+- **The application was renamed** from SteamAchievementCaretaker to AchievementCaretaker. The
+  2.0.0 installer therefore installs into its own folder with its own *Installed apps* entry, and
+  **does not replace 1.1.0**. Uninstall 1.1.0 from *Installed apps* (or delete its unzipped
+  folder) once 2.0.0 is running. Nothing in `~/.sac` is touched by either.
+- **Your settings and your like/dislike ratings carry over.** The saved game library is rebuilt
+  once: the library tables now record whose games they hold, and a database from before that
+  cannot say. It was only ever a cache, so the next refresh fills it again, and the capsule art
+  already on disk is reused.
+- Whatever is in `~/.sam` from Steam Achievement Manager is still moved to `~/.sac` the first
+  time, as before.
+
+### New
+
+- **Epic Games and GOG libraries**, one source at a time, with the same Tiles and Content views.
+  A store has no playtime, last played or Steam rating, so it offers the collections All games,
+  Has achievements and Perfect games, and sorting by name or completion.
+- **Store achievements window**, in the same process, laid out like the Steam editor: filter chips,
+  search, a row per achievement with its description and unlock date, and a detail pane. XP and
+  rarity appear where the store has them (GOG has no XP).
+- **Unlock and re-lock on GOG.** Tick achievements, or use the Lock, Invert and Unlock buttons
+  for everything shown; changes collect in an **Uncommitted** bar and **Commit** sends them to
+  GOG, then reads the list again. To do this Caretaker takes the game's own client credentials
+  from GOGDB, a community archive, only at the moment you commit. Epic achievements cannot be
+  re-locked, so Epic has none of this.
+- **Achievement counts.** Right after you sign in, Caretaker reads the counts for the games it
+  does not have yet, a few at a time (it shows in the status bar and can be cancelled); **Load
+  progress** does it again on request. A game's meter stays absent until its count is known.
+- **Sign-in inside the application**, with your own browser and a pasted code as the fallback if
+  the built-in browser cannot start. It needs the WebView2 runtime on Windows and WebKitGTK or
+  WPE on Linux.
+- **The account is always in the left panel**, under its store: its name, and a menu to
+  **Switch account** or **Sign out**. Both ask first. Switching signs in before it lets go of
+  anything, so closing the page leaves the current account as it was.
+- **Start without Steam.** The library opens at once, shows the cached games and capsules, and
+  tells you why Steam is not available. The App ID box and opening the editor say Steam is
+  needed instead of failing.
+- **Steam is watched while Caretaker is open.** If it quits, the games stay on screen and the
+  search for Steam resumes; an editor window for that Steam locks itself.
+- **A saved library per account**, for Steam (by Steam account) and for each store (by account).
+  Coming back to an account finds its games and progress where they were.
+
+### Changed
+
+- **Sign out no longer deletes the account's saved library or counts.** It forgets the session
+  only.
+- **Icons load in parallel**, off the UI thread, in the library, the store windows and the
+  editor. On a library of 626 games, 624 cached capsules decoded in 27 ms instead of 212 ms
+  (measured with a warm disk cache).
+- **A new sign-in starts reading achievement counts by itself.** Nothing else does.
+
+### Fixed
+
+- **A refresh cut short by Steam quitting could wipe the library.** Once Steam is gone, every
+  remaining ownership check answers "not owned", and one such run left 48 games of about 600.
+  A refresh now only adds and updates what it found, and removes games Steam no longer lists
+  only when the whole check ran to the end under the same Steam.
+- **A failed download of the published game list replaced the library with one game** (Spacewar).
+  It now changes nothing.
+- A game name Steam failed to answer was replaced by an empty one; a known name is kept.
+
+### Known issues
+
+- **Not exercised:** Linux and macOS (the new store code and the embedded sign-in), the fallback
+  when the WebView2 runtime is missing, switching between two real accounts, and whether a
+  running Caretaker reconnects to a Steam that was started after it (and the Linux and macOS
+  lookup of the Steam process). The Windows installers and the other artifacts of this version
+  are built by the release pipeline and were not run before this was written.
+- A Steam that is running but has not finished loading your licences answers incompletely and
+  can pass for a complete check, so a refresh could remove games that return on the next one.
+- With the WPE backend on Linux the sign-in window cannot be made private, so an earlier login
+  may persist in it.
+- Steam's write path (`SetAchievement`, `SetStatValue`, `StoreStats`, `ResetAllStats`) is still
+  not re-verified against a live account. The rest is as listed under 1.0.0 below.
+
+---
+
 ## 1.1.0 — 2026-09-23
 
 A packaging and polish release. Windows now gets an installer and a portable archive, both

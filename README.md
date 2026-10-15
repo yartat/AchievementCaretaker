@@ -105,7 +105,7 @@ time Caretaker runs.
 
 ## Versioning
 
-Current version: **1.1.0**. [docs/RELEASE-NOTES.md](docs/RELEASE-NOTES.md) records what
+Current version: **2.0.0**. [docs/RELEASE-NOTES.md](docs/RELEASE-NOTES.md) records what
 changed in each release.
 
 ## Using the sources

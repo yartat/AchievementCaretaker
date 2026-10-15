@@ -209,7 +209,7 @@ There is no arm64 job, on purpose — see the platform table in the
 ### The version gate
 
 The pipeline does **not** override the version from the tag. `packaging/check-version.sh`
-instead fails the pipeline unless the tag, both `.csproj` files, both window-title literals
+instead fails the pipeline unless the tag, all three `.csproj` files, both window-title literals
 and the `docs/RELEASE-NOTES.md` heading all say the same thing.
 
 That is deliberate: the titles are literals that cannot be driven from the assembly
