@@ -1052,6 +1052,7 @@ release. Delete whichever forge is not used. `packaging/` holds the shared half:
 | `packaging/windows/installer.nsi` | the installer itself |
 | `packaging/linux/build-deb.sh` | builds the `.deb` from a self-contained publish |
 | `packaging/linux/control.in`, `*.desktop`, `copyright` | the package metadata |
+| `packaging/chocolatey/build.sh` | the Chocolatey package from a published release (portable zips, SHA-256); `--push` sends it, with `CHOCO_API_KEY` |
 
 Five things there are load-bearing:
 

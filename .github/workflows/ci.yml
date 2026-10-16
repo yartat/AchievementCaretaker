@@ -56,6 +56,7 @@ jobs:
             dotnet publish AchievementCaretaker.App/AchievementCaretaker.App.csproj \
               -c Release -r "$rid" -p:Platform="$platform" --self-contained true -o "out/$rid" >/dev/null
             bash packaging/check-pe-arch.sh "out/$rid" "$rid"
+            bash packaging/check-policy.sh "out/$rid"
             find "out/$rid" -name '*.pdb' -delete
             bash packaging/windows/build-installer.sh \
               --publish-dir "out/$rid" --version "$VERSION" --arch "$arch" --output dist \
@@ -71,6 +72,7 @@ jobs:
           set -euo pipefail
           VERSION="$(bash packaging/version.sh)"
           VERSION="${VERSION#VERSION=}"
+          bash packaging/check-policy.sh
           dotnet publish AchievementCaretaker.App/AchievementCaretaker.App.csproj \
             -c Release -r linux-x64 --self-contained true -o out/linux-x64 >/dev/null
           bash packaging/linux/build-deb.sh \

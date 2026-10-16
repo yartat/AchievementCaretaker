@@ -182,7 +182,7 @@ than a larger download. Debug symbols are stripped, which is about a third of th
 | Workflow | Runs on | Does |
 |---|---|---|
 | `.github/workflows/ci.yml` | pushes to a branch, pull requests | builds with warnings as errors, publishes both Windows targets and checks their architecture, builds the `.deb` |
-| `.github/workflows/release.yml` | a `v*.*.*` tag, or `workflow_dispatch` | builds the three artifacts and attaches them to a GitHub release |
+| `.github/workflows/release.yml` | a `v*.*.*` tag, or `workflow_dispatch` | builds the three artifacts and attaches them to a GitHub release; then, on a tag only, pushes the Chocolatey package (`chocolatey` job, Windows runner, needs the `CHOCO_API_KEY` secret) |
 
 The `.NET` SDK comes from `actions/setup-dotnet` with `global-json-file: global.json`, so
 the pinned SDK version is honoured rather than restated. `workflow_dispatch` builds
@@ -205,6 +205,13 @@ there rather than at job artifacts, because job artifacts expire and a release l
 
 There is no arm64 job, on purpose — see the platform table in the
 [README](../README.md#platform-support).
+
+### The policy documents
+
+`packaging/check-policy.sh` requires `PRIVACY.md` and `LICENSE.txt` at the repository root and a
+README link to `PRIVACY.md`. Given a publish directory it copies both into it, so the installer and
+the portable archive carry them, and the Debian package installs `PRIVACY.md` under
+`/usr/share/doc`. Every build runs it, so a release without the policy cannot be built.
 
 ### The version gate
 
@@ -260,6 +267,24 @@ The Windows builds started framework-dependent, at about 12 MB zipped against th
 they are now. They were changed to self-contained so that one sentence covers every
 download: nothing else to install. A portable build that first asks you to install a
 runtime is not portable, and the installer has no way to fetch one.
+
+### The Chocolatey package
+
+`packaging/chocolatey/build.sh <version>` builds `achievement-caretaker.<version>.nupkg` from a
+published release. It downloads both portable zips from the GitHub release, takes their SHA-256
+hashes, fills in the nuspec and install script, and runs `choco pack`. The package holds no
+binaries: `chocolateyInstall.ps1` downloads the zip for the architecture being installed and checks
+it against the hash.
+
+It installs the **portable zip**, not the installer. Chocolatey runs elevated, and the installer is
+per user, so it would land in the administrator's profile. The zip keeps the shim and the Start menu
+shortcut, and the uninstall removes them. `~/.sac` is outside the package and is never touched.
+
+The hashes are of the files the release serves, so publish the release first. On a tag, the
+`chocolatey` job of `release.yml` does that after the release exists and pushes the package with
+`--push`, using the `CHOCO_API_KEY` secret. By hand, the same is `CHOCO_API_KEY=… bash
+packaging/chocolatey/build.sh <version> --push`. A new hash is a new package, so rebuild after
+any change to a release asset.
 
 ### Building the packages without tagging
 

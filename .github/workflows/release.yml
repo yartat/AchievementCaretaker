@@ -122,6 +122,7 @@ jobs:
             -c Release -r "${{ matrix.rid }}" -p:Platform="${{ matrix.platform }}" \
             --self-contained true -o "out/$DIR"
           bash packaging/check-pe-arch.sh "out/$DIR" "${{ matrix.rid }}"
+          bash packaging/check-policy.sh "out/$DIR"
           # Debug symbols are a third of the tree and nothing needs them.
           find "out/$DIR" -name '*.pdb' -delete
           mkdir -p dist
@@ -158,6 +159,7 @@ jobs:
           VERSION: ${{ needs.version.outputs.version }}
         run: |
           set -euo pipefail
+          bash packaging/check-policy.sh
           dotnet publish AchievementCaretaker.App/AchievementCaretaker.App.csproj \
             -c Release -r linux-x64 --self-contained true -o out/linux-x64
           bash packaging/linux/build-deb.sh \
@@ -203,3 +205,26 @@ jobs:
             artifacts/win-x64/* \
             artifacts/win-x86/* \
             artifacts/deb/*.deb
+
+  # Chocolatey is Windows-only: choco pack and push run on the Windows runner, from
+  # the same script a maintainer runs by hand. It runs after the release exists,
+  # because the package downloads the portable zips from it and hashes them.
+  chocolatey:
+    needs: [version, release]
+    if: github.ref_type == 'tag'
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and push the Chocolatey package
+        env:
+          CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          bash packaging/chocolatey/build.sh "$VERSION" --out dist/chocolatey --push

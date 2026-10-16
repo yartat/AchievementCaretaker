@@ -1,0 +1,48 @@
+# AchievementCaretaker
+# Copyright (c) 2026 Yaroslav V Tatarenko
+#
+# See LICENSE in the repository root.
+#
+# Template for packaging/chocolatey/build.sh, which fills in the @...@ fields.
+#
+# The portable zip, not the installer: Chocolatey runs elevated, and the installer
+# is per user (%LOCALAPPDATA%), so it would install into the administrator's profile.
+# The zip is self-contained and has no per-user state; the application keeps its
+# settings and caches in ~/.sac, which is outside the package and survives uninstall.
+
+$ErrorActionPreference = 'Stop'
+
+$packageName = $env:ChocolateyPackageName
+$toolsDir    = Split-Path -Parent $MyInvocation.MyCommand.Definition
+
+$url32 = '@URL32@'
+$url64 = '@URL64@'
+
+$zipArgs = @{
+  PackageName    = $packageName
+  Url            = $url32
+  Checksum       = '@SHA32@'
+  ChecksumType   = 'sha256'
+  Url64bit       = $url64
+  Checksum64     = '@SHA64@'
+  ChecksumType64 = 'sha256'
+  UnzipLocation  = $toolsDir
+}
+Install-ChocolateyZipPackage @zipArgs
+
+# The zip holds one folder; the executable is inside it.
+$exe = Get-ChildItem -Path $toolsDir -Recurse -Filter 'AchievementCaretaker.exe' | Select-Object -First 1
+if (-not $exe) {
+  throw "AchievementCaretaker.exe was not found in the package after unzipping."
+}
+
+# A .gui file beside the executable makes Chocolatey's shim start it without a console.
+New-Item -Path "$($exe.FullName).gui" -ItemType File -Force | Out-Null
+
+Install-BinFile -Name 'achievement-caretaker' -Path $exe.FullName
+
+$startMenu = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs'
+Install-ChocolateyShortcut -ShortcutFilePath (Join-Path $startMenu 'Achievement Caretaker.lnk') `
+  -TargetPath $exe.FullName `
+  -WorkingDirectory $exe.DirectoryName `
+  -Description 'Achievement Caretaker'

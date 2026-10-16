@@ -110,6 +110,7 @@ install -m 0644 "$root/docs/assets/app-icon.svg" \
 sed "s|@HOMEPAGE@|$homepage|g" "$here/copyright" \
     > "$stage/usr/share/doc/$PACKAGE/copyright"
 chmod 0644 "$stage/usr/share/doc/$PACKAGE/copyright"
+install -m 0644 "$root/PRIVACY.md" "$stage/usr/share/doc/$PACKAGE/PRIVACY.md"
 
 printf '%s (%s) unstable; urgency=low\n\n  * Achievement Caretaker %s. See %s\n\n -- %s  %s\n' \
     "$PACKAGE" "$version" "$version" "$homepage" "$maintainer" "$(date -R)" \

@@ -219,6 +219,7 @@ the whole directory is needed to run, not just the executable. Full instructions
 | [docs/BUILD.md](docs/BUILD.md) | building, publishing and packaging a release |
 | [docs/RELEASE-NOTES.md](docs/RELEASE-NOTES.md) | what changed, per version |
 | [docs/ATTRIBUTION.md](docs/ATTRIBUTION.md) | the Steam Achievement Manager lineage and licensing |
+| [PRIVACY.md](PRIVACY.md) | what is stored on your computer, and which services the application contacts |
 | [CLAUDE.md](CLAUDE.md) | working notes for contributors and coding agents |
 
 ## Attribution and licence
