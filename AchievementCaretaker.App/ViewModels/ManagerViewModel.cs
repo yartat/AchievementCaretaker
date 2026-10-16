@@ -125,7 +125,7 @@ namespace AchievementCaretaker.App.ViewModels
         public ObservableCollection<Stats.StatInfo> Statistics { get; } = new();
 
         [ObservableProperty]
-        private string _Title = "Achievement Caretaker 2.0";
+        private string _Title = "Achievement Caretaker 2.1";
 
         [ObservableProperty]
         private string _StatusText = "";
@@ -294,7 +294,7 @@ namespace AchievementCaretaker.App.ViewModels
 
             var name = client.SteamApps001.GetAppData((uint)gameId, "name");
             this.GameName = name ?? gameId.ToString(CultureInfo.InvariantCulture);
-            this.Title = "Achievement Caretaker 2.0 | " + this.GameName;
+            this.Title = "Achievement Caretaker 2.1 | " + this.GameName;
 
             this._UserStatsReceivedCallback = client.CreateAndRegisterCallback<SteamApi.Callbacks.UserStatsReceived>();
             this._UserStatsReceivedCallback.OnRun += this.OnUserStatsReceived;

@@ -72,8 +72,10 @@ The rules:
 - **Every unofficial endpoint lives in its store's one `*Provider.cs`.** They are the
   stores' own and can change; keep them in one file each.
 - **A session file holds a refresh token**, a credential for the whole store account:
-  `~/.sac/epic.json`, `~/.sac/gog.json`. They go through `SessionFile`, which writes them
-  user-only on Unix. Never log one, print one or put one in an error message.
+  `~/.sac/epic.json`, `~/.sac/gog.json`. They go through `SessionFile`, which encrypts
+  them with DPAPI (`ProtectedData`, `CurrentUser` scope) on Windows and writes them
+  user-only on Unix, where there is no BCL equivalent of DPAPI. Never log one, print one
+  or put one in an error message.
   `ThrowIfEpicError` and `ThrowIfError` deliberately do not echo response bodies, and
   GOG's token request carries the code or refresh token in its URL, so that URL is never
   part of a message either.

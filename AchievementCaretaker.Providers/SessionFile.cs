@@ -7,6 +7,8 @@
 
 using System;
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace AchievementCaretaker.Providers
@@ -16,9 +18,16 @@ namespace AchievementCaretaker.Providers
     /// </summary>
     /// <remarks>
     /// A session file holds a refresh token, which is a credential for the whole
-    /// store account. It lives in the user's profile, is written user-only on
-    /// Unix, and nothing here or in the callers logs or prints it. Both providers
-    /// go through this one place so that stays true of both.
+    /// store account. On Windows the serialized JSON is encrypted with DPAPI
+    /// (<see cref="ProtectedData"/>, <see cref="DataProtectionScope.CurrentUser"/>)
+    /// before it is written, so the file on disk is only readable by whoever can
+    /// already act as the signed-in Windows user — the same account DPAPI itself
+    /// is keyed to. There is no BCL equivalent on Linux or macOS (that needs
+    /// libsecret or Keychain, neither of which this project depends on), so
+    /// there the file stays plain JSON, written user-only
+    /// (<see cref="UnixFileMode.UserRead"/> | <see cref="UnixFileMode.UserWrite"/>).
+    /// Nothing here or in the callers logs or prints a token either way. Both
+    /// providers go through this one place so that stays true of both.
     /// </remarks>
     internal static class SessionFile
     {
@@ -28,13 +37,23 @@ namespace AchievementCaretaker.Providers
         {
             try
             {
-                return File.Exists(path) == true
-                    ? JsonSerializer.Deserialize<T>(File.ReadAllText(path))
-                    : null;
+                if (File.Exists(path) == false)
+                {
+                    return null;
+                }
+
+                var bytes = File.ReadAllBytes(path);
+                if (OperatingSystem.IsWindows())
+                {
+                    bytes = ProtectedData.Unprotect(bytes, null, DataProtectionScope.CurrentUser);
+                }
+
+                return JsonSerializer.Deserialize<T>(Encoding.UTF8.GetString(bytes));
             }
             catch (Exception)
             {
-                // A corrupt file means signing in again, not failing to start.
+                // A corrupt or undecryptable file means signing in again, not
+                // failing to start.
                 return null;
             }
         }
@@ -42,14 +61,20 @@ namespace AchievementCaretaker.Providers
         public static void Save<T>(string path, T session)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path)));
-            File.WriteAllText(path, JsonSerializer.Serialize(session, new JsonSerializerOptions() { WriteIndented = true }));
+
+            var bytes = Encoding.UTF8.GetBytes(
+                JsonSerializer.Serialize(session, new JsonSerializerOptions() { WriteIndented = true }));
 
             // Plain `if (!OperatingSystem.IsWindows())` rather than this file's
             // usual `== false`: CA1416 only recognises the bare form as a guard.
             if (!OperatingSystem.IsWindows())
             {
+                File.WriteAllBytes(path, bytes);
                 File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                return;
             }
+
+            File.WriteAllBytes(path, ProtectedData.Protect(bytes, null, DataProtectionScope.CurrentUser));
         }
 
         public static void Delete(string path)

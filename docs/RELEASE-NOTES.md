@@ -12,6 +12,31 @@ Achievement Manager 8.0.
 
 ---
 
+## 2.1.0 — 2026-10-16
+
+A small security release. No user-facing feature changes.
+
+### Highlights
+
+- **GOG and Epic session files are now encrypted at rest on Windows.** `~/.sac/epic.json`
+  and `~/.sac/gog.json` hold a refresh token — a credential for the whole store account —
+  and are now protected with DPAPI (`CurrentUser` scope) instead of being saved as plain
+  JSON. On Linux and macOS, where there is no BCL equivalent of DPAPI, the file is still
+  written user-only, as before.
+
+### Downloads
+
+| If you are on | Take |
+|---|---|
+| 64-bit Windows | `achievement-caretaker-2.1.0-win-x64-setup.exe` to install, or `…-win-x64-portable.zip` to unzip and run |
+| 32-bit Windows | `…-win-x86-setup.exe` or `…-win-x86-portable.zip` |
+| Debian or Ubuntu (amd64) | `achievement-caretaker_2.1.0_amd64.deb` — `sudo apt install ./achievement-caretaker_2.1.0_amd64.deb` |
+| Windows on Arm | the x64 download — Valve ships no ARM build of the Steam client, and Windows emulates both |
+
+Every download bundles the .NET runtime.
+
+---
+
 ## 2.0.0 — 2026-10-15
 
 A major release. Caretaker is no longer only a Steam tool: it shows your **Epic Games** and

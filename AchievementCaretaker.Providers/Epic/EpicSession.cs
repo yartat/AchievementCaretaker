@@ -20,9 +20,9 @@ namespace AchievementCaretaker.Providers.Epic
     /// straight into this and the file on disk reads the same.
     /// </summary>
     /// <remarks>
-    /// The refresh token is a credential for the whole account. The file is
-    /// written user-only on Unix and lives in the user's profile on Windows;
-    /// nothing here should ever be logged or printed.
+    /// The refresh token is a credential for the whole account; nothing here
+    /// should ever be logged or printed. See <see cref="SessionFile"/> for how
+    /// the file it is saved to is protected.
     /// </remarks>
     public sealed class EpicSession
     {
