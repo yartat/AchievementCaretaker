@@ -35,13 +35,25 @@ Code, comments, identifiers, commit messages and every document in this reposito
 written in **English**. Model output to the user in chat is in **Russian**; nothing written
 to a file is.
 
+## Git
+
+**Never commit, tag, push or open a pull request on your own initiative.** Finishing a change,
+a fix or a release build is not permission to commit it. Wait for the user to ask for the
+commit in that message. A request to "release" or to "send the PR" covers only the step it
+names, and what it names is confirmed on the spot. Prepare commit text on request, and say
+what would be committed, but do not run `git commit`, `git tag` or `git push` until told to.
+
 ## Projects
 
 | Project | Output | Role |
 |---|---|---|
 | `AchievementCaretaker.SteamApi` | `AchievementCaretaker.SteamApi.dll` (class library) | All native interop. Loads `steamclient.dll`, resolves vtables, marshals calls, pumps callbacks. Also owns the Valve KeyValues parsers (`KeyValue` binary, `TextKeyValue` text). |
 | `AchievementCaretaker.App` | `bin/AchievementCaretaker.exe` (WinExe) | The whole application: the library window and the per-game achievement editor, in one binary. |
-| `AchievementCaretaker.Providers` | `AchievementCaretaker.Providers.dll` (class library) | Library and achievements (read-only for Epic; GOG can also unlock and lock) of other stores (Epic Games, GOG) over HTTPS, behind `IStoreProvider`. Shown by the library window as the Epic and GOG sources. |
+| `AchievementCaretaker.Providers.Abstractions` | class library | `IStoreProvider`, `IWritableStoreProvider`, `ISessionStore` and the models (`StoreGame`, `StoreAchievement`, `ProviderException`, `SignInResultKind`). Interfaces and models only: no packages, no code that runs. |
+| `AchievementCaretaker.Providers.Shared` | class library | What the store providers share: the session stores (`DpapiSessionStore`, `PlainSessionStore`), the `AddSessionStore` registration and `JsonHelpers`, public, with the packages they need. |
+| `AchievementCaretaker.Services` | class library | The logic behind the windows, with no UI and no Avalonia: the SQLite caches (`ILibraryCache`/`LibraryCache`, `AchievementCache`) and the store services (`IStoreLibraryService`, `IStoreAchievementsService`). Public interfaces; the cache internals are internal. |
+| `AchievementCaretaker.Providers.Epic` | class library | The Epic Games provider, read-only. Every unofficial Epic endpoint is in its `EpicProvider.cs`. |
+| `AchievementCaretaker.Providers.Gog` | class library | The GOG provider; it can also unlock and lock. Every unofficial GOG endpoint is in its `GogProvider.cs`. |
 
 `AchievementCaretaker.slnx` is the solution, in the **`.slnx`** format. There is no
 `.sln`; do not add one back. Its `Documentation` folder carries `README.md`, `CLAUDE.md`,
@@ -49,8 +61,13 @@ to a file is.
 
 ### Store providers
 
-`AchievementCaretaker.Providers` reads the library and achievements of other stores,
-each behind `IStoreProvider`: `Epic/EpicProvider` and `Gog/GogProvider`. It and the
+The `AchievementCaretaker.Providers.*` assemblies read the library and achievements of other
+stores, each behind `IStoreProvider`: `EpicProvider` and `GogProvider`, in their own assemblies,
+with the interfaces in `Abstractions` and the shared plumbing in `Shared`. Providers do not
+reference one another, and internals are not shared across assemblies (no `InternalsVisibleTo`):
+whatever two providers need goes into `Shared` as public code. The providers are
+registered in the application's composition root (`App/Services/ServiceRegistration.cs`), since
+`Abstractions` cannot reference them. They and the
 throwaway `tools/ProviderProbe` (listed in the `.slnx` so it builds with everything, never
 published) are research, written up in `docs/EPIC-RESEARCH.md` and `docs/GOG-RESEARCH.md`.
 The rules:
@@ -71,11 +88,25 @@ The rules:
   live GOG account (unlock and re-lock), unlike Steam's write path.
 - **Every unofficial endpoint lives in its store's one `*Provider.cs`.** They are the
   stores' own and can change; keep them in one file each.
+- **A provider never holds an `HttpClient`.** It takes an `IHttpClientFactory` and asks for
+  its named client (`EpicProvider.HttpClientName`, `GogProvider.HttpClientName`) **per request**.
+  A client kept for the life of the process keeps its connections and the DNS answer it started
+  with, so a changed address or a dropped connection is not noticed. The client's timeout and
+  `User-Agent` are configured with the name, in the provider's own
+  `Add<Store>Provider` extension (`EpicServiceCollectionExtensions`, `GogServiceCollectionExtensions`),
+  which is also what registers the provider as an `IStoreProvider`. A provider owns nothing that
+  needs disposing, so `IStoreProvider` is not `IDisposable`. The two provider assemblies
+  reference `Microsoft.Extensions.Http` for this; `Abstractions` and `Shared` do not.
 - **A session file holds a refresh token**, a credential for the whole store account:
-  `~/.sac/epic.json`, `~/.sac/gog.json`. They go through `SessionFile`, which encrypts
-  them with DPAPI (`ProtectedData`, `CurrentUser` scope) on Windows and writes them
-  user-only on Unix, where there is no BCL equivalent of DPAPI. Never log one, print one
-  or put one in an error message.
+  `~/.sac/epic.json`, `~/.sac/gog.json`. They go through `ISessionStore`, which a provider
+  takes in its constructor. `DpapiSessionStore` encrypts them with DPAPI (`ProtectedData`,
+  `CurrentUser` scope) on Windows; `PlainSessionStore` writes them user-only on Unix, where
+  there is no BCL equivalent of DPAPI. **Which one is a single decision, made once in
+  `AddSessionStore`**; nothing else asks which system it is on. Never log a session, print one
+  or put one in an error message. Before 2.1.0 the file was plain JSON on Windows too, so
+  `DpapiSessionStore.Load` still reads that (told apart by its first byte, `{`, not by catching
+  a decryption failure, and with a byte-order mark skipped, which the JSON reader will not do)
+  and writes it back encrypted: a sign-in made with an older version is kept.
   `ThrowIfEpicError` and `ThrowIfError` deliberately do not echo response bodies, and
   GOG's token request carries the code or refresh token in its URL, so that URL is never
   part of a message either.
@@ -104,8 +135,10 @@ The rules:
   deletes saved data**, see the next item.
 - **Unknown is null, not zero.** `StoreAchievement.XP`, `Progress` and `RarityPercent` are
   nullable because a store may not have them: GOG has no XP and no progress.
-- **Adding a store** means implementing `IStoreProvider` and listing it in
-  `StoreProviders.CreateAll`. Nothing else has to change to see it.
+- **Adding a store** means implementing `IStoreProvider` and registering it in
+  `ServiceRegistration.AddCaretaker` (with the `Add<Store>Provider` extension that goes with it)
+  as an `IStoreProvider`. Everything that lists the stores asks the container for
+  `IEnumerable<IStoreProvider>`, so nothing else has to change to see it.
 
 How the library window shows them. One source is on screen at a time, chosen in the rail's
 SOURCE section; Steam is the default and is `SelectedStoreLibrary == null`, not an entry.
@@ -121,8 +154,10 @@ SOURCE section; Steam is the default and is `SelectedStoreLibrary == null`, not 
 - **`store_games` lives in `GameCache`, not in a second class.** `GameCache` owns the one
   connection to `games.db` and its `MoveTo`; a second connection would block a cache move on
   Windows. The Steam library saves from a pool thread while the stores read and write from
-  the UI thread, so every public `GameCache` member takes `_Gate`. The store libraries reach
-  the cache through a `Func<GameCache>`, because `MoveTo` replaces the instance.
+  the UI thread, so every public `GameCache` member takes `_Gate`. The one cache is an
+  `ILibraryCache` (`LibraryCache`) registered as a singleton: it stays the same object when
+  `MoveTo` replaces the connection behind it, and an unopenable database is a cache that reads
+  empty and writes nothing, with `Error` saying why.
 - **Store images live in `<icon cache>/store/<provider>/`, named by a hash of the URL**
   (`StoreImageCache`). The subfolder is what keeps `IconCache.Prune`, which parses app ids out
   of file names and only walks the top level, away from them. `IconCache.MoveTo` moves the
@@ -201,6 +236,7 @@ The executable refuses to run from the Steam install directory
 | `ViewModels/` | `…App.ViewModels` | `ProgressViewModel`, `GamePickerViewModel`, `ManagerViewModel`, `SettingsViewModel` |
 | `Views/` | `…App.Views` | the windows, plus the hand-rolled `MessageWindow` |
 | `Resources/` | — | `Icons.axaml`, `Theme.axaml`, `AchievementCaretaker.ico` |
+| `Services/` | `…App.Services` | the composition root (`ServiceRegistration`), and the services that view models call |
 
 These used to be three projects plus a `Shared/` folder linked into both executables with
 `<Compile Include="..\Shared\*.cs">`. That machinery is gone: one assembly needs no links,
@@ -304,9 +340,33 @@ RID, a framework-dependent build copies the native assets for *every* RID that A
 Skia ship — Linux, musl, macOS, Android, riscv, loongarch — which came to **562 MB** in
 `bin/` and made the release artifact unusable.
 
-There are **no tests** in this repository and no test framework is referenced. That does
-not mean nothing can be checked without Steam — see "Verifying without Steam" under
-[Running](#running).
+Tests live under `tests/` and use **xUnit v3**, which runs on the Microsoft Testing Platform:
+`global.json` opts in (`"test": { "runner": "Microsoft.Testing.Platform" }`), which the
+.NET 10 SDK requires for `dotnet test`.
+
+```bash
+dotnet test --solution AchievementCaretaker.slnx -c Release
+```
+
+- **Tests use the public surface only. There is no `InternalsVisibleTo`.** If something that
+  needs a test is internal, that is a reason to move it into a service with a public interface,
+  not to open the assembly. This is the point of the service layer.
+- `AchievementCaretaker.Services.Tests` covers the caches (accounts side by side, partial
+  sync, moving, an unavailable cache) and the store services, against a fake provider.
+- `AchievementCaretaker.Providers.Tests` covers the session stores (including the plain file
+  written by versions before 2.1.0, and a byte-order mark), `JsonHelpers`, and what the provider
+  registrations promise: the named clients, the sign-in end addresses, which store can write.
+- A test that cannot run on this operating system **skips**, it does not pass: the DPAPI tests
+  skip off Windows and the Unix-file-mode tests skip on Windows, so CI on Linux is what runs the
+  latter. Platform-annotated APIs in a test need `[SupportedOSPlatform]` or
+  `[UnsupportedOSPlatform]` on the helper or test; the build treats warnings as errors.
+- A new service or provider comes with its tests, in the same change.
+- Pass `TestContext.Current.CancellationToken` to calls that take one (xUnit1051).
+
+Not covered yet: the application's own code, which is mostly internal and waits for the service
+layer, and anything behind `SteamApi.Client`, which needs a live Steam.
+
+See also "Verifying without Steam" under [Running](#running) for what a unit test cannot reach.
 
 ## Running
 
@@ -321,8 +381,10 @@ this code in CI or a sandbox — changes to interop must be tested by hand.
 ### Verifying without Steam
 
 Plenty of this codebase *can* be exercised on a machine with no Steam at all, and should be
-before anything is called done. There are no tests in the repository, so this means a
-throwaway console project that references `AchievementCaretaker.App`:
+before anything is called done. The unit tests cover only public code; the application's own
+internals and its windows are still checked with a throwaway console project that references
+`AchievementCaretaker.App`. **A throwaway project's results prove nothing to anyone but the
+session that ran it: if a check is worth running twice, it belongs in `tests/`.**
 
 - **Windows, resources and styles** — `Avalonia.Headless` plus `Avalonia.Skia`, with
   `UseHeadlessDrawing = false`. `AppBuilder.Configure<App>().UseSkia().UseHeadless(…)
@@ -907,6 +969,35 @@ decoded and shown within the first 900 ms of the window. The editor's achievemen
 fetch is dropped from it so the next request retries). Not measured: the editor needs a live
 Steam.
 
+## Dependency injection
+
+`Microsoft.Extensions.DependencyInjection` is the container; `App/Services/ServiceRegistration.cs`
+is the one place that says what exists and for how long. A deliberate decision: it makes
+adding a provider or a service a registration, not an edit to every view model.
+
+- **Singleton is state that belongs to the process.** The store providers hold a signed-in
+  session and an `HttpClient`, so there is one of each, and **the container disposes them**.
+  A view model must not.
+- **Scoped is what belongs to one window.** A desktop application has no request to scope to,
+  so the unit is the window: the library window gets a scope in `App.CreateMainWindow`,
+  resolves `GamePickerViewModel` from it and disposes the scope when the window closes.
+- **A platform check is made once, at registration.** Code that behaves differently per
+  operating system is two implementations of an interface, and the `if (OperatingSystem...)`
+  that picks between them lives where they are registered (`AddSessionStore`), the only place
+  CA1416 needs a guard. It does not appear inside the implementations or their callers.
+- **No static `HttpClient` anywhere.** Capsule art, the published game list and achievement
+  icons use `IHttpClientFactory.CreateClient()` per request (the default client from
+  `AddHttpClient()`), handed to `GamePickerViewModel`, `ManagerViewModel` and `StoreImageCache`.
+- The container is built with `ValidateScopes` and `ValidateOnBuild`, so a singleton that
+  depends on a scoped service fails at start, not on first use.
+- **Migration is in progress.** The store half is done: the library window resolves the
+  caches and the store services from the container, and the logic (refresh, progress runs,
+  commits, failure wording) lives in `AchievementCaretaker.Services`, with tests. View models
+  still create some of their own dependencies (`AppSettings.Load`, `RatingStore.Load`), and `ManagerViewModel` is not resolved
+  from the container yet: the editor needs a live Steam client built from its command line.
+  Moving that logic into services, and the view models onto constructor injection, is the next
+  step; do not add new `new`-ed dependencies to a view model while it is under way.
+
 ## Conventions
 
 Match the surrounding style; it is consistent and deliberate even where it is unfashionable.
@@ -1140,7 +1231,7 @@ before implementing, then make the smallest change that fits the surrounding sty
 - `dotnet-skills:slopwatch` — after substantial new or refactored code, to catch
   suppressed warnings, disabled checks, and empty catch blocks. Note this repo already has
   a legitimate `GlobalSuppressions.cs` convention; judge additions against it.
-- `dotnet-skills:crap-analysis` — only meaningful once tests exist. There are none today.
+- `dotnet-skills:crap-analysis` — meaningful now that `tests/` exists, though coverage is thin.
 
 **Specialist agents**
 
@@ -1149,8 +1240,10 @@ before implementing, then make the smallest change that fits the surrounding sty
 - `dotnet-skills:dotnet-performance-analyst` — if the `DynamicInvoke` path is ever profiled.
 - `voltagent-lang:dotnet-core-expert` — .NET 10 runtime, SDK, publish and deployment questions.
 
-**Not applicable here** — this project has no web, database server, DI container,
-configuration system, cloud, or container surface. Skip the Aspire, EF Core, ASP.NET, Akka,
+**Not applicable here** — this project has no web, database server, configuration system,
+cloud, or container surface. It does have a DI container (see
+[Dependency injection](#dependency-injection)); that is not a reason to reach for the
+ASP.NET skills. Skip the Aspire, EF Core, ASP.NET, Akka,
 Blazor, TestContainers, OpenTelemetry, and email skills. `playwright-blazor` in particular
 is not a way to test this UI — it is a desktop app, not a web one.
 

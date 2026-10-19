@@ -17,6 +17,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using AchievementCaretaker.App.Common;
 using AchievementCaretaker.App.Library;
+using AchievementCaretaker.Services;
 using AchievementCaretaker.Providers;
 
 namespace AchievementCaretaker.App.ViewModels
@@ -61,13 +62,10 @@ namespace AchievementCaretaker.App.ViewModels
     /// </remarks>
     internal sealed partial class StoreLibraryViewModel : ObservableObject
     {
-        private const int ProgressWorkers = 4;
-
-        /// <summary>How many results are held before they are written to the database in one go.</summary>
-        private const int ProgressBatch = 25;
-
         private readonly IStoreProvider _Provider;
-        private readonly Func<GameCache> _Cache;
+        private readonly IStoreLibraryService _Library;
+        private readonly IStoreSessionService _Session;
+        private readonly IStoreAchievementsService _Achievements;
         private readonly StoreImageCache _Images;
         private readonly IProgressSink _Sink;
         private readonly CancellationTokenSource _Lifetime = new();
@@ -140,12 +138,16 @@ namespace AchievementCaretaker.App.ViewModels
 
         public StoreLibraryViewModel(
             IStoreProvider provider,
-            Func<GameCache> cache,
+            IStoreLibraryService library,
+            IStoreSessionService session,
+            IStoreAchievementsService achievements,
             StoreImageCache images,
             IProgressSink sink)
         {
+            this._Achievements = achievements;
             this._Provider = provider;
-            this._Cache = cache;
+            this._Library = library;
+            this._Session = session;
             this._Images = images;
             this._Sink = sink;
 
@@ -254,12 +256,8 @@ namespace AchievementCaretaker.App.ViewModels
             {
                 return;
             }
-            if (await this.ConfirmAsync(
-                "Switch account",
-                $"Sign in to a different {this.DisplayName} account? Its games and achievements replace " +
-                $"{this._Provider.AccountName ?? "the current account"}'s on screen once you have signed in. " +
-                "What is saved for each account stays on this computer, and the current account stays signed in " +
-                "until the new sign-in succeeds.") == false)
+            var switching = this._Session.ConfirmSwitchAccount(this._Provider);
+            if (await this.ConfirmAsync(switching.Title, switching.Message) == false)
             {
                 return;
             }
@@ -303,39 +301,32 @@ namespace AchievementCaretaker.App.ViewModels
             {
                 return;
             }
-            if (string.IsNullOrWhiteSpace(pasted) == true)
-            {
-                this.ErrorText = $"Paste {this._Provider.SignInHint} first.";
-                return;
-            }
-
             this.IsBusy = true;
             this.ErrorText = "";
             var signedIn = false;
             try
             {
-                await this._Provider.SignInAsync(pasted, this._Lifetime.Token);
-                this.PastedCode = "";
+                var result = await this._Session.SignInAsync(this._Provider, pasted, this._Lifetime.Token);
+                if (result.SignedIn == false)
+                {
+                    this.ErrorText = result.Error;
+                }
+                else
+                {
+                    this.PastedCode = "";
 
-                // Whatever is on screen belongs to the previous account, if there was one.
-                // The new account's saved library, if it has one, goes up straight away.
-                this.CancelProgress();
-                this.ClearLibrary();
-                this.LoadFromCache();
-                this.NotifySignInChanged();
-                signedIn = true;
-                await this.RefreshLibraryCoreAsync();
+                    // Whatever is on screen belongs to the previous account, if there was one.
+                    // The new account's saved library, if it has one, goes up straight away.
+                    this.CancelProgress();
+                    this.ClearLibrary();
+                    this.LoadFromCache();
+                    this.NotifySignInChanged();
+                    signedIn = true;
+                    await this.RefreshLibraryCoreAsync();
+                }
             }
             catch (OperationCanceledException)
             {
-            }
-            catch (ProviderException e)
-            {
-                this.ErrorText = e.Message;
-            }
-            catch (Exception e)
-            {
-                this.ErrorText = $"Could not reach {this.DisplayName}: {e.Message}";
             }
             finally
             {
@@ -356,11 +347,8 @@ namespace AchievementCaretaker.App.ViewModels
         [RelayCommand]
         private async Task SignOutAsync()
         {
-            if (await this.ConfirmAsync(
-                "Sign out",
-                $"Sign out of {this.DisplayName}{(this._Provider.AccountName == null ? "" : " as " + this._Provider.AccountName)}? " +
-                "Its games and achievement counts stay saved on this computer and come back when you sign in again. " +
-                $"Nothing changes on {this.DisplayName}.") == false)
+            var signingOut = this._Session.ConfirmSignOut(this._Provider);
+            if (await this.ConfirmAsync(signingOut.Title, signingOut.Message) == false)
             {
                 return;
             }
@@ -373,7 +361,7 @@ namespace AchievementCaretaker.App.ViewModels
         private void OnSessionExpired()
         {
             this.ForgetAccount();
-            this.ErrorText = $"Your {this.DisplayName} session has expired. Sign in again.";
+            this.ErrorText = this._Session.SessionExpiredMessage(this._Provider);
             this.StatusText = "Signed out.";
         }
 
@@ -386,7 +374,7 @@ namespace AchievementCaretaker.App.ViewModels
         private void ForgetAccount()
         {
             this.CancelProgress();
-            this._Provider.SignOut();
+            this._Session.SignOut(this._Provider);
             this.ClearLibrary();
         }
 
@@ -410,29 +398,7 @@ namespace AchievementCaretaker.App.ViewModels
 
         private void LoadFromCache()
         {
-            // Nobody signed in, nobody's library to show.
-            var account = this._Provider.AccountId;
-            if (account == null)
-            {
-                return;
-            }
-
-            List<CachedStoreGame> rows;
-            try
-            {
-                var cache = this._Cache();
-                if (cache == null)
-                {
-                    return;
-                }
-                rows = cache.LoadStoreGames(this.Id, account);
-            }
-            catch (Exception)
-            {
-                return;
-            }
-
-            foreach (var row in rows)
+            foreach (var row in this._Library.LoadCached(this._Provider))
             {
                 StoreGameInfo info = new(this.Id, row.Id, row.Key)
                 {
@@ -501,26 +467,25 @@ namespace AchievementCaretaker.App.ViewModels
             this._Sink.Begin($"Loading your {this.DisplayName} library...");
             try
             {
-                var library = await this._Provider.GetLibraryAsync(this._Lifetime.Token);
-                this.Merge(library);
-                this.RefreshCollectionCounts();
-                this.RefreshGames();
-                await this.SaveLibraryAsync();
+                var refresh = await this._Library.RefreshAsync(this._Provider, this._Lifetime.Token);
+                if (refresh.SessionExpired == true)
+                {
+                    this.OnSessionExpired();
+                }
+                else if (refresh.Failure != null)
+                {
+                    this.StatusText = refresh.Failure;
+                }
+                else
+                {
+                    this.Merge(refresh.Library);
+                    this.RefreshCollectionCounts();
+                    this.RefreshGames();
+                    await this.SaveLibraryAsync();
+                }
             }
             catch (OperationCanceledException)
             {
-            }
-            catch (ProviderException e) when (e.ErrorCode == "login_required")
-            {
-                this.OnSessionExpired();
-            }
-            catch (ProviderException e)
-            {
-                this.StatusText = $"Could not refresh the {this.DisplayName} library: {e.Message}";
-            }
-            catch (Exception e)
-            {
-                this.StatusText = $"Could not reach {this.DisplayName}: {e.Message}";
             }
             finally
             {
@@ -565,13 +530,6 @@ namespace AchievementCaretaker.App.ViewModels
 
         private async Task SaveLibraryAsync()
         {
-            var cache = this._Cache();
-            var account = this._Provider.AccountId;
-            if (cache == null || account == null)
-            {
-                return;
-            }
-
             var rows = this._Games.Values.Select(info => new CachedStoreGame()
             {
                 Id = info.Id,
@@ -580,13 +538,10 @@ namespace AchievementCaretaker.App.ViewModels
                 ImageUrl = info.ImageUrl,
             }).ToList();
 
-            try
+            var failure = await this._Library.SaveLibraryAsync(this._Provider, rows);
+            if (failure != null)
             {
-                await Task.Run(() => cache.SyncStoreGames(this.Id, account, rows));
-            }
-            catch (Exception e)
-            {
-                this.ErrorRaised?.Invoke("Could not update the game cache:\n" + e.Message);
+                this.ErrorRaised?.Invoke(failure);
             }
         }
 
@@ -876,6 +831,7 @@ namespace AchievementCaretaker.App.ViewModels
 
             this.AchievementsRequested?.Invoke(new StoreAchievementsViewModel(
                 this._Provider,
+                this._Achievements,
                 game,
                 this._Images,
                 (earned, total) => this.ApplyProgress(game, earned, total)));
@@ -895,25 +851,9 @@ namespace AchievementCaretaker.App.ViewModels
 
         private void SaveProgress(IReadOnlyCollection<(string Id, int Earned, int Total)> results)
         {
-            var cache = this._Cache();
-            var account = this._Provider.AccountId;
-            if (cache == null || account == null || results.Count == 0)
-            {
-                return;
-            }
-
             // Fire and forget on purpose: the numbers are already on screen, and a cache
             // that cannot be written costs only a reload next time.
-            _ = Task.Run(() =>
-            {
-                try
-                {
-                    cache.SaveStoreProgress(this.Id, account, results);
-                }
-                catch (Exception)
-                {
-                }
-            });
+            _ = Task.Run(() => this._Library.SaveProgress(this._Provider, results));
         }
 
         private bool _IsLoadingProgress;
@@ -945,9 +885,8 @@ namespace AchievementCaretaker.App.ViewModels
                 return;
             }
 
-            Queue<StoreGameInfo> queue = new(
-                this._Games.Values.Where(g => g.Progress.HasValue == false).OrderBy(g => g.Name));
-            var total = queue.Count;
+            var games = this._Games.Values.Where(g => g.Progress.HasValue == false).OrderBy(g => g.Name).ToList();
+            var total = games.Count;
             if (total == 0)
             {
                 this.StatusText = "Progress is already loaded for every game.";
@@ -959,86 +898,51 @@ namespace AchievementCaretaker.App.ViewModels
             this.IsLoadingProgress = true;
             this.ErrorText = "";
 
-            var done = 0;
-            var failed = 0;
-            var expired = false;
-            List<(string Id, int Earned, int Total)> pending = new();
-
             this._Sink.Begin($"Loading {this.DisplayName} progress...");
             this._Sink.Report($"Loading {this.DisplayName} progress, 0 of {total:N0}...", 0, total);
 
-            async Task Worker()
-            {
-                while (token.IsCancellationRequested == false && queue.TryDequeue(out var game) == true)
-                {
-                    try
-                    {
-                        var achievements = await this._Provider.GetAchievementsAsync(game.Key, "en", token);
-                        var earned = achievements.Count(a => a.Unlocked == true);
-                        game.Progress = new StoreProgress(earned, achievements.Count);
-                        pending.Add((game.Id, earned, achievements.Count));
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        return;
-                    }
-                    catch (ProviderException e) when (e.ErrorCode == "login_required")
-                    {
-                        expired = true;
-                        this._ProgressRun.Cancel();
-                        return;
-                    }
-                    catch (Exception)
-                    {
-                        // One game failing is counted, not raised: a run covers hundreds.
-                        failed++;
-                    }
-
-                    done++;
-                    this._Sink.Report($"Loading {this.DisplayName} progress, {done:N0} of {total:N0}...", done, total);
-
-                    if (pending.Count >= ProgressBatch)
-                    {
-                        this.SaveProgress(pending.ToList());
-                        pending.Clear();
-                    }
-                }
-            }
-
+            StoreProgressRun result = null;
             try
             {
-                await Task.WhenAll(Enumerable.Range(0, ProgressWorkers).Select(index => Worker()));
+                result = await this._Library.LoadProgressAsync(
+                    this._Provider,
+                    games.Select(g => (g.Id, g.Key)).ToList(),
+                    (id, earned, count) =>
+                    {
+                        if (this._Games.TryGetValue(id, out var game) == true)
+                        {
+                            game.Progress = new StoreProgress(earned, count);
+                        }
+                    },
+                    finished => this._Sink.Report(
+                        $"Loading {this.DisplayName} progress, {finished:N0} of {total:N0}...", finished, total),
+                    token);
             }
             finally
             {
-                this.SaveProgress(pending.ToList());
-                pending.Clear();
                 this._Sink.End();
-
-                var wasCancelled = token.IsCancellationRequested;
                 this._ProgressRun.Dispose();
                 this._ProgressRun = null;
                 this.IsLoadingProgress = false;
 
                 this.RefreshCollectionCounts();
                 this.RefreshGames();
-
-                if (expired == true)
-                {
-                    this.OnSessionExpired();
-                }
-                else
-                {
-                    var summary = wasCancelled
-                        ? $"Stopped after {done:N0} of {total:N0} games."
-                        : $"Read the achievements of {done:N0} games.";
-                    if (failed > 0)
-                    {
-                        summary += $" {failed:N0} could not be read; run it again to retry them.";
-                    }
-                    this.StatusText = summary;
-                }
             }
+
+            if (result.SessionExpired == true)
+            {
+                this.OnSessionExpired();
+                return;
+            }
+
+            var summary = result.Cancelled
+                ? $"Stopped after {result.Done:N0} of {total:N0} games."
+                : $"Read the achievements of {result.Done:N0} games.";
+            if (result.Failed > 0)
+            {
+                summary += $" {result.Failed:N0} could not be read; run it again to retry them.";
+            }
+            this.StatusText = summary;
         }
 
         [RelayCommand]
@@ -1053,7 +957,7 @@ namespace AchievementCaretaker.App.ViewModels
         {
             this._Lifetime.Cancel();
             this._LogoQueue.Writer.TryComplete();
-            this._Provider.Dispose();
+            // The provider belongs to the container, which disposes it.
         }
     }
 

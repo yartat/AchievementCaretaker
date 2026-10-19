@@ -350,7 +350,10 @@ environment variable or `--maintainer`.
 
 ## Verifying a build
 
-There are no tests in this repository. What can be checked without a Steam client:
+Unit tests live in `tests/` (xUnit v3, on the Microsoft Testing Platform) and run with
+`dotnet test --solution AchievementCaretaker.slnx -c Release`; CI runs them on every push. They
+cover the public surface of the store providers so far. What else can be checked without a
+Steam client:
 
 - **The application starts.** Run `bin/AchievementCaretaker.exe` with Steam not
   running. It must come up showing an error window rather than dying — that proves

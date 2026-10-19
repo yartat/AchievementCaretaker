@@ -29,19 +29,28 @@
  */
 
 using System;
+using System.Net.Http;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using AchievementCaretaker.App.Common;
+using AchievementCaretaker.App.Services;
 using AchievementCaretaker.App.ViewModels;
 using AchievementCaretaker.App.Views;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AchievementCaretaker.App
 {
     public partial class App : Application
     {
         private SteamApi.Client _SteamClient;
+
+        /// <summary>
+        /// The root of the dependency graph. Validated when built, so a singleton that
+        /// reaches for something scoped fails at start rather than on first use.
+        /// </summary>
+        private ServiceProvider _Services;
 
         public override void Initialize()
         {
@@ -54,6 +63,10 @@ namespace AchievementCaretaker.App
             // stored theme for itself. A change made in Settings reaches an
             // editor window that is already open only when it is relaunched.
             this.RequestedThemeVariant = AppThemes.ToVariant(AppSettings.Load().Theme);
+
+            this._Services = new ServiceCollection()
+                .AddCaretaker()
+                .BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
 
             if (this.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             {
@@ -94,7 +107,12 @@ namespace AchievementCaretaker.App
             // Steam for an ownership-wide session, once there is a Steam to ask.
             if (appId == 0)
             {
-                return new GamePickerWindow() { DataContext = new GamePickerViewModel(new SteamConnector()) };
+                // One scope for the library window: its view model comes out of it, and it
+                // goes when the window closes.
+                var scope = this._Services.CreateScope();
+                GamePickerWindow library = new() { DataContext = scope.ServiceProvider.GetRequiredService<GamePickerViewModel>() };
+                library.Closed += (_, _) => scope.Dispose();
+                return library;
             }
 
             if (SteamApi.SteamPlatform.IsArchitectureSupported == false)
@@ -119,7 +137,7 @@ namespace AchievementCaretaker.App
             }
 
             this._SteamClient = client;
-            return new ManagerWindow() { DataContext = new ManagerViewModel(appId, client) };
+            return new ManagerWindow() { DataContext = new ManagerViewModel(appId, client, _Services.GetRequiredService<IHttpClientFactory>()) };
         }
 
         private static string DescribeInitializeFailure(SteamApi.ClientInitializeException e, long appId)
@@ -146,6 +164,10 @@ namespace AchievementCaretaker.App
         {
             this._SteamClient?.Dispose();
             this._SteamClient = null;
+
+            // Disposes the store providers, which the container owns.
+            this._Services?.Dispose();
+            this._Services = null;
         }
     }
 }

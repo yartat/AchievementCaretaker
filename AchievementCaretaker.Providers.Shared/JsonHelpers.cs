@@ -18,7 +18,7 @@ namespace AchievementCaretaker.Providers
     /// undocumented service whose fields come and go, so a missing or differently
     /// typed field is an absent value, not an exception.
     /// </summary>
-    internal static class JsonHelpers
+    public static class JsonHelpers
     {
         public static bool TryWalk(JsonElement element, out JsonElement result, params string[] path)
         {

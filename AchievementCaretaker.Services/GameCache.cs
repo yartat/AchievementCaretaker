@@ -34,13 +34,13 @@ using System.Data;
 using System.IO;
 using Microsoft.Data.Sqlite;
 
-namespace AchievementCaretaker.App.Library
+namespace AchievementCaretaker.Services
 {
     /// <summary>
     /// A row of the cached Steam library, as stored in SQLite. The account it belongs
     /// to is not on the row: every call names it.
     /// </summary>
-    internal sealed class CachedGame
+    public sealed class CachedGame
     {
         public uint Id { get; set; }
         public string Type { get; set; }
@@ -64,7 +64,7 @@ namespace AchievementCaretaker.App.Library
     /// until a game's achievements have been read, like <see cref="CachedGame"/>:
     /// unknown is not zero.
     /// </remarks>
-    internal sealed class CachedStoreGame
+    public sealed class CachedStoreGame
     {
         public string Id { get; set; }
         public string Key { get; set; }

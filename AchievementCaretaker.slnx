@@ -6,10 +6,22 @@
   <Project Path="AchievementCaretaker.App/AchievementCaretaker.App.csproj">
     <Platform Solution="*|x86" Project="x86" />
   </Project>
-  <Project Path="AchievementCaretaker.Providers/AchievementCaretaker.Providers.csproj">
+  <Project Path="AchievementCaretaker.Providers.Abstractions/AchievementCaretaker.Providers.Abstractions.csproj">
+    <Platform Solution="*|x86" Project="x86" />
+  </Project>
+  <Project Path="AchievementCaretaker.Providers.Epic/AchievementCaretaker.Providers.Epic.csproj">
+    <Platform Solution="*|x86" Project="x86" />
+  </Project>
+  <Project Path="AchievementCaretaker.Providers.Gog/AchievementCaretaker.Providers.Gog.csproj">
+    <Platform Solution="*|x86" Project="x86" />
+  </Project>
+  <Project Path="AchievementCaretaker.Providers.Shared/AchievementCaretaker.Providers.Shared.csproj">
     <Platform Solution="*|x86" Project="x86" />
   </Project>
   <Project Path="AchievementCaretaker.SteamApi/AchievementCaretaker.SteamApi.csproj">
+    <Platform Solution="*|x86" Project="x86" />
+  </Project>
+  <Project Path="AchievementCaretaker.Services/AchievementCaretaker.Services.csproj">
     <Platform Solution="*|x86" Project="x86" />
   </Project>
   <Folder Name="/Documentation/">
@@ -29,4 +41,10 @@
     <File Path="global.json" />
   </Folder>
   <Project Path="tools/ProviderProbe/ProviderProbe.csproj" />
+  <Project Path="tests/AchievementCaretaker.Providers.Tests/AchievementCaretaker.Providers.Tests.csproj">
+    <Platform Solution="*|x86" Project="x86" />
+  </Project>
+  <Project Path="tests/AchievementCaretaker.Services.Tests/AchievementCaretaker.Services.Tests.csproj">
+    <Platform Solution="*|x86" Project="x86" />
+  </Project>
 </Solution>

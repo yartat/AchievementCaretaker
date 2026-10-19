@@ -39,14 +39,15 @@ namespace AchievementCaretaker.App.Common
     {
         public const string FolderName = "store";
 
-        private static readonly HttpClient _Http = new();
+        private readonly IHttpClientFactory _Http;
 
         // Read each time: IconCache.MoveTo changes it when the user relocates the cache.
         private readonly IconCache _Icons;
 
-        public StoreImageCache(IconCache icons)
+        public StoreImageCache(IconCache icons, IHttpClientFactory http)
         {
             this._Icons = icons;
+            this._Http = http;
         }
 
         private string FileFor(string provider, string url)
@@ -98,7 +99,7 @@ namespace AchievementCaretaker.App.Common
 
             try
             {
-                var data = await _Http.GetByteArrayAsync(new Uri(url), cancellationToken);
+                var data = await this._Http.CreateClient().GetByteArrayAsync(new Uri(url), cancellationToken);
                 var bitmap = await Task.Run(() => Decode(data), cancellationToken);
                 if (bitmap != null)
                 {

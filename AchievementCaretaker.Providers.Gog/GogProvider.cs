@@ -68,7 +68,15 @@ namespace AchievementCaretaker.Providers.Gog
         private const int ProductBatchSize = 40;
         private const int ProductConcurrency = 4;
 
-        private readonly HttpClient _Http;
+        /// <summary>
+        /// The name of the <c>HttpClient</c> this provider asks the factory for. A client is
+        /// asked for per request and never kept: a long-lived one holds on to its connections
+        /// and to the DNS answer it started with.
+        /// </summary>
+        public const string HttpClientName = "gog";
+
+        private readonly IHttpClientFactory _HttpFactory;
+        private readonly ISessionStore _Sessions;
         private readonly string _SessionPath;
 
         /// <summary>
@@ -112,19 +120,23 @@ namespace AchievementCaretaker.Providers.Gog
 
         public string AccountId => this.IsSignedIn == true ? this.Session.UserId : null;
 
-        public GogProvider(string sessionPath)
+        public GogProvider(IHttpClientFactory httpFactory, ISessionStore sessions, string sessionPath)
         {
+            this._HttpFactory = httpFactory;
+            this._Sessions = sessions;
             this._SessionPath = sessionPath;
-            this._Http = new() { Timeout = TimeSpan.FromSeconds(30) };
-            this._Http.DefaultRequestHeaders.UserAgent.ParseAdd(
-                "AchievementCaretaker (+https://github.com/yartat/AchievementCaretaker)");
-            this.Session = SessionFile.Load<GogSession>(sessionPath);
+            this.Session = sessions.Load<GogSession>(sessionPath);
         }
 
-        public void Dispose()
+        /// <summary>What every request of the named client starts from; see <see cref="HttpClientName"/>.</summary>
+        internal static void ConfigureHttpClient(HttpClient client)
         {
-            this._Http.Dispose();
+            client.Timeout = TimeSpan.FromSeconds(30);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(
+                "AchievementCaretaker (+https://github.com/yartat/AchievementCaretaker)");
         }
+
+        private HttpClient CreateClient() => this._HttpFactory.CreateClient(HttpClientName);
 
         #region Sign-in
 
@@ -152,7 +164,7 @@ namespace AchievementCaretaker.Providers.Gog
             {
                 using var data = await this.GetJsonAsync($"{EmbedHost}/userData.json", true, cancellationToken);
                 this.Session.DisplayName = GetString(data.RootElement, "username");
-                SessionFile.Save(this._SessionPath, this.Session);
+                this._Sessions.Save(this._SessionPath, this.Session);
             }
             catch (Exception e) when (e is ProviderException or HttpRequestException)
             {
@@ -183,7 +195,7 @@ namespace AchievementCaretaker.Providers.Gog
         public void SignOut()
         {
             this.Session = null;
-            SessionFile.Delete(this._SessionPath);
+            this._Sessions.Delete(this._SessionPath);
         }
 
         private async Task RequestTokenAsync(Dictionary<string, string> parameters, CancellationToken cancellationToken)
@@ -195,7 +207,7 @@ namespace AchievementCaretaker.Providers.Gog
             // GOG's token endpoint takes its parameters in the query string. The
             // URL is never put in an error message, since it carries the code or
             // the refresh token.
-            using var response = await this._Http.GetAsync($"{AuthHost}/token?{query}", cancellationToken);
+            using var response = await this.CreateClient().GetAsync($"{AuthHost}/token?{query}", cancellationToken);
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
             ThrowIfError(response, body);
 
@@ -213,7 +225,7 @@ namespace AchievementCaretaker.Providers.Gog
             session.DisplayName = this.Session?.DisplayName;
 
             this.Session = session;
-            SessionFile.Save(this._SessionPath, session);
+            this._Sessions.Save(this._SessionPath, session);
         }
 
         #endregion
@@ -482,7 +494,7 @@ namespace AchievementCaretaker.Providers.Gog
                     request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", gameToken);
                     request.Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
 
-                    using var response = await this._Http.SendAsync(request, token);
+                    using var response = await this.CreateClient().SendAsync(request, token);
                     ThrowIfError(response, await response.Content.ReadAsStringAsync(token));
                 });
         }
@@ -518,7 +530,7 @@ namespace AchievementCaretaker.Providers.Gog
 
             // As with the account token, the URL carries secrets and is never put in
             // an error message.
-            using var response = await this._Http.GetAsync($"{AuthHost}/token?{query}", cancellationToken);
+            using var response = await this.CreateClient().GetAsync($"{AuthHost}/token?{query}", cancellationToken);
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
             ThrowIfError(response, body);
 
@@ -559,7 +571,7 @@ namespace AchievementCaretaker.Providers.Gog
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", this.Session.AccessToken);
             }
 
-            using var response = await this._Http.SendAsync(request, cancellationToken);
+            using var response = await this.CreateClient().SendAsync(request, cancellationToken);
             if (nullOnNotFound == true && response.StatusCode == HttpStatusCode.NotFound)
             {
                 return null;

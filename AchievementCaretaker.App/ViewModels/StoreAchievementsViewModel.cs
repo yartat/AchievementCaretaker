@@ -18,6 +18,7 @@ using AchievementCaretaker.App.Achievements;
 using AchievementCaretaker.App.Common;
 using AchievementCaretaker.App.Library;
 using AchievementCaretaker.Providers;
+using AchievementCaretaker.Services;
 
 namespace AchievementCaretaker.App.ViewModels
 {
@@ -40,6 +41,7 @@ namespace AchievementCaretaker.App.ViewModels
         private const int IconWorkers = 4;
 
         private readonly IStoreProvider _Provider;
+        private readonly IStoreAchievementsService _Service;
         private readonly StoreGameInfo _Game;
         private readonly StoreImageCache _Images;
         private readonly Action<int, int> _ProgressLoaded;
@@ -59,7 +61,7 @@ namespace AchievementCaretaker.App.ViewModels
         /// Epic's achievements cannot be re-locked, so its provider cannot write and
         /// its window has none.
         /// </summary>
-        public bool CanModify => this._Provider is IWritableStoreProvider;
+        public bool CanModify => this._Service.CanModify(this._Provider);
 
         private bool _IsCommitting;
 
@@ -282,11 +284,6 @@ namespace AchievementCaretaker.App.ViewModels
         [RelayCommand(CanExecute = nameof(IsInputEnabled))]
         private async Task StoreAsync()
         {
-            if (this._Provider is not IWritableStoreProvider writer)
-            {
-                return;
-            }
-
             var changes = this._All
                 .Where(a => a.IsChanged == true)
                 .Select(a => new KeyValuePair<string, bool>(a.Source.Id, a.IsAchieved))
@@ -299,24 +296,14 @@ namespace AchievementCaretaker.App.ViewModels
             this.SetCommitting(true);
             this.BeginProgress("Sending changes...");
             this.StatusText = $"Sending {changes.Count} change(s) to {this._Provider.DisplayName}...";
-            string failure = null;
+            string failure;
             try
             {
-                await writer.SetAchievementsAsync(this._Game.Key, changes, this._Lifetime.Token);
+                failure = await this._Service.CommitAsync(this._Provider, this._Game.Key, changes, this._Lifetime.Token);
             }
             catch (OperationCanceledException)
             {
                 return;
-            }
-            catch (ProviderException e)
-            {
-                failure = e.ErrorCode == "login_required"
-                    ? $"You are signed out of {this._Provider.DisplayName}. Sign in again from the library."
-                    : e.Message;
-            }
-            catch (Exception e)
-            {
-                failure = $"Could not reach {this._Provider.DisplayName}: {e.Message}";
             }
             finally
             {
@@ -352,11 +339,13 @@ namespace AchievementCaretaker.App.ViewModels
         /// </param>
         public StoreAchievementsViewModel(
             IStoreProvider provider,
+            IStoreAchievementsService service,
             StoreGameInfo game,
             StoreImageCache images,
             Action<int, int> progressLoaded)
         {
             this._Provider = provider;
+            this._Service = service;
             this._Game = game;
             this._Images = images;
             this._ProgressLoaded = progressLoaded;
@@ -377,7 +366,13 @@ namespace AchievementCaretaker.App.ViewModels
 
             try
             {
-                var achievements = await this._Provider.GetAchievementsAsync(this._Game.Key, "en", token);
+                var result = await this._Service.LoadAsync(this._Provider, this._Game.Key, token);
+                if (result.Failure != null)
+                {
+                    this.Fail(result.Failure);
+                    return;
+                }
+                var achievements = result.Achievements;
 
                 foreach (var old in this._All)
                 {
@@ -404,16 +399,6 @@ namespace AchievementCaretaker.App.ViewModels
             catch (OperationCanceledException)
             {
                 // The window closed while this was running.
-            }
-            catch (ProviderException e)
-            {
-                this.Fail(e.ErrorCode == "login_required"
-                    ? $"You are signed out of {this._Provider.DisplayName}. Sign in again from the library."
-                    : e.Message);
-            }
-            catch (Exception e)
-            {
-                this.Fail($"Could not reach {this._Provider.DisplayName}: {e.Message}");
             }
             finally
             {

@@ -62,7 +62,15 @@ namespace AchievementCaretaker.Providers.Epic
         /// </summary>
         private const int CatalogConcurrency = 8;
 
-        private readonly HttpClient _Http;
+        /// <summary>
+        /// The name of the <c>HttpClient</c> this provider asks the factory for. A client is
+        /// asked for per request and never kept: a long-lived one holds on to its connections
+        /// and to the DNS answer it started with.
+        /// </summary>
+        public const string HttpClientName = "epic";
+
+        private readonly IHttpClientFactory _HttpFactory;
+        private readonly ISessionStore _Sessions;
         private readonly string _SessionPath;
 
         public EpicSession Session { get; private set; }
@@ -96,18 +104,22 @@ namespace AchievementCaretaker.Providers.Epic
 
         public string AccountId => this.IsSignedIn == true ? this.Session.AccountId : null;
 
-        public EpicProvider(string sessionPath)
+        public EpicProvider(IHttpClientFactory httpFactory, ISessionStore sessions, string sessionPath)
         {
+            this._HttpFactory = httpFactory;
+            this._Sessions = sessions;
             this._SessionPath = sessionPath;
-            this._Http = new() { Timeout = TimeSpan.FromSeconds(30) };
-            this._Http.DefaultRequestHeaders.UserAgent.ParseAdd(LauncherUserAgent);
-            this.Session = EpicSession.Load(sessionPath);
+            this.Session = sessions.Load<EpicSession>(sessionPath);
         }
 
-        public void Dispose()
+        /// <summary>What every request of the named client starts from; see <see cref="HttpClientName"/>.</summary>
+        internal static void ConfigureHttpClient(HttpClient client)
         {
-            this._Http.Dispose();
+            client.Timeout = TimeSpan.FromSeconds(30);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(LauncherUserAgent);
         }
+
+        private HttpClient CreateClient() => this._HttpFactory.CreateClient(HttpClientName);
 
         #region Sign-in
 
@@ -169,7 +181,7 @@ namespace AchievementCaretaker.Providers.Epic
         public void SignOut()
         {
             this.Session = null;
-            SessionFile.Delete(this._SessionPath);
+            this._Sessions.Delete(this._SessionPath);
         }
 
         private async Task RequestTokenAsync(Dictionary<string, string> form, CancellationToken cancellationToken)
@@ -182,12 +194,12 @@ namespace AchievementCaretaker.Providers.Epic
                 "Basic",
                 Convert.ToBase64String(Encoding.ASCII.GetBytes($"{LauncherClientId}:{LauncherClientSecret}")));
 
-            using var response = await this._Http.SendAsync(request, cancellationToken);
+            using var response = await this.CreateClient().SendAsync(request, cancellationToken);
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
             ThrowIfEpicError(response, body);
 
             this.Session = JsonSerializer.Deserialize<EpicSession>(body);
-            this.Session.Save(this._SessionPath);
+            this._Sessions.Save(this._SessionPath, this.Session);
         }
 
         #endregion
@@ -472,7 +484,7 @@ namespace AchievementCaretaker.Providers.Epic
             request.Headers.UserAgent.ParseAdd(StoreUserAgent);
             request.Headers.Authorization = new AuthenticationHeaderValue("bearer", this.Session.AccessToken);
 
-            using var response = await this._Http.SendAsync(request, cancellationToken);
+            using var response = await this.CreateClient().SendAsync(request, cancellationToken);
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
             ThrowIfEpicError(response, body);
 
@@ -501,7 +513,7 @@ namespace AchievementCaretaker.Providers.Epic
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Authorization = new AuthenticationHeaderValue("bearer", this.Session.AccessToken);
 
-            using var response = await this._Http.SendAsync(request, cancellationToken);
+            using var response = await this.CreateClient().SendAsync(request, cancellationToken);
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
             ThrowIfEpicError(response, body);
             return JsonDocument.Parse(body);

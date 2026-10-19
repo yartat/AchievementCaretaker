@@ -1,10 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <AssemblyTitle>Achievement Caretaker Providers</AssemblyTitle>
+    <AssemblyTitle>Achievement Caretaker Providers.Shared</AssemblyTitle>
     <Company>Yaroslav V Tatarenko</Company>
     <Authors>Yaroslav V Tatarenko</Authors>
-    <Description>Read-only library and achievement access for Epic Games and GOG, for Achievement Caretaker. GOG support is based on GOG Achievements Manager by Timendum.</Description>
-    <Copyright>Copyright © 2026 Yaroslav V Tatarenko. GOG support based on GOG Achievements Manager by Timendum.</Copyright>
+    <Description>Code shared by the store providers of Achievement Caretaker: session files and JSON helpers.</Description>
+    <Copyright>Copyright © 2026 Yaroslav V Tatarenko.</Copyright>
   </PropertyGroup>
   <PropertyGroup>
     <Version>2.1.1</Version>
@@ -16,15 +16,18 @@
     <RepositoryType>Git</RepositoryType>
   </PropertyGroup>
   <PropertyGroup>
-    <!-- No native code: everything here is HTTPS plus System.Text.Json, which
-         ship with the shared framework, plus ProtectedData for Windows DPAPI
-         (see SessionFile), which does not. -->
+    <!-- No native code: System.Text.Json ships with the shared framework; ProtectedData
+         for Windows DPAPI (see SessionFile) does not. -->
     <TargetFramework>net10.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <Platforms>x86;AnyCPU</Platforms>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.13" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.13" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AchievementCaretaker.Providers.Abstractions\AchievementCaretaker.Providers.Abstractions.csproj" />
   </ItemGroup>
   <PropertyGroup Condition="'$(Configuration)'=='Release'">
     <Optimize>True</Optimize>

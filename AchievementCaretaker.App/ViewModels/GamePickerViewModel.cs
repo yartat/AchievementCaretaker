@@ -46,6 +46,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using AchievementCaretaker.App.Common;
 using AchievementCaretaker.App.Library;
+using AchievementCaretaker.Providers;
+using AchievementCaretaker.Services;
 using static AchievementCaretaker.App.InvariantShorthand;
 using APITypes = AchievementCaretaker.SteamApi.Types;
 
@@ -53,7 +55,7 @@ namespace AchievementCaretaker.App.ViewModels
 {
     internal sealed partial class GamePickerViewModel : ProgressViewModel
     {
-        private static readonly HttpClient _Http = new();
+        private readonly IHttpClientFactory _Http;
 
         // Steam is looked for in the background and may not be there at all, so the
         // client, its callback and the timer that pumps it only exist once it has been
@@ -111,9 +113,11 @@ namespace AchievementCaretaker.App.ViewModels
         private LibraryStats _LibraryStats;
 
         private readonly AppSettings _Settings;
-        private GameCache _Cache;
+        private readonly ILibraryCache _Cache;
+        private readonly IStoreAchievementsService _StoreAchievements;
+        private readonly IStoreLibraryService _StoreLibrary;
+        private readonly IStoreSessionService _StoreSession;
         private IconCache _IconCache;
-        private string _CacheError;
 
         private bool _IsContentView;
         /// <summary>
@@ -408,16 +412,10 @@ namespace AchievementCaretaker.App.ViewModels
             var locationsApplied = true;
             try
             {
-                if (databaseMoved == true && this._Cache != null)
+                if (databaseMoved == true)
                 {
-                    var cache = this._Cache;
                     var destination = updated.DatabasePath;
-                    this._Cache = await Task.Run(() => GameCache.MoveTo(cache, destination));
-                }
-                else if (databaseMoved == true)
-                {
-                    this._Settings.DatabasePath = updated.DatabasePath;
-                    this.OpenCache();
+                    await Task.Run(() => this._Cache.MoveTo(destination));
                 }
 
                 if (iconsMoved == true)
@@ -545,16 +543,24 @@ namespace AchievementCaretaker.App.ViewModels
         /// </summary>
         public event Action<string> ErrorRaised;
 
-        public GamePickerViewModel(SteamConnector steam)
+        public GamePickerViewModel(SteamConnector steam, IEnumerable<IStoreProvider> storeProviders, ILibraryCache cache,
+            IStoreAchievementsService storeAchievements, IStoreLibraryService storeLibrary,
+            IStoreSessionService storeSession,
+            IHttpClientFactory http)
         {
             this._Steam = steam;
+            this._StoreProviders = storeProviders;
+            this._Cache = cache;
+            this._StoreAchievements = storeAchievements;
+            this._StoreLibrary = storeLibrary;
+            this._StoreSession = storeSession;
+            this._Http = http;
 
             this._Settings = AppSettings.Load();
             this._IconCache = new(this._Settings.IconCachePath);
-            this.OpenCache();
             try
             {
-                this._SteamAccount = this._Cache?.GetLastSteamAccount() ?? 0;
+                this._SteamAccount = this._Cache.GetLastSteamAccount();
             }
             catch (Exception)
             {
@@ -661,7 +667,7 @@ namespace AchievementCaretaker.App.ViewModels
             this._SteamAccount = account;
             try
             {
-                this._Cache?.SetLastSteamAccount(account);
+                this._Cache.SetLastSteamAccount(account);
             }
             catch (Exception)
             {
@@ -677,36 +683,23 @@ namespace AchievementCaretaker.App.ViewModels
             GC.KeepAlive(decode);
         }
 
-        private void OpenCache()
-        {
-            try
-            {
-                this._Cache = GameCache.Open(this._Settings.DatabasePath);
-            }
-            catch (Exception e)
-            {
-                // A cache that will not open must not stop the app; it just
-                // means every start is a cold one.
-                this._Cache = null;
-                this._CacheError = e.Message;
-            }
-        }
-
         /// <summary>
         /// Paints the window from the database before any network or Steam work
         /// happens. Everything here is already-persisted data.
         /// </summary>
         private void LoadFromCache()
         {
-            if (this._Cache == null)
+            // A cache that will not open must not stop the app; it just means every start is a
+            // cold one.
+            if (this._Cache.IsAvailable == false)
             {
-                this.StatusText = this._CacheError == null
+                this.StatusText = this._Cache.Error == null
                     ? "Loading games..."
-                    : $"Cache unavailable ({this._CacheError}).";
+                    : $"Cache unavailable ({this._Cache.Error}).";
                 return;
             }
 
-            List<CachedGame> rows;
+            IReadOnlyList<CachedGame> rows;
             try
             {
                 rows = this._Cache.LoadAll(this._SteamAccount);
@@ -752,8 +745,7 @@ namespace AchievementCaretaker.App.ViewModels
             this._Steam.Changed -= this.OnSteamChanged;
             this._Steam.Dispose();
             this.ShutdownStoreLibraries();
-            this._Cache?.Dispose();
-            this._Cache = null;
+            // The cache belongs to the container, which disposes it.
         }
 
         private void OnTimer(object sender, EventArgs e)
@@ -814,7 +806,7 @@ namespace AchievementCaretaker.App.ViewModels
         private async Task SaveCacheAsync(bool complete)
         {
             var account = this._SteamAccount;
-            if (this._Cache == null || account == 0)
+            if (account == 0)
             {
                 return;
             }
@@ -951,7 +943,7 @@ namespace AchievementCaretaker.App.ViewModels
             List<KeyValuePair<uint, string>> pairs;
             try
             {
-                var bytes = await _Http.GetByteArrayAsync(new Uri("https://gib.me/sam/games.xml"));
+                var bytes = await this._Http.CreateClient().GetByteArrayAsync(new Uri("https://gib.me/sam/games.xml"));
                 pairs = ParseGameList(bytes);
             }
             catch (Exception e)
@@ -1471,7 +1463,7 @@ namespace AchievementCaretaker.App.ViewModels
 
             try
             {
-                var data = await _Http.GetByteArrayAsync(new Uri(info.ImageUrl));
+                var data = await this._Http.CreateClient().GetByteArrayAsync(new Uri(info.ImageUrl));
                 // Avalonia's Bitmap copies the decoded pixels, so unlike
                 // System.Drawing it does not need the stream kept alive.
                 info.Logo = await Task.Run(() =>

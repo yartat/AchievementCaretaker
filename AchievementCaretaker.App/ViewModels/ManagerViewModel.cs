@@ -43,6 +43,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using AchievementCaretaker.App.Achievements;
+using AchievementCaretaker.Services;
 using AchievementCaretaker.App.Common;
 using AchievementCaretaker.SteamApi;
 using static AchievementCaretaker.App.InvariantShorthand;
@@ -55,7 +56,7 @@ namespace AchievementCaretaker.App.ViewModels
 {
     internal sealed partial class ManagerViewModel : ProgressViewModel
     {
-        private static readonly HttpClient _Http = new();
+        private readonly IHttpClientFactory _Http;
 
         private readonly long _GameId;
         private readonly long _AccountId;
@@ -278,8 +279,9 @@ namespace AchievementCaretaker.App.ViewModels
 
         private readonly System.Threading.CancellationTokenSource _SteamStop = new();
 
-        public ManagerViewModel(long gameId, SteamApi.Client client)
+        public ManagerViewModel(long gameId, SteamApi.Client client, IHttpClientFactory http)
         {
+            this._Http = http;
             this._GameId = gameId;
             this._SteamClient = client;
 
@@ -1319,7 +1321,7 @@ namespace AchievementCaretaker.App.ViewModels
             try
             {
                 var url = _($"https://cdn.steamstatic.com/steamcommunity/public/images/apps/{this._GameId}/{iconName}");
-                var data = await _Http.GetByteArrayAsync(new Uri(url));
+                var data = await this._Http.CreateClient().GetByteArrayAsync(new Uri(url));
                 var bitmap = await Task.Run(() => DecodeIcon(data));
                 if (bitmap != null)
                 {

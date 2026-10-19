@@ -25,7 +25,7 @@ namespace AchievementCaretaker.Providers.Gog
     /// <remarks>
     /// GOG rotates the refresh token on every refresh, so the saved one must be
     /// replaced each time or the next refresh fails. See
-    /// <see cref="SessionFile"/> for how the file is protected.
+    /// <see cref="ISessionStore"/> for how the file is protected.
     /// </remarks>
     public sealed class GogSession
     {

@@ -16,7 +16,11 @@ greater length plus the rules a contributor or coding agent must not break.
 | Project | Output | Role |
 |---|---|---|
 | `AchievementCaretaker.SteamApi` | class library | All native interop with Steam. No package references of any kind, and no UI dependency. |
-| `AchievementCaretaker.Providers` | class library | The libraries and achievements of other stores (Epic Games, GOG) over HTTPS, behind `IStoreProvider`. No native code, no packages, no UI dependency. Steam is not a provider; see [Epic and GOG](#epic-and-gog). |
+| `AchievementCaretaker.Providers.Abstractions` | class library | `IStoreProvider`, `IWritableStoreProvider` and the models. Interfaces only; no packages. |
+| `AchievementCaretaker.Providers.Shared` | class library | What the providers share: the session file (DPAPI) and JSON helpers. |
+| `AchievementCaretaker.Providers.Epic` | class library | The Epic Games provider over HTTPS, read-only. |
+| `AchievementCaretaker.Providers.Gog` | class library | The GOG provider over HTTPS; it can also unlock and lock. |
+| `AchievementCaretaker.Services` | class library | The logic behind the windows, with no UI: the SQLite caches and the store services (library, achievements, sign-in). |
 | `AchievementCaretaker.App` | `AchievementCaretaker.exe` | The whole application: the library window, the achievement editor, and the store windows. |
 
 `tools/ProviderProbe` is a command-line probe of the providers. It is in the solution so it builds
@@ -59,9 +63,9 @@ AchievementCaretaker.App/
   InvariantShorthand.cs the _($"…") invariant-culture helper
   Common/               AppSettings, IconCache, StoreImageCache,
                         SteamConnector, SteamWatch
-  Library/              GameInfo, GameCache, LibraryStats, RatingStore, OwnRating,
+  Library/              GameInfo, LibraryStats, RatingStore, OwnRating,
                         StoreGameInfo
-  Achievements/         AchievementCache, AchievementFilter, StoreAchievementItem
+  Achievements/         AchievementFilter, StoreAchievementItem
     Stats/              the schema model
   ViewModels/           ProgressViewModel; the library, editor and settings view models;
                         StoreLibraryViewModel, StoreAchievementsViewModel
@@ -70,11 +74,16 @@ AchievementCaretaker.App/
                         MessageWindow
   Resources/            Icons.axaml, Theme.axaml, the application icon
 
-AchievementCaretaker.Providers/
+AchievementCaretaker.Services/
+  LibraryCache.cs, ILibraryCache.cs, GameCache.cs, AchievementCache.cs   the caches
+  StoreLibraryService.cs, StoreAchievementsService.cs, StoreSessionService.cs   and their interfaces
+AchievementCaretaker.Providers.Abstractions/
   IStoreProvider.cs, IWritableStoreProvider.cs, StoreModels.cs
-  Epic/, Gog/           one provider each, with every unofficial endpoint of its store
-  StoreProviders.cs     the list of stores; adding one means listing it here
-  SessionFile.cs        how a refresh token is kept on disk
+AchievementCaretaker.Providers.Shared/
+  DpapiSessionStore.cs, PlainSessionStore.cs   how a refresh token is kept on disk, per OS
+  JsonHelpers.cs
+AchievementCaretaker.Providers.Epic/   EpicProvider.cs with every unofficial Epic endpoint
+AchievementCaretaker.Providers.Gog/    GogProvider.cs with every unofficial GOG endpoint
 
 AchievementCaretaker.SteamApi/
   Steam.cs              library load and export binding
@@ -278,9 +287,14 @@ Uncommitted bar, and Commit sends the changes through `IWritableStoreProvider`, 
 implements. How the two stores' endpoints work is in [EPIC-RESEARCH.md](EPIC-RESEARCH.md)
 and [GOG-RESEARCH.md](GOG-RESEARCH.md); this is how the application uses them.
 
-- **`AchievementCaretaker.Providers`** has one `IStoreProvider` per store. It is plain HTTPS
-  with no native code and no packages. Steam is deliberately not behind that interface: its
-  interface is native, scoped to one app id per process, and can write.
+- **`AchievementCaretaker.Providers.*`** has one assembly per store, each implementing
+  `IStoreProvider` from `Abstractions` and using `Shared` for the session file. They are plain
+  HTTPS with no native code, and each asks an `IHttpClientFactory` for a client per request rather
+  than keeping one (a kept client holds on to stale connections and DNS answers). Providers do not
+  reference one another. They are registered in the
+  application's composition root (`App/Services/ServiceRegistration.cs`) as singletons, and
+  the library window asks the container for them. Steam is not behind that interface yet: its interface is
+  native, scoped to one app id per process, and can write.
 - **One source at a time**, chosen in the rail. Steam's half of the window is unchanged. A store
   gets its own game type (`StoreGameInfo`), its own view model (`StoreLibraryViewModel`) and its
   own view (`StoreLibraryView`), because everything on Steam's side is keyed by a numeric app id
@@ -311,6 +325,28 @@ and [GOG-RESEARCH.md](GOG-RESEARCH.md); this is how the application uses them.
   cancelled. Signing in starts that run by itself, so a new account fills in without a click and
   an account that is already known costs almost nothing. Until a game has been read its meter
   is absent rather than empty.
+
+## Services and tests
+
+`AchievementCaretaker.Services` holds what used to sit inside the store view models and has no
+Avalonia in it, so it is tested without a window. The view models keep what is on screen (games,
+pending ticks, filters, images) and call the services for the rest:
+
+- **`ILibraryCache`** is the one cache of the process, a singleton in front of `games.db`. It
+  stays the same object when the database is moved, and a database that will not open is a cache
+  that reads empty and writes nothing, with `Error` saying why.
+- **`IStoreLibraryService`**: the saved library of the signed-in account, re-reading the owned
+  list, and the progress run (four workers, saved in batches, so a cancelled run keeps what it
+  read).
+- **`IStoreAchievementsService`**: reading a game's achievements and sending changes, with a
+  failure put as a sentence for the user.
+- **`IStoreSessionService`**: sign-in, sign-out and the wording of what the user is asked first.
+
+Services are singletons registered in `App/Services/ServiceRegistration.cs`; the library window
+resolves its view model from a scope. No static `HttpClient` is left: art, the published game
+list and icons ask `IHttpClientFactory`. Tests are in `tests/` (xUnit v3), use the public
+surface only and run with `dotnet test --solution AchievementCaretaker.slnx`. The view models
+and windows themselves are not under test yet.
 
 ## What is not covered here
 

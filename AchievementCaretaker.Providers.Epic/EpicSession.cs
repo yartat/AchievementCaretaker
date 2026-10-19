@@ -21,7 +21,7 @@ namespace AchievementCaretaker.Providers.Epic
     /// </summary>
     /// <remarks>
     /// The refresh token is a credential for the whole account; nothing here
-    /// should ever be logged or printed. See <see cref="SessionFile"/> for how
+    /// should ever be logged or printed. See <see cref="ISessionStore"/> for how
     /// the file it is saved to is protected.
     /// </remarks>
     public sealed class EpicSession
@@ -57,15 +57,5 @@ namespace AchievementCaretaker.Providers.Epic
             string.IsNullOrEmpty(this.RefreshToken) == false &&
             this.RefreshExpiresAt > DateTimeOffset.UtcNow.AddMinutes(1);
 
-        /// <summary>Returns null when there is no usable session file.</summary>
-        public static EpicSession Load(string path)
-        {
-            return SessionFile.Load<EpicSession>(path);
-        }
-
-        public void Save(string path)
-        {
-            SessionFile.Save(path, this);
-        }
     }
 }

@@ -123,18 +123,21 @@ namespace AchievementCaretaker.App.ViewModels
             this.SelectedStoreLibrary = store;
         }
 
+        /// <summary>The stores to offer, from the container. Their lifetime is the container's, not this view model's.</summary>
+        private readonly IEnumerable<IStoreProvider> _StoreProviders;
+
         private void CreateStoreLibraries()
         {
             // One image cache for all of them: it follows the icon cache's directory
             // as it moves, so it is built from that rather than from a path.
-            StoreImageCache images = new(this._IconCache);
+            StoreImageCache images = new(this._IconCache, this._Http);
 
             List<StoreLibraryViewModel> stores = new();
-            foreach (var provider in StoreProviders.CreateAll(AppSettings.HomeDirectory))
+            foreach (var provider in this._StoreProviders)
             {
                 // The database can be replaced by a cache move, so hand over how to
                 // reach it rather than the instance.
-                StoreLibraryViewModel store = new(provider, () => this._Cache, images, this)
+                StoreLibraryViewModel store = new(provider, this._StoreLibrary, this._StoreSession, this._StoreAchievements, images, this)
                 {
                     IsContentView = this.IsContentView,
                 };

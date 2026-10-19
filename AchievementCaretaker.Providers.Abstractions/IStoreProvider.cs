@@ -27,7 +27,7 @@ namespace AchievementCaretaker.Providers
     /// that is not part of it.
     /// </para>
     /// </remarks>
-    public interface IStoreProvider : IDisposable
+    public interface IStoreProvider
     {
         /// <summary>Stable lower-case id: names the session file and the command line.</summary>
         string Id { get; }

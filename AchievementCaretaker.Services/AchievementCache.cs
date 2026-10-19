@@ -33,13 +33,13 @@ using System.Collections.Generic;
 using System.IO;
 using Microsoft.Data.Sqlite;
 
-namespace AchievementCaretaker.App.Achievements
+namespace AchievementCaretaker.Services
 {
     /// <summary>
     /// One cached achievement: the definition out of the schema, plus the state
     /// Steam last reported for it.
     /// </summary>
-    internal sealed class CachedAchievement
+    public sealed class CachedAchievement
     {
         public string Id { get; set; }
         public string Name { get; set; }
@@ -68,7 +68,7 @@ namespace AchievementCaretaker.App.Achievements
     /// previous one.
     /// </para>
     /// </remarks>
-    internal sealed class AchievementCache : IDisposable
+    public sealed class AchievementCache : IDisposable
     {
         private readonly SqliteConnection _Connection;
 

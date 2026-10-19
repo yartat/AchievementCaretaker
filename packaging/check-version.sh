@@ -37,7 +37,9 @@ expect() {
 
 echo "checking that the repository says $version"
 
-for project in AchievementCaretaker.App AchievementCaretaker.SteamApi AchievementCaretaker.Providers; do
+for project in AchievementCaretaker.App AchievementCaretaker.SteamApi AchievementCaretaker.Providers.Abstractions \
+    AchievementCaretaker.Providers.Shared AchievementCaretaker.Providers.Epic AchievementCaretaker.Providers.Gog \
+    AchievementCaretaker.Services; do
     csproj="$project/$project.csproj"
     expect "$project Version"         "$csproj" "<Version>$version</Version>"
     expect "$project AssemblyVersion" "$csproj" "<AssemblyVersion>$assembly</AssemblyVersion>"
