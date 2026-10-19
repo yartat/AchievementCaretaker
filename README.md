@@ -19,6 +19,8 @@ starts refreshing as soon as Steam is available. See [Using the sources](#using-
 
 [Download latest release](https://github.com/yartat/AchievementCaretaker/releases/latest).
 
+The Windows installers are not code-signed. Windows SmartScreen may warn when you run one: choose *More info*, then *Run anyway*. The Chocolatey and winget packages check each download against its SHA-256 hash before installing it.
+
 ## How it works
 
 There is one executable, `AchievementCaretaker.exe`, and it has two faces:
@@ -105,7 +107,7 @@ time Caretaker runs.
 
 ## Versioning
 
-Current version: **2.1.0**. [docs/RELEASE-NOTES.md](docs/RELEASE-NOTES.md) records what
+Current version: **2.1.1**. [docs/RELEASE-NOTES.md](docs/RELEASE-NOTES.md) records what
 changed in each release.
 
 ## Using the sources

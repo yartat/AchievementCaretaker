@@ -1053,6 +1053,7 @@ release. Delete whichever forge is not used. `packaging/` holds the shared half:
 | `packaging/linux/build-deb.sh` | builds the `.deb` from a self-contained publish |
 | `packaging/linux/control.in`, `*.desktop`, `copyright` | the package metadata |
 | `packaging/chocolatey/build.sh` | the Chocolatey package from a published release (portable zips, SHA-256); `--push` sends it, with `CHOCO_API_KEY` |
+| `packaging/winget/build.sh` | the winget manifests (version, locale, installer) from a published release (NSIS setup.exe, SHA-256); nothing is submitted |
 
 Five things there are load-bearing:
 

@@ -44,8 +44,6 @@ VIAddVersionKey "LegalCopyright" "Copyright (c) 2026 ${PUBLISHER}. Steam support
 !define MUI_ICON "${ICON}"
 !define MUI_UNICON "${ICON}"
 !define MUI_ABORTWARNING
-!define MUI_FINISHPAGE_RUN "$INSTDIR\${APP_EXE}"
-!define MUI_FINISHPAGE_RUN_TEXT "Start ${APP_NAME}"
 
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_LICENSE "${LICENSE_FILE}"
@@ -58,7 +56,26 @@ VIAddVersionKey "LegalCopyright" "Copyright (c) 2026 ${PUBLISHER}. Steam support
 
 !insertmacro MUI_LANGUAGE "English"
 
+; Start the application after an interactive install. Done here rather than with
+; MUI_FINISHPAGE_RUN, which also started it during a silent install (winget, /S).
+Function .onInstSuccess
+    IfSilent done
+    Exec '"$INSTDIR\${APP_EXE}"'
+done:
+FunctionEnd
+
 Section "Install"
+    ; A running copy keeps its files open, so an install over it would leave a mix
+    ; of old and new. Refuse rather than kill it: it may hold unsaved changes.
+    nsExec::Exec 'cmd /c tasklist /FI "IMAGENAME eq ${APP_EXE}" /NH | findstr /I "${APP_EXE}" >nul'
+    Pop $0
+    ${If} $0 == 0
+        IfSilent +2 0
+        MessageBox MB_OK|MB_ICONEXCLAMATION "Achievement Caretaker is running. Close it, then install again."
+        SetErrorLevel 1
+        Quit
+    ${EndIf}
+
     SetOutPath "$INSTDIR"
 
     ; Clear the previous install so an upgrade - or a switch between the x64 and
@@ -88,7 +105,9 @@ Section "Install"
     WriteRegStr HKCU "${UNINST_KEY}" "URLInfoAbout" "${HOMEPAGE}"
     WriteRegStr HKCU "${UNINST_KEY}" "InstallLocation" "$INSTDIR"
     WriteRegStr HKCU "${UNINST_KEY}" "UninstallString" '"$INSTDIR\Uninstall.exe"'
-    WriteRegStr HKCU "${UNINST_KEY}" "QuietUninstallString" '"$INSTDIR\Uninstall.exe" /S'
+    ; _?= runs the uninstaller in place instead of copying it to %TEMP%. Without it the
+    ; copy does the work, and the process that was waited on returns 0 at once.
+    WriteRegStr HKCU "${UNINST_KEY}" "QuietUninstallString" '"$INSTDIR\Uninstall.exe" /S _?=$INSTDIR'
     WriteRegDWORD HKCU "${UNINST_KEY}" "NoModify" 1
     WriteRegDWORD HKCU "${UNINST_KEY}" "NoRepair" 1
 
@@ -98,6 +117,17 @@ Section "Install"
 SectionEnd
 
 Section "Uninstall"
+    ; Refuse while the application runs, for the same reason as the install: its
+    ; files would stay behind, and it may hold unsaved changes.
+    nsExec::Exec 'cmd /c tasklist /FI "IMAGENAME eq ${APP_EXE}" /NH | findstr /I "${APP_EXE}" >nul'
+    Pop $0
+    ${If} $0 == 0
+        IfSilent +2 0
+        MessageBox MB_OK|MB_ICONEXCLAMATION "Achievement Caretaker is running. Close it, then uninstall again."
+        SetErrorLevel 1
+        Quit
+    ${EndIf}
+
     Delete "$SMPROGRAMS\${APP_NAME}.lnk"
 
     ; Only what was installed. The settings, the game cache and the user's own
@@ -105,6 +135,17 @@ Section "Uninstall"
     ; uninstall is not a request to throw away data a reinstall would want.
     RMDir /r "$INSTDIR"
 
+    ; Report a leftover executable as a failure, so the exit code is not 0 for a
+    ; removal that did not happen.
+    ${If} ${FileExists} "$INSTDIR\${APP_EXE}"
+        SetErrorLevel 1
+    ${EndIf}
+
     DeleteRegKey HKCU "${UNINST_KEY}"
     DeleteRegKey HKCU "Software\${APP_ID}"
+
+    ; The uninstaller runs in place (_?=), so it cannot delete itself. A detached command
+    ; removes it and the folder once this process has exited. rmdir takes only an empty
+    ; folder, so nothing outside the program is touched.
+    Exec 'cmd /c ping -n 3 127.0.0.1 >nul & del /f /q "$INSTDIR\Uninstall.exe" & rmdir "$INSTDIR"'
 SectionEnd

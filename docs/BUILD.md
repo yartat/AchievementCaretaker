@@ -206,6 +206,12 @@ there rather than at job artifacts, because job artifacts expire and a release l
 There is no arm64 job, on purpose — see the platform table in the
 [README](../README.md#platform-support).
 
+### The winget manifests
+
+`packaging/winget/build.sh <version>` writes the three winget manifests for a published release, under `manifests/y/YaroslavVTatarenko/AchievementCaretaker/<version>/`. They point at the NSIS `setup.exe` files of the release, with their SHA-256 hashes, and use the `/S` silent switch. `winget validate --manifest <dir>` checks them. Nothing is submitted: the pull request to `microsoft/winget-pkgs` is opened by hand or with `wingetcreate`, one per version.
+
+The installers are not code-signed. Winget does not require a signature, but SmartScreen will warn users until the files have a reputation.
+
 ### The policy documents
 
 `packaging/check-policy.sh` requires `PRIVACY.md` and `LICENSE.txt` at the repository root and a

@@ -1,0 +1,11 @@
+# AchievementCaretaker
+# Copyright (c) 2026 Yaroslav V Tatarenko
+#
+# See LICENSE in the repository root.
+#
+# Template for packaging/winget/build.sh, which fills in the @...@ fields.
+PackageIdentifier: YaroslavVTatarenko.AchievementCaretaker
+PackageVersion: @VERSION@
+DefaultLocale: en-US
+ManifestType: version
+ManifestVersion: 1.12.0

@@ -1,0 +1,32 @@
+# AchievementCaretaker
+# Copyright (c) 2026 Yaroslav V Tatarenko
+#
+# See LICENSE in the repository root.
+#
+# Template for packaging/winget/build.sh, which fills in the @...@ fields.
+# The installer is the NSIS setup.exe from the release. It installs per user, so
+# no administrator is needed, and /S is its silent switch.
+PackageIdentifier: YaroslavVTatarenko.AchievementCaretaker
+PackageVersion: @VERSION@
+Scope: user
+InstallModes:
+  - interactive
+  - silent
+  - silentWithProgress
+InstallerSwitches:
+  Silent: /S
+  SilentWithProgress: /S
+UpgradeBehavior: install
+Installers:
+  - Architecture: x64
+    InstallerType: nullsoft
+    InstallerUrl: @URL64@
+    InstallerSha256: @SHA64@
+    ProductCode: AchievementCaretaker
+  - Architecture: x86
+    InstallerType: nullsoft
+    InstallerUrl: @URL32@
+    InstallerSha256: @SHA32@
+    ProductCode: AchievementCaretaker
+ManifestType: installer
+ManifestVersion: 1.12.0

@@ -12,6 +12,55 @@ Achievement Manager 8.0.
 
 ---
 
+## 2.1.1 — 2026-10-19
+
+A fix release for the Windows installer, and one cache fix. The application's behaviour is otherwise unchanged.
+
+### Fixed
+
+- **A silent install no longer starts the application.** Installing with `/S` (as winget does) left
+  Achievement Caretaker running; only an interactive install offers to start it now.
+- **Installing over, or uninstalling, while the application is running is refused.** The installer
+  exits with code 1 and changes nothing, instead of leaving a mix of old and new files. Close the
+  application and run the installer or the uninstaller again. The application is not closed for you,
+  because it may hold achievement changes that have not been committed yet.
+- **The silent uninstaller reports its real result** and removes its own leftover folder. Before,
+  it reported success even when nothing was removed.
+- **Cached capsules were deleted during a refresh.** A refresh that found Steam running could remove
+  the cached images of games still in your library. Those images are downloaded again on the next
+  start; the library itself was never affected.
+
+### Upgrading from 2.1.0
+
+Install 2.1.1 over 2.1.0 as usual. Close Achievement Caretaker first, since the installer now refuses
+to run over a running copy. Settings, caches and saved libraries in `~/.sac` are left as they are.
+
+### Downloads
+
+| If you are on | Take |
+|---|---|
+| 64-bit Windows | `achievement-caretaker-2.1.1-win-x64-setup.exe` to install, or `…-win-x64-portable.zip` to unzip and run |
+| 32-bit Windows | `…-win-x86-setup.exe` or `…-win-x86-portable.zip` |
+| Debian or Ubuntu (amd64) | `achievement-caretaker_2.1.1_amd64.deb` — `sudo apt install ./achievement-caretaker_2.1.1_amd64.deb` |
+| Windows on Arm | the x64 download — Valve ships no ARM build of the Steam client, and Windows emulates both |
+
+Every download bundles the .NET runtime.
+
+### Verified in this release
+
+| Check | Result |
+|---|---|
+| `dotnet build` on `AnyCPU` and `x86` with warnings as errors | 0 warnings, 0 errors |
+| Headless render of the library, with and without Steam | pass |
+| Windows installer, silent: install, install over a running copy, uninstall while running, uninstall | as described above |
+| Cached capsules across a refresh with Steam running | 625 of 625 kept |
+
+### Known issues
+
+Unchanged from 2.1.0.
+
+---
+
 ## 2.1.0 — 2026-10-16
 
 A small security release. No user-facing feature changes.

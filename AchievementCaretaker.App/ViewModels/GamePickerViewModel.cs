@@ -838,6 +838,11 @@ namespace AchievementCaretaker.App.ViewModels
             var cache = this._Cache;
             var icons = this._IconCache;
 
+            // What this account owns, as this refresh found it. Taken now, not read back from
+            // the database: the table can hold only part of the library at this point, and
+            // pruning against that part deleted most of the art of games still owned.
+            var owned = this._Games.Keys.ToHashSet();
+
             try
             {
                 // Rows for games no longer owned are deleted here, and their
@@ -848,7 +853,9 @@ namespace AchievementCaretaker.App.ViewModels
                     if (complete == true)
                     {
                         // Art is kept for every game any saved account owns, not just this one.
-                        icons.Prune(cache.LoadAllGameIds());
+                        var keep = cache.LoadAllGameIds();
+                        keep.UnionWith(owned);
+                        icons.Prune(keep);
                     }
                 });
             }
