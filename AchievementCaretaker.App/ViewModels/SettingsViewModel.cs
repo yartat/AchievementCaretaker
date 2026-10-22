@@ -35,129 +35,128 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using AchievementCaretaker.App.Common;
 
-namespace AchievementCaretaker.App.ViewModels
+namespace AchievementCaretaker.App.ViewModels;
+
+internal sealed partial class SettingsViewModel : ObservableObject
 {
-    internal sealed partial class SettingsViewModel : ObservableObject
+    [ObservableProperty]
+    private string _databasePath;
+
+    [ObservableProperty]
+    private string _iconCachePath;
+
+    /// <summary>The theme list, in display order. Fixed for the lifetime of the dialog.</summary>
+    public ThemeOption[] Themes { get; } =
+    [
+        new(AppTheme.System),
+        new(AppTheme.Light),
+        new(AppTheme.Dark),
+    ];
+
+    private ThemeOption _selectedTheme;
+
+    /// <summary>
+    /// Written by hand rather than generated because the setter also asks
+    /// the view to preview the choice; see <see cref="ThemePreviewRequested"/>.
+    /// </summary>
+    public ThemeOption SelectedTheme
     {
-        [ObservableProperty]
-        private string _DatabasePath;
-
-        [ObservableProperty]
-        private string _IconCachePath;
-
-        /// <summary>The theme list, in display order. Fixed for the lifetime of the dialog.</summary>
-        public ThemeOption[] Themes { get; } =
-        [
-            new(AppTheme.System),
-            new(AppTheme.Light),
-            new(AppTheme.Dark),
-        ];
-
-        private ThemeOption _SelectedTheme;
-
-        /// <summary>
-        /// Written by hand rather than generated because the setter also asks
-        /// the view to preview the choice; see <see cref="ThemePreviewRequested"/>.
-        /// </summary>
-        public ThemeOption SelectedTheme
+        get => _selectedTheme;
+        set
         {
-            get => this._SelectedTheme;
-            set
-            {
-                if (value == null || ReferenceEquals(this._SelectedTheme, value) == true)
-                {
-                    return;
-                }
-                this.SetProperty(ref this._SelectedTheme, value);
-                this.ThemePreviewRequested?.Invoke(value.Value);
-            }
-        }
-
-        /// <summary>
-        /// Asks the view to show the theme straight away. A theme is a thing you
-        /// judge by looking at it, so the dialog applies it live; the view
-        /// restores the previous one if the dialog is cancelled.
-        /// </summary>
-        public event Action<AppTheme> ThemePreviewRequested;
-
-        /// <summary>Asks the view for a folder; returns null if cancelled.</summary>
-        public event Func<string, string, Task<string>> FolderRequested;
-
-        /// <summary>Raised with true when the user accepted the changes.</summary>
-        public event Action<bool> CloseRequested;
-
-        public SettingsViewModel(AppSettings settings)
-        {
-            this.DatabasePath = settings.DatabasePath;
-            this.IconCachePath = settings.IconCachePath;
-            // Assigned to the backing field: selecting the stored theme is not
-            // a change the user made, so it must not raise a preview.
-            this._SelectedTheme = Array.Find(this.Themes, t => t.Value == settings.Theme) ?? this.Themes[0];
-        }
-
-        /// <summary>The database is a file, so browsing picks its directory.</summary>
-        [RelayCommand]
-        private async Task BrowseDatabaseAsync()
-        {
-            var current = Path.GetDirectoryName(this.DatabasePath);
-            var picked = await this.RequestFolderAsync("Choose where to keep the game database", current);
-            if (picked == null)
+            if (value == null || ReferenceEquals(_selectedTheme, value) == true)
             {
                 return;
             }
-            var fileName = Path.GetFileName(this.DatabasePath);
-            if (string.IsNullOrWhiteSpace(fileName) == true)
-            {
-                fileName = "games.db";
-            }
-            this.DatabasePath = Path.Combine(picked, fileName);
+            SetProperty(ref _selectedTheme, value);
+            ThemePreviewRequested?.Invoke(value.Value);
         }
+    }
 
-        [RelayCommand]
-        private async Task BrowseIconsAsync()
-        {
-            var picked = await this.RequestFolderAsync("Choose where to keep cached game icons", this.IconCachePath);
-            if (picked != null)
-            {
-                this.IconCachePath = picked;
-            }
-        }
+    /// <summary>
+    /// Asks the view to show the theme straight away. A theme is a thing you
+    /// judge by looking at it, so the dialog applies it live; the view
+    /// restores the previous one if the dialog is cancelled.
+    /// </summary>
+    public event Action<AppTheme> ThemePreviewRequested;
 
-        private Task<string> RequestFolderAsync(string title, string start)
-        {
-            return this.FolderRequested == null
-                ? Task.FromResult<string>(null)
-                : this.FolderRequested(title, start);
-        }
+    /// <summary>Asks the view for a folder; returns null if cancelled.</summary>
+    public event Func<string, string, Task<string>> FolderRequested;
 
-        [RelayCommand]
-        private void RestoreDefaults()
-        {
-            this.DatabasePath = AppSettings.DefaultDatabasePath;
-            this.IconCachePath = AppSettings.DefaultIconCachePath;
-            this.SelectedTheme = this.Themes[0];
-        }
+    /// <summary>Raised with true when the user accepted the changes.</summary>
+    public event Action<bool> CloseRequested;
 
-        [RelayCommand]
-        private void Save()
-        {
-            this.CloseRequested?.Invoke(true);
-        }
+    public SettingsViewModel(AppSettings settings)
+    {
+        DatabasePath = settings.DatabasePath;
+        IconCachePath = settings.IconCachePath;
+        // Assigned to the backing field: selecting the stored theme is not
+        // a change the user made, so it must not raise a preview.
+        _selectedTheme = Array.Find(Themes, t => t.Value == settings.Theme) ?? Themes[0];
+    }
 
-        [RelayCommand]
-        private void Cancel()
+    /// <summary>The database is a file, so browsing picks its directory.</summary>
+    [RelayCommand]
+    private async Task BrowseDatabaseAsync()
+    {
+        var current = Path.GetDirectoryName(DatabasePath);
+        var picked = await RequestFolderAsync("Choose where to keep the game database", current);
+        if (picked == null)
         {
-            this.CloseRequested?.Invoke(false);
+            return;
         }
+        var fileName = Path.GetFileName(DatabasePath);
+        if (string.IsNullOrWhiteSpace(fileName) == true)
+        {
+            fileName = "games.db";
+        }
+        DatabasePath = Path.Combine(picked, fileName);
+    }
 
-        public AppSettings ToSettings()
+    [RelayCommand]
+    private async Task BrowseIconsAsync()
+    {
+        var picked = await RequestFolderAsync("Choose where to keep cached game icons", IconCachePath);
+        if (picked != null)
         {
-            return new()
-            {
-                DatabasePath = this.DatabasePath?.Trim(),
-                IconCachePath = this.IconCachePath?.Trim(),
-                Theme = this.SelectedTheme?.Value ?? AppTheme.System,
-            };
+            IconCachePath = picked;
         }
+    }
+
+    private Task<string> RequestFolderAsync(string title, string start)
+    {
+        return FolderRequested == null
+            ? Task.FromResult<string>(null)
+            : FolderRequested(title, start);
+    }
+
+    [RelayCommand]
+    private void RestoreDefaults()
+    {
+        DatabasePath = AppSettings.DefaultDatabasePath;
+        IconCachePath = AppSettings.DefaultIconCachePath;
+        SelectedTheme = Themes[0];
+    }
+
+    [RelayCommand]
+    private void Save()
+    {
+        CloseRequested?.Invoke(true);
+    }
+
+    [RelayCommand]
+    private void Cancel()
+    {
+        CloseRequested?.Invoke(false);
+    }
+
+    public AppSettings ToSettings()
+    {
+        return new()
+        {
+            DatabasePath = DatabasePath?.Trim(),
+            IconCachePath = IconCachePath?.Trim(),
+            Theme = SelectedTheme?.Value ?? AppTheme.System,
+        };
     }
 }

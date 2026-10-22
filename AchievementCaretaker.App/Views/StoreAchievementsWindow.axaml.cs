@@ -9,39 +9,38 @@ using System;
 using Avalonia.Controls;
 using AchievementCaretaker.App.ViewModels;
 
-namespace AchievementCaretaker.App.Views
+namespace AchievementCaretaker.App.Views;
+
+public partial class StoreAchievementsWindow : Window
 {
-    public partial class StoreAchievementsWindow : Window
+    public StoreAchievementsWindow()
     {
-        public StoreAchievementsWindow()
+        InitializeComponent();
+        DataContextChanged += (_, _) =>
         {
-            this.InitializeComponent();
-            this.DataContextChanged += (_, _) =>
+            if (_viewer != null)
             {
-                if (this._Viewer != null)
-                {
-                    this._Viewer.ConfirmRequested -= this.OnConfirmRequested;
-                }
-                this._Viewer = this.DataContext as StoreAchievementsViewModel;
-                if (this._Viewer != null)
-                {
-                    this._Viewer.ConfirmRequested += this.OnConfirmRequested;
-                }
-            };
-        }
+                _viewer.ConfirmRequested -= OnConfirmRequested;
+            }
+            _viewer = DataContext as StoreAchievementsViewModel;
+            if (_viewer != null)
+            {
+                _viewer.ConfirmRequested += OnConfirmRequested;
+            }
+        };
+    }
 
-        private StoreAchievementsViewModel _Viewer;
+    private StoreAchievementsViewModel _viewer;
 
-        private System.Threading.Tasks.Task<bool> OnConfirmRequested(string title, string message)
-        {
-            return MessageWindow.ShowConfirmAsync(this, title, message);
-        }
+    private System.Threading.Tasks.Task<bool> OnConfirmRequested(string title, string message)
+    {
+        return MessageWindow.ShowConfirmAsync(this, title, message);
+    }
 
-        protected override void OnClosed(EventArgs e)
-        {
-            // Stops a load that is still reading achievements or icons.
-            (this.DataContext as StoreAchievementsViewModel)?.Shutdown();
-            base.OnClosed(e);
-        }
+    protected override void OnClosed(EventArgs e)
+    {
+        // Stops a load that is still reading achievements or icons.
+        (DataContext as StoreAchievementsViewModel)?.Shutdown();
+        base.OnClosed(e);
     }
 }

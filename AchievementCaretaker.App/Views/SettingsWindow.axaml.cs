@@ -38,98 +38,97 @@ using Avalonia.Styling;
 using AchievementCaretaker.App.Common;
 using AchievementCaretaker.App.ViewModels;
 
-namespace AchievementCaretaker.App.Views
+namespace AchievementCaretaker.App.Views;
+
+public partial class SettingsWindow : Window
 {
-    public partial class SettingsWindow : Window
+    private SettingsViewModel _viewModel;
+
+    /// <summary>
+    /// What the application looked like when the dialog opened, so a
+    /// cancelled preview can be undone. Captured from the application
+    /// rather than from the settings file: the two can differ if a previous
+    /// save failed to write.
+    /// </summary>
+    private readonly ThemeVariant _originalTheme;
+
+    public SettingsWindow()
     {
-        private SettingsViewModel _ViewModel;
+        _originalTheme = Application.Current?.RequestedThemeVariant;
+        InitializeComponent();
+    }
 
-        /// <summary>
-        /// What the application looked like when the dialog opened, so a
-        /// cancelled preview can be undone. Captured from the application
-        /// rather than from the settings file: the two can differ if a previous
-        /// save failed to write.
-        /// </summary>
-        private readonly ThemeVariant _OriginalTheme;
+    protected override void OnDataContextChanged(EventArgs e)
+    {
+        Detach();
 
-        public SettingsWindow()
+        _viewModel = DataContext as SettingsViewModel;
+        if (_viewModel != null)
         {
-            this._OriginalTheme = Application.Current?.RequestedThemeVariant;
-            this.InitializeComponent();
+            _viewModel.FolderRequested += OnFolderRequested;
+            _viewModel.CloseRequested += OnCloseRequested;
+            _viewModel.ThemePreviewRequested += OnThemePreviewRequested;
         }
 
-        protected override void OnDataContextChanged(EventArgs e)
+        base.OnDataContextChanged(e);
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        Detach();
+        base.OnClosed(e);
+    }
+
+    private void Detach()
+    {
+        if (_viewModel == null)
         {
-            this.Detach();
-
-            this._ViewModel = this.DataContext as SettingsViewModel;
-            if (this._ViewModel != null)
-            {
-                this._ViewModel.FolderRequested += this.OnFolderRequested;
-                this._ViewModel.CloseRequested += this.OnCloseRequested;
-                this._ViewModel.ThemePreviewRequested += this.OnThemePreviewRequested;
-            }
-
-            base.OnDataContextChanged(e);
+            return;
         }
+        _viewModel.FolderRequested -= OnFolderRequested;
+        _viewModel.CloseRequested -= OnCloseRequested;
+        _viewModel.ThemePreviewRequested -= OnThemePreviewRequested;
+    }
 
-        protected override void OnClosed(EventArgs e)
+    private async Task<string> OnFolderRequested(string title, string startIn)
+    {
+        IStorageFolder start = null;
+        try
         {
-            this.Detach();
-            base.OnClosed(e);
-        }
-
-        private void Detach()
-        {
-            if (this._ViewModel == null)
+            if (string.IsNullOrWhiteSpace(startIn) == false && Directory.Exists(startIn) == true)
             {
-                return;
-            }
-            this._ViewModel.FolderRequested -= this.OnFolderRequested;
-            this._ViewModel.CloseRequested -= this.OnCloseRequested;
-            this._ViewModel.ThemePreviewRequested -= this.OnThemePreviewRequested;
-        }
-
-        private async Task<string> OnFolderRequested(string title, string startIn)
-        {
-            IStorageFolder start = null;
-            try
-            {
-                if (string.IsNullOrWhiteSpace(startIn) == false && Directory.Exists(startIn) == true)
-                {
-                    start = await this.StorageProvider.TryGetFolderFromPathAsync(startIn);
-                }
-            }
-            catch (Exception)
-            {
-            }
-
-            var picked = await this.StorageProvider.OpenFolderPickerAsync(new()
-            {
-                Title = title,
-                AllowMultiple = false,
-                SuggestedStartLocation = start,
-            });
-
-            return picked.Count == 0 ? null : picked[0].Path.LocalPath;
-        }
-
-        private void OnThemePreviewRequested(AppTheme theme)
-        {
-            if (Application.Current != null)
-            {
-                Application.Current.RequestedThemeVariant = AppThemes.ToVariant(theme);
+                start = await StorageProvider.TryGetFolderFromPathAsync(startIn);
             }
         }
-
-        private void OnCloseRequested(bool accepted)
+        catch (Exception)
         {
-            // Saving is the picker's job; all this has to undo is the preview.
-            if (accepted == false && Application.Current != null)
-            {
-                Application.Current.RequestedThemeVariant = this._OriginalTheme;
-            }
-            this.Close(accepted);
         }
+
+        var picked = await StorageProvider.OpenFolderPickerAsync(new()
+        {
+            Title = title,
+            AllowMultiple = false,
+            SuggestedStartLocation = start,
+        });
+
+        return picked.Count == 0 ? null : picked[0].Path.LocalPath;
+    }
+
+    private void OnThemePreviewRequested(AppTheme theme)
+    {
+        if (Application.Current != null)
+        {
+            Application.Current.RequestedThemeVariant = AppThemes.ToVariant(theme);
+        }
+    }
+
+    private void OnCloseRequested(bool accepted)
+    {
+        // Saving is the picker's job; all this has to undo is the preview.
+        if (accepted == false && Application.Current != null)
+        {
+            Application.Current.RequestedThemeVariant = _originalTheme;
+        }
+        Close(accepted);
     }
 }

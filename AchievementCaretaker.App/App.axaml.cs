@@ -37,77 +37,80 @@ using AchievementCaretaker.App.Common;
 using AchievementCaretaker.App.Services;
 using AchievementCaretaker.App.ViewModels;
 using AchievementCaretaker.App.Views;
+using AchievementCaretaker.Services;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace AchievementCaretaker.App
+namespace AchievementCaretaker.App;
+
+public partial class App : Application
 {
-    public partial class App : Application
+    /// <summary>
+    /// The root of the dependency graph. Validated when built, so a singleton that
+    /// reaches for something scoped fails at start rather than on first use.
+    /// </summary>
+    private ServiceProvider _services;
+
+    public override void Initialize()
     {
-        /// <summary>
-        /// The root of the dependency graph. Validated when built, so a singleton that
-        /// reaches for something scoped fails at start rather than on first use.
-        /// </summary>
-        private ServiceProvider _Services;
+        AvaloniaXamlLoader.Load(this);
+    }
 
-        public override void Initialize()
+    public override void OnFrameworkInitializationCompleted()
+    {
+        RequestedThemeVariant = AppThemes.ToVariant(AppSettings.Load().Theme);
+
+        _services = new ServiceCollection()
+            .AddCaretaker()
+            .BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
+
+        // The library database is prepared once, here, before any window asks for it.
+        _services.MigrateLibraryDatabase();
+
+        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            AvaloniaXamlLoader.Load(this);
+            desktop.MainWindow = CreateMainWindow(desktop.Args);
+            desktop.ShutdownRequested += OnShutdownRequested;
+        }
+        base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>
+    /// Chooses the window: the library, or an error window when the command line or the place
+    /// it is run from is wrong. Avalonia has no equivalent of a message box shown before the
+    /// application loop starts, so the error is a window of its own.
+    /// </summary>
+    /// <remarks>
+    /// The library does not do the Steam handshake here. It has other sources than Steam, so it
+    /// opens at once and its <see cref="SteamConnector"/> looks for Steam in the background.
+    /// A game's achievements open in a window of their own, served by a helper process (see
+    /// <c>SteamProvider</c>); an application id on the command line, which used to open the
+    /// editor for that game, is accepted and ignored.
+    /// </remarks>
+    private Window CreateMainWindow(string[] args)
+    {
+        if (Program.IsRunningFromSteamDirectory() == true)
+        {
+            return MessageWindow.CreateError("This tool declines to being run from the Steam directory.");
         }
 
-        public override void OnFrameworkInitializationCompleted()
+        if (Program.TryParseAppId(args, out _) == false)
         {
-            this.RequestedThemeVariant = AppThemes.ToVariant(AppSettings.Load().Theme);
-
-            this._Services = new ServiceCollection()
-                .AddCaretaker()
-                .BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
-
-            if (this.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
-            {
-                desktop.MainWindow = this.CreateMainWindow(desktop.Args);
-                desktop.ShutdownRequested += this.OnShutdownRequested;
-            }
-            base.OnFrameworkInitializationCompleted();
+            return MessageWindow.CreateError(
+                "Could not parse application ID from command line argument.");
         }
 
-        /// <summary>
-        /// Chooses the window: the library, or an error window when the command line or the place
-        /// it is run from is wrong. Avalonia has no equivalent of a message box shown before the
-        /// application loop starts, so the error is a window of its own.
-        /// </summary>
-        /// <remarks>
-        /// The library does not do the Steam handshake here. It has other sources than Steam, so it
-        /// opens at once and its <see cref="SteamConnector"/> looks for Steam in the background.
-        /// A game's achievements open in a window of their own, served by a helper process (see
-        /// <c>SteamProvider</c>); an application id on the command line, which used to open the
-        /// editor for that game, is accepted and ignored.
-        /// </remarks>
-        private Window CreateMainWindow(string[] args)
-        {
-            if (Program.IsRunningFromSteamDirectory() == true)
-            {
-                return MessageWindow.CreateError("This tool declines to being run from the Steam directory.");
-            }
+        // One scope for the library window: its view model comes out of it, and it
+        // goes when the window closes.
+        var scope = _services.CreateScope();
+        GamePickerWindow library = new() { DataContext = scope.ServiceProvider.GetRequiredService<GamePickerViewModel>() };
+        library.Closed += (_, _) => scope.Dispose();
+        return library;
+    }
 
-            if (Program.TryParseAppId(args, out _) == false)
-            {
-                return MessageWindow.CreateError(
-                    "Could not parse application ID from command line argument.");
-            }
-
-            // One scope for the library window: its view model comes out of it, and it
-            // goes when the window closes.
-            var scope = this._Services.CreateScope();
-            GamePickerWindow library = new() { DataContext = scope.ServiceProvider.GetRequiredService<GamePickerViewModel>() };
-            library.Closed += (_, _) => scope.Dispose();
-            return library;
-        }
-
-        private void OnShutdownRequested(object sender, ShutdownRequestedEventArgs e)
-        {
-            // Disposes the store providers, which the container owns.
-            this._Services?.Dispose();
-            this._Services = null;
-        }
+    private void OnShutdownRequested(object sender, ShutdownRequestedEventArgs e)
+    {
+        // Disposes the store providers, which the container owns.
+        _services?.Dispose();
+        _services = null;
     }
 }

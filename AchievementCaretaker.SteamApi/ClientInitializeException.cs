@@ -29,27 +29,26 @@
  */
 using System;
 
-namespace AchievementCaretaker.SteamApi
+namespace AchievementCaretaker.SteamApi;
+
+public class ClientInitializeException : Exception
 {
-    public class ClientInitializeException : Exception
+    public readonly ClientInitializeFailure Failure;
+
+    public ClientInitializeException(ClientInitializeFailure failure)
     {
-        public readonly ClientInitializeFailure Failure;
+        Failure = failure;
+    }
 
-        public ClientInitializeException(ClientInitializeFailure failure)
-        {
-            this.Failure = failure;
-        }
+    public ClientInitializeException(ClientInitializeFailure failure, string message)
+        : base(message)
+    {
+        Failure = failure;
+    }
 
-        public ClientInitializeException(ClientInitializeFailure failure, string message)
-            : base(message)
-        {
-            this.Failure = failure;
-        }
-
-        public ClientInitializeException(ClientInitializeFailure failure, string message, Exception innerException)
-            : base(message, innerException)
-        {
-            this.Failure = failure;
-        }
+    public ClientInitializeException(ClientInitializeFailure failure, string message, Exception innerException)
+        : base(message, innerException)
+    {
+        Failure = failure;
     }
 }

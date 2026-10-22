@@ -32,36 +32,35 @@ using System;
 using System.Runtime.InteropServices;
 using AchievementCaretaker.SteamApi.Interfaces;
 
-namespace AchievementCaretaker.SteamApi.Wrappers
+namespace AchievementCaretaker.SteamApi.Wrappers;
+
+public class SteamApps001 : NativeWrapper<ISteamApps001>
 {
-    public class SteamApps001 : NativeWrapper<ISteamApps001>
+    #region GetAppData
+
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate int NativeGetAppData(
+        [In] IntPtr self,
+        [In] uint appId,
+        [In, MarshalAs(UnmanagedType.LPUTF8Str)] string key,
+        IntPtr value,
+        [In] int valueLength);
+
+    public string GetAppData(uint appId, string key)
     {
-        #region GetAppData
-
-        [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
-        private delegate int NativeGetAppData(
-            [In] IntPtr self,
-            [In] uint appId,
-            [In, MarshalAs(UnmanagedType.LPUTF8Str)] string key,
-            IntPtr value,
-            [In] int valueLength);
-
-        public string GetAppData(uint appId, string key)
-        {
-            const int valueLength = 1024;
-            var valuePointer = Marshal.AllocHGlobal(valueLength);
-            int result = Call<int, NativeGetAppData>(
-                this.Functions.GetAppData,
-                this.ObjectAddress,
-                appId,
-                key,
-                valuePointer,
-                valueLength);
-            var value = result == 0 ? null : NativeStrings.PointerToString(valuePointer, valueLength);
-            Marshal.FreeHGlobal(valuePointer);
-            return value;
-        }
-
-        #endregion
+        const int valueLength = 1024;
+        var valuePointer = Marshal.AllocHGlobal(valueLength);
+        int result = Call<int, NativeGetAppData>(
+            Functions.GetAppData,
+            ObjectAddress,
+            appId,
+            key,
+            valuePointer,
+            valueLength);
+        var value = result == 0 ? null : NativeStrings.PointerToString(valuePointer, valueLength);
+        Marshal.FreeHGlobal(valuePointer);
+        return value;
     }
+
+    #endregion
 }

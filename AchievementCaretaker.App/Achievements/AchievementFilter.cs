@@ -28,17 +28,16 @@
  *    distribution.
  */
 
-namespace AchievementCaretaker.App.Achievements
+namespace AchievementCaretaker.App.Achievements;
+
+/// <summary>
+/// Which achievements the editor lists. Replaces a pair of independent
+/// "show only locked" / "show only unlocked" toggles that could be set to
+/// two combinations meaning the same thing.
+/// </summary>
+internal enum AchievementFilter
 {
-    /// <summary>
-    /// Which achievements the editor lists. Replaces a pair of independent
-    /// "show only locked" / "show only unlocked" toggles that could be set to
-    /// two combinations meaning the same thing.
-    /// </summary>
-    internal enum AchievementFilter
-    {
-        All = 0,
-        Locked = 1,
-        Unlocked = 2,
-    }
+    All = 0,
+    Locked = 1,
+    Unlocked = 2,
 }

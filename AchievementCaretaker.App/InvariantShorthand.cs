@@ -30,13 +30,12 @@
 
 using System;
 
-namespace AchievementCaretaker.App
+namespace AchievementCaretaker.App;
+
+public static class InvariantShorthand
 {
-    public static class InvariantShorthand
+    public static string _(FormattableString formattable)
     {
-        public static string _(FormattableString formattable)
-        {
-            return FormattableString.Invariant(formattable);
-        }
+        return FormattableString.Invariant(formattable);
     }
 }

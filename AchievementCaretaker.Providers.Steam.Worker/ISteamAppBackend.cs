@@ -9,29 +9,29 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using AchievementCaretaker.Providers;
+using AchievementCaretaker.Providers.Models;
 
-namespace AchievementCaretaker.Providers.Steam
+namespace AchievementCaretaker.Providers.Steam;
+
+/// <summary>
+/// What the helper does with Steam for the one app id it was started for. The gRPC
+/// service is a thin face over this, so the real thing (Steam's native interface) and a
+/// fake in a test are interchangeable.
+/// </summary>
+public interface ISteamAppBackend
 {
+    Task<IReadOnlyList<StoreAchievement>> GetAchievementsAsync(CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<StoreStat>> GetStatsAsync(CancellationToken cancellationToken);
+
     /// <summary>
-    /// What the helper does with Steam for the one app id it was started for. The gRPC
-    /// service is a thin face over this, so the real thing (Steam's native interface) and a
-    /// fake in a test are interchangeable.
+    /// Sets each achievement and statistic to the wanted value and stores them. Nothing is
+    /// stored if any is refused.
     /// </summary>
-    public interface ISteamAppBackend
-    {
-        Task<IReadOnlyList<StoreAchievement>> GetAchievementsAsync(CancellationToken cancellationToken);
+    Task CommitAsync(
+        IReadOnlyCollection<KeyValuePair<string, bool>> achievements,
+        IReadOnlyCollection<KeyValuePair<string, double>> statistics,
+        CancellationToken cancellationToken);
 
-        Task<IReadOnlyList<StoreStat>> GetStatsAsync(CancellationToken cancellationToken);
-
-        /// <summary>
-        /// Sets each achievement and statistic to the wanted value and stores them. Nothing is
-        /// stored if any is refused.
-        /// </summary>
-        Task CommitAsync(
-            IReadOnlyCollection<KeyValuePair<string, bool>> achievements,
-            IReadOnlyCollection<KeyValuePair<string, double>> statistics,
-            CancellationToken cancellationToken);
-
-        Task ResetAsync(bool includeAchievements, CancellationToken cancellationToken);
-    }
+    Task ResetAsync(bool includeAchievements, CancellationToken cancellationToken);
 }

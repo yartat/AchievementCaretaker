@@ -74,10 +74,11 @@ AchievementCaretaker.App/
   Resources/            Icons.axaml, Theme.axaml, the application icon
 
 AchievementCaretaker.Services/
-  LibraryCache.cs, ILibraryCache.cs, GameCache.cs   the caches
+  GameRepository.cs, IGameRepository.cs, DatabaseMigrator.cs, DatabaseRelocator.cs, DatabaseState.cs,
+  LibraryDatabaseExtensions.cs   the library database
   StoreLibraryService.cs, StoreAchievementsService.cs, StoreSessionService.cs   and their interfaces
 AchievementCaretaker.Providers.Abstractions/
-  IStoreProvider.cs, IWritableStoreProvider.cs, StoreModels.cs
+  IStoreProvider.cs, IWritableStoreProvider.cs, IStatsStoreProvider.cs, ProviderException.cs, Models/
 AchievementCaretaker.Providers.Shared/
   DpapiSessionStore.cs, PlainSessionStore.cs   how a refresh token is kept on disk, per OS
   JsonHelpers.cs
@@ -327,9 +328,11 @@ and [GOG-RESEARCH.md](GOG-RESEARCH.md); this is how the application uses them.
 Avalonia in it, so it is tested without a window. The view models keep what is on screen (games,
 pending ticks, filters, images) and call the services for the rest:
 
-- **`ILibraryCache`** is the one cache of the process, a singleton in front of `games.db`. It
-  stays the same object when the database is moved, and a database that will not open is a cache
-  that reads empty and writes nothing, with `Error` saying why.
+- **`IGameRepository`** is the saved libraries, over the scoped `IDbConnection` of a window
+  (Dapper builds the commands and reads the rows). The tables are made once at start by
+  `IDatabaseMigrator`, and `IDatabaseRelocator` moves the file for the Settings dialog. A database
+  that could not be prepared is a repository that reads empty and writes nothing, with `Error`
+  saying why.
 - **`IStoreLibraryService`**: the saved library of the signed-in account, re-reading the owned
   list, and the progress run (four workers, saved in batches, so a cancelled run keeps what it
   read).

@@ -51,7 +51,7 @@ what would be committed, but do not run `git commit`, `git tag` or `git push` un
 | `AchievementCaretaker.App` | `bin/AchievementCaretaker.exe` (WinExe) | The whole application: the library window, the achievements window (for every source, Steam included) and, started with `--steam-worker <appid>`, the hidden Steam helper, in one binary. |
 | `AchievementCaretaker.Providers.Abstractions` | class library | `IStoreProvider`, `IWritableStoreProvider`, `IStatsStoreProvider` (statistics and reset; only Steam), `ISessionStore` and the models (`StoreGame`, `StoreAchievement` with its `Protected` flag, `StoreStat`, `ProviderException`, `SignInResultKind`). Interfaces and models only: no packages, no code that runs. |
 | `AchievementCaretaker.Providers.Shared` | class library | What the store providers share: the session stores (`DpapiSessionStore`, `PlainSessionStore`), the `AddSessionStore` registration and `JsonHelpers`, public, with the packages they need. |
-| `AchievementCaretaker.Services` | class library | The logic behind the windows, with no UI and no Avalonia: the SQLite caches (`ILibraryCache`/`LibraryCache`) and the store services (`IStoreLibraryService`, `IStoreAchievementsService`, `IStoreSessionService`). Public interfaces; the cache internals are internal. |
+| `AchievementCaretaker.Services` | class library | The logic behind the windows, with no UI and no Avalonia: the library database (`IGameRepository`/`GameRepository`, over a scoped `IDbConnection`, read and written with Dapper; `IDatabaseMigrator`, `IDatabaseRelocator`, `AddLibraryDatabase`) and the store services (`IStoreLibraryService`, `IStoreAchievementsService`, `IStoreSessionService`). |
 | `AchievementCaretaker.Providers.Steam` | class library | Steam as an `IStatsStoreProvider` (`SteamProvider`; achievements, statistics, a single commit for both, reset): every call starts a hidden helper for one app id and talks to it over gRPC on 127.0.0.1 with TLS (a certificate made per launch, pinned by thumbprint) and a per-launch token, both handed over on the helper's standard input. Holds the `.proto`, the handshake, the process launcher and `LibraryStats` (Steam's on-disk caches). The achievements window uses it for Steam games. |
 | `AchievementCaretaker.Providers.Steam.Worker` | class library | The helper's side: the Kestrel gRPC host, `SteamAppBackend` (schema + achievements + set/store through an `ISteamAppGateway`) and `SteamClientGateway` over `SteamApi.Client`. `AchievementCaretaker.exe --steam-worker <appid>` runs it (`Program.Main`, before Avalonia starts). |
 | `AchievementCaretaker.Providers.Epic` | class library | The Epic Games provider, read-only. Every unofficial Epic endpoint is in its `EpicProvider.cs`. |
@@ -166,13 +166,17 @@ SOURCE section; Steam is the default and is `SelectedStoreLibrary == null`, not 
   store has no playtime, last played, review rating or demo/mod types, so it offers only the
   All / Has achievements / Perfect collections and sorting by name or completion. No likes
   and no Recently played yet.
-- **`store_games` lives in `GameCache`, not in a second class.** `GameCache` owns the one
-  connection to `games.db` and its `MoveTo`; a second connection would block a cache move on
-  Windows. The Steam library saves from a pool thread while the stores read and write from
-  the UI thread, so every public `GameCache` member takes `_Gate`. The one cache is an
-  `ILibraryCache` (`LibraryCache`) registered as a singleton: it stays the same object when
-  `MoveTo` replaces the connection behind it, and an unopenable database is a cache that reads
-  empty and writes nothing, with `Error` saying why.
+- **`store_games` lives in the same database and the same `IGameRepository` as `games`.** There is
+  no static `Open`: the connection is a **scoped `IDbConnection`** (a `SqliteConnection`, with the
+  `IDbCommand` made from it), registered by `AddLibraryDatabase`, and the tables are made **once, at
+  start**, by `IDatabaseMigrator` through that connection and command (`App` calls
+  `MigrateLibraryDatabase()` right after building the container). `DatabaseState` is the one
+  singleton: where the file is, and why it could not be prepared. A database that could not be is a
+  repository whose `IsAvailable` is false: reads are empty, writes do nothing, `Error` says why.
+  The Steam library saves from a pool thread while the stores read and write from the UI thread,
+  and they share their scope's connection, so every public repository member (and the relocator)
+  locks on the connection. Because the repository is scoped, so is `IStoreLibraryService`, and the
+  view model that uses them.
 - **Store images live in `<icon cache>/store/<provider>/`, named by a hash of the URL**
   (`StoreImageCache`). The subfolder is what keeps `IconCache.Prune`, which parses app ids out
   of file names and only walks the top level, away from them. `IconCache.MoveTo` moves the
@@ -204,10 +208,10 @@ SOURCE section; Steam is the default and is `SelectedStoreLibrary == null`, not 
   library, and a refresh that began under another account throws its findings away rather
   than merge them into this one. Progress belongs to the account it was read for and is
   never shown to another. `IconCache.Prune` keeps art for the union of every saved account's
-  games (`GameCache.LoadAllGameIds`), not just the current one's. A dead session is still
+  games (`IGameRepository.LoadAllGameIds`), not just the current one's. A dead session is still
   forgotten, or the sign-in panel would never come back; `EpicProvider` and `GogProvider`
   both report a refused refresh as `login_required` for that. A database from before accounts
-  were recorded has no way to say whose rows its library tables hold, so `GameCache.Open`
+  were recorded has no way to say whose rows its library tables hold, so `DatabaseMigrator`
   drops `games` and `store_games` when they lack the `account` column and rebuilds them:
   they were only ever a cache, and nothing else is migrated.
 - **An element's own bindings read from its own `DataContext`.** The store view is hosted
@@ -244,7 +248,7 @@ The executable refuses to run from the Steam install directory
 |---|---|---|
 | *(root)* | `AchievementCaretaker.App` | `Program`, `App`, `InvariantShorthand`, `GlobalSuppressions`, `app.manifest` |
 | `Common/` | `…App.Common` | `AppSettings`, `IconCache` — settings and the icon directory, used by both windows |
-| `Library/` | `…App.Library` | `GameInfo`, `GameCache`, `LibraryStats`, `RatingStore`, `OwnRating` |
+| `Library/` | `…App.Library` | `GameInfo`, `RatingStore`, `OwnRating` |
 | `Achievements/` | `…App.Achievements` | `AchievementFilter`, `StoreAchievementItem`, `StoreStatItem` |
 | `ViewModels/` | `…App.ViewModels` | `ProgressViewModel`, `GamePickerViewModel`, `StoreLibraryViewModel`, `StoreAchievementsViewModel`, `SettingsViewModel` |
 | `Views/` | `…App.Views` | the windows, plus the hand-rolled `MessageWindow` |
@@ -362,15 +366,20 @@ dotnet test --solution AchievementCaretaker.slnx -c Release
 - **Tests use the public surface only. There is no `InternalsVisibleTo`.** If something that
   needs a test is internal, that is a reason to move it into a service with a public interface,
   not to open the assembly. This is the point of the service layer.
-- `AchievementCaretaker.Services.Tests` covers the caches (accounts side by side, partial
-  sync, moving, an unavailable cache) and the store services, against a fake provider.
+- `AchievementCaretaker.Services.Tests` covers the repository over a real SQLite file in a temporary
+  folder, made the way the application makes it (`TestDatabase`: the real registration, the real
+  migration, one scope), the migrator, the relocator, and the store services against a fake provider.
 - `AchievementCaretaker.Providers.Steam.Tests` covers the helper over a real loopback TLS
   connection with a fake backend (token and certificate checks), the stdin protocol, the schema
   reader (both schema shapes) and the backend against a fake gateway. Not covered: `SteamClientGateway`
   and the process launcher, which need a live Steam and the built executable.
 - `AchievementCaretaker.Providers.Tests` covers the session stores (including the plain file
-  written by versions before 2.1.0, and a byte-order mark), `JsonHelpers`, and what the provider
-  registrations promise: the named clients, the sign-in end addresses, which store can write.
+  written by versions before 2.1.0, and a byte-order mark), `JsonHelpers`, what the provider
+  registrations promise (the named clients, the sign-in end addresses, which store can write),
+  and **the Epic and GOG providers against a played-out store** (`FakeStore`, an
+  `IHttpClientFactory` answering from a table of routes; `MemorySessionStore`): sign-in, token
+  refresh and rotation, the library with its paging and batching, achievements, and GOG's writes,
+  including that no secret or code ends up in an error message.
 - A test that cannot run on this operating system **skips**, it does not pass: the DPAPI tests
   skip off Windows and the Unix-file-mode tests skip on Windows, so CI on Linux is what runs the
   latter. Platform-annotated APIs in a test need `[SupportedOSPlatform]` or
@@ -443,7 +452,7 @@ This is the part that matters. Everything else is ordinary application code.
    `NativeClass` (one field: `VirtualTable`), then `Marshal.PtrToStructure`s the vtable into
    a `struct` of `IntPtr` fields — one field per virtual method, **in declaration order**.
 4. Calls go through `Call<TReturn, TDelegate>(Functions.SomeMethod, ...)`, which
-   `Marshal.GetDelegateForFunctionPointer`s the slot (cached in `_FunctionCache`) and
+   `Marshal.GetDelegateForFunctionPointer`s the slot (cached in `_functionCache`) and
    `DynamicInvoke`s it. Instance methods use
    `[UnmanagedFunctionPointer(CallingConvention.ThisCall)]` with the object pointer passed
    explicitly as the first argument.
@@ -517,7 +526,7 @@ hidden struct returns. If you add a wrapper for a method whose C++ signature ret
 Steam delivers results by callback, not return value. `Client.RunCallbacks(false)` drains
 `Steam_BGetCallback` in a loop and dispatches by numeric `Id` to registered `ICallback`
 instances. Both view models poll it from an Avalonia `DispatcherTimer` (`OnTimer`, 200 ms),
-so callbacks arrive on the UI thread. `_RunningCallbacks` guards against re-entrancy.
+so callbacks arrive on the UI thread. `_runningCallbacks` guards against re-entrancy.
 Stopping that timer on window close is what `Shutdown()` is for.
 
 The helper (`SteamClientGateway`) pumps callbacks itself: it requests the user's stats once, then
@@ -547,7 +556,7 @@ the gRPC server calls from pool threads.
   came back has a new id and a dead old pipe. On loss the client is `Abandon`ed, not disposed
   (releasing a pipe means calling into Steam's library over a dead connection), the view model
   stops its timer and callback, turns refresh off and shows the banner again, and the connector
-  starts looking again. **A refresh remembers `_SteamGeneration` and throws its results away if
+  starts looking again. **A refresh remembers `_steamGeneration` and throws its results away if
   it changed**: on a dead pipe the ownership sweep sees nothing owned, and merging that would
   empty the library and then the cache.
   Not exercised against a real Steam restart: whether the already-loaded client library can open
@@ -561,7 +570,7 @@ the gRPC server calls from pool threads.
   are the games Steam no longer lists removed. "Under the same Steam" is asked directly with
   `SteamConnector.IsSteamStillRunning()` as each pass finishes, because the watch notices a loss
   only every few seconds, which is long enough for the whole sweep. The cache follows the same
-  rule: `GameCache.Sync(rows, removeMissing: false)` and no `IconCache.Prune` unless the sync
+  rule: `IGameRepository.Sync(account, rows, removeMissing: false)` and no `IconCache.Prune` unless the sync
   completed. A known name is never replaced by an empty one, and a failed download of the
   published list changes nothing on screen. Not covered: a Steam that stays up but has not
   finished loading its licences answers incompletely too, and would pass for complete.
@@ -798,7 +807,7 @@ Two things about it are easy to get wrong:
 
 | Store | Owner | Holds |
 |---|---|---|
-| `games` table | `Library/GameCache.cs` | each Steam account's owned game list and its stats |
+| `games` table | `Services/GameRepository.cs` (made by `DatabaseMigrator`) | each Steam account's owned game list and its stats |
 | `<appid>.img` | `Common/IconCache.cs` | capsule art, one file per app id |
 
 Only the application process opens the database now (the helper never does), so WAL is no longer
@@ -821,18 +830,19 @@ Startup order matters and is deliberate:
 Do not turn step 1 into an `async` call — the whole point is that it completes before the
 first frame.
 
-`LoadGamesAsync` **merges** into `_Games` rather than clearing and rebuilding. The cached
+`LoadGamesAsync` **merges** into `_games` rather than clearing and rebuilding. The cached
 entries already on screen carry decoded bitmaps and the user's own rating; replacing them
-wholesale blanks the window and re-downloads every capsule. `GameCache.Sync` is the
+wholesale blanks the window and re-downloads every capsule. `GameRepository.Sync` is the
 counterpart on the database side: one transaction that upserts what is owned and deletes
 what is not, so a crash mid-sync cannot leave a half-written library.
 
 Two details worth keeping:
 
-- **Dispose the cache before moving it.** SQLite's WAL leaves `-wal` and `-shm` sidecars
-  open; `GameCache.MoveTo` closes the connection, calls `SqliteConnection.ClearAllPools()`,
-  moves all three files, and reopens. Skipping the pool clear leaves the file locked on
-  Windows.
+- **Close the connection and clear the pools before moving the database.** SQLite's WAL leaves
+  `-wal` and `-shm` sidecars open; `DatabaseRelocator.MoveTo` closes the scope's connection,
+  calls `SqliteConnection.ClearAllPools()`, moves all three files, points `DatabaseState` and the
+  connection at the new path and opens it there. Skipping the pool clear leaves the file locked on
+  Windows. A move that fails puts the old path back, so the database is where it was.
 - **`SQLitePCLRaw.bundle_e_sqlite3` is pinned to 2.1.13.** `Microsoft.Data.Sqlite` 10.0.1
   otherwise resolves 2.1.11, which carries GHSA-2m69-gcr7-jv3q. Do not drop the pin to tidy
   the file.
@@ -966,9 +976,16 @@ Match the surrounding style; it is consistent and deliberate even where it is un
     root.`, and for `Epic/` a line saying it is written from the endpoints Legendary and
     Heroic document. No SAM claim: it is not derived from SAM.
   - `.axaml` files carry the short XML comment form; scripts and workflows the `#` form.
-- Explicit `this.` on instance members.
+- **Plain data is a `record` in a `Models/` folder, in a `….Models` namespace** of its own
+  assembly (`Services.Models`, `Providers.Models`, `Providers.Epic.Models`, …), one type per file.
+  Positional when it is built once and read (`StoreGame`, `GameStats`), `init` properties when it
+  is filled in field by field (`CachedGame`). A record prints every property in `ToString`, so a
+  record that holds a credential (`EpicSession`, `GogSession`) overrides `PrintMembers` to print
+  nothing; a test keeps it so.
+- **File-scoped namespaces** (`namespace X;`), one per file; the `using` directives stay above it.
+- **No `this.`.** Members are reached by their plain names; `this.` is written only where it is needed to tell a member from a parameter or local of the same name (and an extension method called on the instance).
 - Explicit comparisons: `if (x == false)`, `if (s == true)` — not `if (!x)`.
-- Private fields are `_PascalCase`.
+- Private fields are `_camelCase`, including `private static readonly` ones (`_startTimeout`); constants stay `PascalCase`.
 - Target-typed `new()` is used freely (`List<T> foo = new();`).
 - `#region` blocks wrap each native method group in the wrappers.
 - `_($"...")` (`InvariantShorthand.cs`) is the invariant-culture interpolation shorthand.
@@ -980,7 +997,7 @@ Match the surrounding style; it is consistent and deliberate even where it is un
 One trap: `using static InvariantShorthand` puts a method named `_` in scope, so `_` is
 **not** available as a discard in files that import it. Name the variable instead.
 
-View models use CommunityToolkit.Mvvm. `[ObservableProperty]` on a `_PascalCase` field
+View models use CommunityToolkit.Mvvm. `[ObservableProperty]` on a `_camelCase` field
 generates the matching `PascalCase` property, so the source generator and the existing
 field-naming convention agree. Properties whose setter needs to trigger a re-filter are
 written out by hand rather than generated.

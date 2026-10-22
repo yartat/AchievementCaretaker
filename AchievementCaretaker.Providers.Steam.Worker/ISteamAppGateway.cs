@@ -33,43 +33,42 @@ using System.Threading;
 using System.Threading.Tasks;
 using AchievementCaretaker.SteamApi;
 
-namespace AchievementCaretaker.Providers.Steam
+namespace AchievementCaretaker.Providers.Steam;
+
+/// <summary>
+/// The few native Steam calls the helper makes for its one app id. The real one wraps
+/// <see cref="Client"/>; a test substitutes a fake, so everything above this runs without Steam.
+/// </summary>
+public interface ISteamAppGateway : IDisposable
 {
+    long AppId { get; }
+
+    /// <summary>The language Steam shows this game in, which is the one the schema is read in.</summary>
+    string Language { get; }
+
     /// <summary>
-    /// The few native Steam calls the helper makes for its one app id. The real one wraps
-    /// <see cref="Client"/>; a test substitutes a fake, so everything above this runs without Steam.
+    /// Asks Steam for the user's stats for this game and returns once it has answered. Done
+    /// once; later calls return at once.
     /// </summary>
-    public interface ISteamAppGateway : IDisposable
-    {
-        long AppId { get; }
+    Task EnsureUserStatsAsync(CancellationToken cancellationToken);
 
-        /// <summary>The language Steam shows this game in, which is the one the schema is read in.</summary>
-        string Language { get; }
+    /// <summary>Steam's cached schema for this game, or null if it has none.</summary>
+    KeyValue LoadSchema();
 
-        /// <summary>
-        /// Asks Steam for the user's stats for this game and returns once it has answered. Done
-        /// once; later calls return at once.
-        /// </summary>
-        Task EnsureUserStatsAsync(CancellationToken cancellationToken);
+    /// <summary>False when Steam does not know the achievement.</summary>
+    bool TryGetAchievement(string id, out bool unlocked, out uint unlockTime);
 
-        /// <summary>Steam's cached schema for this game, or null if it has none.</summary>
-        KeyValue LoadSchema();
+    bool SetAchievement(string id, bool unlocked);
 
-        /// <summary>False when Steam does not know the achievement.</summary>
-        bool TryGetAchievement(string id, out bool unlocked, out uint unlockTime);
+    bool TryGetIntStat(string id, out int value);
 
-        bool SetAchievement(string id, bool unlocked);
+    bool TryGetFloatStat(string id, out float value);
 
-        bool TryGetIntStat(string id, out int value);
+    bool SetIntStat(string id, int value);
 
-        bool TryGetFloatStat(string id, out float value);
+    bool SetFloatStat(string id, float value);
 
-        bool SetIntStat(string id, int value);
+    bool ResetAllStats(bool includeAchievements);
 
-        bool SetFloatStat(string id, float value);
-
-        bool ResetAllStats(bool includeAchievements);
-
-        bool StoreStats();
-    }
+    bool StoreStats();
 }

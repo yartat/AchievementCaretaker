@@ -11,111 +11,111 @@ using System.Threading;
 using System.Threading.Tasks;
 using AchievementCaretaker.Providers;
 using Xunit;
+using AchievementCaretaker.Providers.Models;
 
-namespace AchievementCaretaker.Services.Tests
+namespace AchievementCaretaker.Services.Tests;
+
+public sealed class StoreSessionServiceTests
 {
-    public sealed class StoreSessionServiceTests
+    private sealed class FakeProvider : IStoreProvider
     {
-        private sealed class FakeProvider : IStoreProvider
+        public Exception SignInError { get; set; }
+        public string Pasted { get; private set; }
+        public bool SignedOut { get; private set; }
+        public string AccountNameValue { get; set; }
+
+        public string Id => "fake";
+        public string DisplayName => "Fake";
+        public string SignInUrl => "";
+        public string SignInHint => "the code";
+        public SignInResultKind GetSignInResultKind(Uri address) => SignInResultKind.None;
+        public bool IsSignedIn => true;
+        public string AccountName => AccountNameValue;
+        public string AccountId => "a";
+
+        public Task SignInAsync(string pasted, CancellationToken cancellationToken = default)
         {
-            public Exception SignInError { get; set; }
-            public string Pasted { get; private set; }
-            public bool SignedOut { get; private set; }
-            public string AccountNameValue { get; set; }
-
-            public string Id => "fake";
-            public string DisplayName => "Fake";
-            public string SignInUrl => "";
-            public string SignInHint => "the code";
-            public SignInResultKind GetSignInResultKind(Uri address) => SignInResultKind.None;
-            public bool IsSignedIn => true;
-            public string AccountName => this.AccountNameValue;
-            public string AccountId => "a";
-
-            public Task SignInAsync(string pasted, CancellationToken cancellationToken = default)
+            if (SignInError != null)
             {
-                if (this.SignInError != null)
-                {
-                    throw this.SignInError;
-                }
-                this.Pasted = pasted;
-                return Task.CompletedTask;
+                throw SignInError;
             }
-
-            public Task EnsureSignedInAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
-            public void SignOut() => this.SignedOut = true;
-            public Task<IReadOnlyList<StoreGame>> GetLibraryAsync(CancellationToken cancellationToken = default) =>
-                throw new NotSupportedException();
-            public Task<IReadOnlyList<StoreAchievement>> GetAchievementsAsync(
-                string gameKey, string locale = "en", CancellationToken cancellationToken = default) =>
-                throw new NotSupportedException();
+            Pasted = pasted;
+            return Task.CompletedTask;
         }
 
-        private readonly StoreSessionService _Service = new();
+        public Task EnsureSignedInAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public void SignOut() => SignedOut = true;
+        public Task<IReadOnlyList<StoreGame>> GetLibraryAsync(CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+        public Task<IReadOnlyList<StoreAchievement>> GetAchievementsAsync(
+            string gameKey, string locale = "en", CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+    }
 
-        [Fact]
-        public async Task Blank_paste_is_refused_without_asking_the_store()
-        {
-            var provider = new FakeProvider();
+    private readonly StoreSessionService _service = new();
 
-            var result = await this._Service.SignInAsync(provider, "  ", TestContext.Current.CancellationToken);
+    [Fact]
+    public async Task Blank_paste_is_refused_without_asking_the_store()
+    {
+        var provider = new FakeProvider();
 
-            Assert.False(result.SignedIn);
-            Assert.Equal("Paste the code first.", result.Error);
-            Assert.Null(provider.Pasted);
-        }
+        var result = await _service.SignInAsync(provider, "  ", TestContext.Current.CancellationToken);
 
-        [Fact]
-        public async Task Sign_in_passes_the_text_on()
-        {
-            var provider = new FakeProvider();
+        Assert.False(result.SignedIn);
+        Assert.Equal("Paste the code first.", result.Error);
+        Assert.Null(provider.Pasted);
+    }
 
-            var result = await this._Service.SignInAsync(provider, "abc", TestContext.Current.CancellationToken);
+    [Fact]
+    public async Task Sign_in_passes_the_text_on()
+    {
+        var provider = new FakeProvider();
 
-            Assert.True(result.SignedIn);
-            Assert.Equal("abc", provider.Pasted);
-        }
+        var result = await _service.SignInAsync(provider, "abc", TestContext.Current.CancellationToken);
 
-        [Fact]
-        public async Task Sign_in_failures_come_back_as_text()
-        {
-            var store = await this._Service.SignInAsync(
-                new FakeProvider { SignInError = new ProviderException("bad", "Wrong code") }, "x", TestContext.Current.CancellationToken);
-            var net = await this._Service.SignInAsync(
-                new FakeProvider { SignInError = new InvalidOperationException("offline") }, "x", TestContext.Current.CancellationToken);
+        Assert.True(result.SignedIn);
+        Assert.Equal("abc", provider.Pasted);
+    }
 
-            Assert.Equal("Wrong code", store.Error);
-            Assert.Equal("Could not reach Fake: offline", net.Error);
-        }
+    [Fact]
+    public async Task Sign_in_failures_come_back_as_text()
+    {
+        var store = await _service.SignInAsync(
+            new FakeProvider { SignInError = new ProviderException("bad", "Wrong code") }, "x", TestContext.Current.CancellationToken);
+        var net = await _service.SignInAsync(
+            new FakeProvider { SignInError = new InvalidOperationException("offline") }, "x", TestContext.Current.CancellationToken);
 
-        [Fact]
-        public async Task Sign_in_lets_cancellation_through()
-        {
-            var provider = new FakeProvider { SignInError = new OperationCanceledException() };
+        Assert.Equal("Wrong code", store.Error);
+        Assert.Equal("Could not reach Fake: offline", net.Error);
+    }
 
-            await Assert.ThrowsAsync<OperationCanceledException>(
-                () => this._Service.SignInAsync(provider, "x", TestContext.Current.CancellationToken));
-        }
+    [Fact]
+    public async Task Sign_in_lets_cancellation_through()
+    {
+        var provider = new FakeProvider { SignInError = new OperationCanceledException() };
 
-        [Fact]
-        public void Sign_out_drops_the_session()
-        {
-            var provider = new FakeProvider();
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => _service.SignInAsync(provider, "x", TestContext.Current.CancellationToken));
+    }
 
-            this._Service.SignOut(provider);
+    [Fact]
+    public void Sign_out_drops_the_session()
+    {
+        var provider = new FakeProvider();
 
-            Assert.True(provider.SignedOut);
-        }
+        _service.SignOut(provider);
 
-        [Fact]
-        public void Confirmations_name_the_account_when_there_is_one()
-        {
-            var named = this._Service.ConfirmSignOut(new FakeProvider { AccountNameValue = "Ann" });
-            var anonymous = this._Service.ConfirmSignOut(new FakeProvider());
+        Assert.True(provider.SignedOut);
+    }
 
-            Assert.Contains("as Ann", named.Message);
-            Assert.DoesNotContain(" as ", anonymous.Message);
-            Assert.Contains("Ann's", this._Service.ConfirmSwitchAccount(new FakeProvider { AccountNameValue = "Ann" }).Message);
-        }
+    [Fact]
+    public void Confirmations_name_the_account_when_there_is_one()
+    {
+        var named = _service.ConfirmSignOut(new FakeProvider { AccountNameValue = "Ann" });
+        var anonymous = _service.ConfirmSignOut(new FakeProvider());
+
+        Assert.Contains("as Ann", named.Message);
+        Assert.DoesNotContain(" as ", anonymous.Message);
+        Assert.Contains("Ann's", _service.ConfirmSwitchAccount(new FakeProvider { AccountNameValue = "Ann" }).Message);
     }
 }

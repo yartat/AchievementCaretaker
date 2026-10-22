@@ -28,11 +28,10 @@
  *    distribution.
  */
 
-namespace AchievementCaretaker.SteamApi.Callbacks
+namespace AchievementCaretaker.SteamApi.Callbacks;
+
+public class AppDataChanged : Callback<Types.AppDataChanged>
 {
-    public class AppDataChanged : Callback<Types.AppDataChanged>
-    {
-        public override int Id => 1001;
-        public override bool IsServer => false;
-    }
+    public override int Id => 1001;
+    public override bool IsServer => false;
 }

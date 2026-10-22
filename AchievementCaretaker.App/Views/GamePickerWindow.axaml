@@ -577,7 +577,7 @@
            right. In a Panel both views stretch to the full width. -->
       <Panel>
         <!-- Tile view -->
-        <ListBox Name="_GameTileBox"
+        <ListBox Name="_gameTileBox"
                  Classes="plain"
                  Margin="0,0,0,8"
                  Padding="14,0"
@@ -712,7 +712,7 @@
             </Grid>
           </Border>
 
-          <ListBox Name="_GameContentBox"
+          <ListBox Name="_gameContentBox"
                    Classes="plain"
                    Padding="14,0"
                    ItemsSource="{Binding FilteredGames}"

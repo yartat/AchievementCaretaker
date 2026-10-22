@@ -17,332 +17,332 @@ using System.Threading;
 using System.Threading.Tasks;
 using AchievementCaretaker.Providers.Steam.Protocol;
 using Grpc.Core;
+using AchievementCaretaker.Providers.Models;
 
-namespace AchievementCaretaker.Providers.Steam
+namespace AchievementCaretaker.Providers.Steam;
+
+/// <summary>
+/// Steam behind <see cref="IStoreProvider"/>. Every call starts a helper for the one app id
+/// it is about (Steam's user stats are scoped to the app id a process was initialised
+/// with), talks to it over gRPC on 127.0.0.1 and lets it go.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Steam has no sign-in of its own: whoever is logged in to the Steam client is the account.
+/// Listing the library is not done here; it comes from Steam's cache files.
+/// </para>
+/// <para>
+/// A helper is kept for a game for a short while after its last call, so the read, the
+/// statistics and the commit of one editing session share one start of Steam instead of
+/// three. <see cref="GetAchievementsAsync"/> is the exception: it always starts a fresh
+/// helper, because it is what a reload asks for and a kept helper would answer from the
+/// stats it read when it started.
+/// </para>
+/// </remarks>
+public sealed class SteamProvider : IStatsStoreProvider, IDisposable, IAsyncDisposable
 {
-    /// <summary>
-    /// Steam behind <see cref="IStoreProvider"/>. Every call starts a helper for the one app id
-    /// it is about (Steam's user stats are scoped to the app id a process was initialised
-    /// with), talks to it over gRPC on 127.0.0.1 and lets it go.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Steam has no sign-in of its own: whoever is logged in to the Steam client is the account.
-    /// Listing the library is not done here; it comes from Steam's cache files.
-    /// </para>
-    /// <para>
-    /// A helper is kept for a game for a short while after its last call, so the read, the
-    /// statistics and the commit of one editing session share one start of Steam instead of
-    /// three. <see cref="GetAchievementsAsync"/> is the exception: it always starts a fresh
-    /// helper, because it is what a reload asks for and a kept helper would answer from the
-    /// stats it read when it started.
-    /// </para>
-    /// </remarks>
-    public sealed class SteamProvider : IStatsStoreProvider, IDisposable, IAsyncDisposable
+    public const string ProviderId = "steam";
+
+    /// <summary>How long a helper outlives its last call.</summary>
+    public static readonly TimeSpan DefaultIdle = TimeSpan.FromSeconds(30);
+
+    private readonly ISteamWorkerLauncher _launcher;
+    private readonly TimeSpan _idle;
+    private readonly object _gate = new();
+    private readonly Dictionary<long, Task<LiveWorker>> _live = new();
+    private bool _disposed;
+
+    public SteamProvider(ISteamWorkerLauncher launcher, TimeSpan? idle = null)
     {
-        public const string ProviderId = "steam";
+        _launcher = launcher;
+        _idle = idle ?? DefaultIdle;
+    }
 
-        /// <summary>How long a helper outlives its last call.</summary>
-        public static readonly TimeSpan DefaultIdle = TimeSpan.FromSeconds(30);
+    public string Id => ProviderId;
 
-        private readonly ISteamWorkerLauncher _Launcher;
-        private readonly TimeSpan _Idle;
-        private readonly object _Gate = new();
-        private readonly Dictionary<long, Task<LiveWorker>> _Live = new();
-        private bool _Disposed;
+    public string DisplayName => "Steam";
 
-        public SteamProvider(ISteamWorkerLauncher launcher, TimeSpan? idle = null)
+    public string SignInUrl => "";
+
+    public string SignInHint => "";
+
+    public SignInResultKind GetSignInResultKind(Uri address) => SignInResultKind.None;
+
+    public bool IsSignedIn => true;
+
+    public string AccountName => null;
+
+    public string AccountId => null;
+
+    public Task SignInAsync(string pasted, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("Steam uses the account that is logged in to the Steam client.");
+
+    public Task EnsureSignedInAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    public void SignOut()
+    {
+    }
+
+    public Task<IReadOnlyList<StoreGame>> GetLibraryAsync(CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("Steam's library is read from Steam's own cache files.");
+
+    public async Task<IReadOnlyList<StoreAchievement>> GetAchievementsAsync(
+        string gameKey, string locale = "en", CancellationToken cancellationToken = default)
+    {
+        return await WithWorkerAsync(gameKey, async (channel, token) =>
         {
-            this._Launcher = launcher;
-            this._Idle = idle ?? DefaultIdle;
+            var reply = await channel.Client.GetAchievementsAsync(
+                new GetAchievementsRequest(), channel.Headers, cancellationToken: token);
+            return (IReadOnlyList<StoreAchievement>)reply.Achievements.Select(ToModel).ToList();
+        }, cancellationToken, fresh: true);
+    }
+
+    public Task SetAchievementsAsync(
+        string gameKey,
+        IReadOnlyCollection<KeyValuePair<string, bool>> changes,
+        CancellationToken cancellationToken = default) =>
+        CommitAsync(gameKey, changes, Array.Empty<KeyValuePair<string, double>>(), cancellationToken);
+
+    public async Task<IReadOnlyList<StoreStat>> GetStatsAsync(string gameKey, CancellationToken cancellationToken = default)
+    {
+        return await WithWorkerAsync(gameKey, async (channel, token) =>
+        {
+            var reply = await channel.Client.GetStatsAsync(new GetStatsRequest(), channel.Headers, cancellationToken: token);
+            return (IReadOnlyList<StoreStat>)reply.Stats.Select(s => new StoreStat(
+                s.Id,
+                s.DisplayName,
+                s.Kind == StatKind.Float ? StoreStatKind.Float : StoreStatKind.Integer,
+                s.Value,
+                s.Min,
+                s.Max,
+                s.MaxChange,
+                s.IncrementOnly,
+                s.DefaultValue,
+                s.IsProtected)).ToList();
+        }, cancellationToken);
+    }
+
+    public async Task CommitAsync(
+        string gameKey,
+        IReadOnlyCollection<KeyValuePair<string, bool>> achievements,
+        IReadOnlyCollection<KeyValuePair<string, double>> statistics,
+        CancellationToken cancellationToken = default)
+    {
+        CommitRequest request = new();
+        request.Achievements.AddRange(achievements.Select(c => new AchievementChange { Id = c.Key, Unlocked = c.Value }));
+        request.Stats.AddRange(statistics.Select(c => new StatChange { Id = c.Key, Value = c.Value }));
+
+        await WithWorkerAsync(gameKey, async (channel, token) =>
+        {
+            await channel.Client.CommitAsync(request, channel.Headers, cancellationToken: token);
+            return true;
+        }, cancellationToken);
+    }
+
+    public async Task ResetAsync(string gameKey, bool includeAchievements, CancellationToken cancellationToken = default)
+    {
+        await WithWorkerAsync(gameKey, async (channel, token) =>
+        {
+            await channel.Client.ResetAsync(
+                new ResetRequest { IncludeAchievements = includeAchievements }, channel.Headers, cancellationToken: token);
+            return true;
+        }, cancellationToken);
+    }
+
+    private async Task<T> WithWorkerAsync<T>(
+        string gameKey,
+        Func<SteamWorkerChannel, CancellationToken, Task<T>> call,
+        CancellationToken cancellationToken,
+        bool fresh = false)
+    {
+        if (long.TryParse(gameKey, NumberStyles.None, CultureInfo.InvariantCulture, out var appId) == false)
+        {
+            throw new ProviderException("bad_game", $"'{gameKey}' is not a Steam app id.");
         }
 
-        public string Id => ProviderId;
-
-        public string DisplayName => "Steam";
-
-        public string SignInUrl => "";
-
-        public string SignInHint => "";
-
-        public SignInResultKind GetSignInResultKind(Uri address) => SignInResultKind.None;
-
-        public bool IsSignedIn => true;
-
-        public string AccountName => null;
-
-        public string AccountId => null;
-
-        public Task SignInAsync(string pasted, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException("Steam uses the account that is logged in to the Steam client.");
-
-        public Task EnsureSignedInAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
-
-        public void SignOut()
+        var live = await GetLiveAsync(appId, fresh, cancellationToken);
+        await live.Gate.WaitAsync(cancellationToken);
+        try
         {
+            live.StopIdleTimer();
+            return await call(live.Channel, cancellationToken);
         }
-
-        public Task<IReadOnlyList<StoreGame>> GetLibraryAsync(CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException("Steam's library is read from Steam's own cache files.");
-
-        public async Task<IReadOnlyList<StoreAchievement>> GetAchievementsAsync(
-            string gameKey, string locale = "en", CancellationToken cancellationToken = default)
+        catch (RpcException e) when (e.StatusCode == StatusCode.Unauthenticated)
         {
-            return await this.WithWorkerAsync(gameKey, async (channel, token) =>
-            {
-                var reply = await channel.Client.GetAchievementsAsync(
-                    new GetAchievementsRequest(), channel.Headers, cancellationToken: token);
-                return (IReadOnlyList<StoreAchievement>)reply.Achievements.Select(ToModel).ToList();
-            }, cancellationToken, fresh: true);
+            Drop(appId, live);
+            throw new ProviderException("worker_denied", "The Steam helper refused the request.");
         }
-
-        public Task SetAchievementsAsync(
-            string gameKey,
-            IReadOnlyCollection<KeyValuePair<string, bool>> changes,
-            CancellationToken cancellationToken = default) =>
-            this.CommitAsync(gameKey, changes, Array.Empty<KeyValuePair<string, double>>(), cancellationToken);
-
-        public async Task<IReadOnlyList<StoreStat>> GetStatsAsync(string gameKey, CancellationToken cancellationToken = default)
+        catch (RpcException e) when (e.StatusCode == StatusCode.FailedPrecondition &&
+                                     e.Trailers.GetValue(SteamWorkerHandshake.ErrorCodeTrailer) is { } code)
         {
-            return await this.WithWorkerAsync(gameKey, async (channel, token) =>
-            {
-                var reply = await channel.Client.GetStatsAsync(new GetStatsRequest(), channel.Headers, cancellationToken: token);
-                return (IReadOnlyList<StoreStat>)reply.Stats.Select(s => new StoreStat(
-                    s.Id,
-                    s.DisplayName,
-                    s.Kind == StatKind.Float ? StoreStatKind.Float : StoreStatKind.Integer,
-                    s.Value,
-                    s.Min,
-                    s.Max,
-                    s.MaxChange,
-                    s.IncrementOnly,
-                    s.DefaultValue,
-                    s.IsProtected)).ToList();
-            }, cancellationToken);
+            // The helper is fine; Steam said no to this request.
+            throw new ProviderException(code, e.Status.Detail);
         }
-
-        public async Task CommitAsync(
-            string gameKey,
-            IReadOnlyCollection<KeyValuePair<string, bool>> achievements,
-            IReadOnlyCollection<KeyValuePair<string, double>> statistics,
-            CancellationToken cancellationToken = default)
+        catch (RpcException e) when (e.StatusCode != StatusCode.Cancelled)
         {
-            CommitRequest request = new();
-            request.Achievements.AddRange(achievements.Select(c => new AchievementChange { Id = c.Key, Unlocked = c.Value }));
-            request.Stats.AddRange(statistics.Select(c => new StatChange { Id = c.Key, Value = c.Value }));
-
-            await this.WithWorkerAsync(gameKey, async (channel, token) =>
-            {
-                await channel.Client.CommitAsync(request, channel.Headers, cancellationToken: token);
-                return true;
-            }, cancellationToken);
+            Drop(appId, live);
+            throw new ProviderException("steam_error", e.Status.Detail);
         }
-
-        public async Task ResetAsync(string gameKey, bool includeAchievements, CancellationToken cancellationToken = default)
+        catch (Exception)
         {
-            await this.WithWorkerAsync(gameKey, async (channel, token) =>
-            {
-                await channel.Client.ResetAsync(
-                    new ResetRequest { IncludeAchievements = includeAchievements }, channel.Headers, cancellationToken: token);
-                return true;
-            }, cancellationToken);
+            // Anything else leaves the helper in an unknown state: the next call starts a new one.
+            Drop(appId, live);
+            throw;
         }
-
-        private async Task<T> WithWorkerAsync<T>(
-            string gameKey,
-            Func<SteamWorkerChannel, CancellationToken, Task<T>> call,
-            CancellationToken cancellationToken,
-            bool fresh = false)
+        finally
         {
-            if (long.TryParse(gameKey, NumberStyles.None, CultureInfo.InvariantCulture, out var appId) == false)
-            {
-                throw new ProviderException("bad_game", $"'{gameKey}' is not a Steam app id.");
-            }
-
-            var live = await this.GetLiveAsync(appId, fresh, cancellationToken);
-            await live.Gate.WaitAsync(cancellationToken);
-            try
-            {
-                live.StopIdleTimer();
-                return await call(live.Channel, cancellationToken);
-            }
-            catch (RpcException e) when (e.StatusCode == StatusCode.Unauthenticated)
-            {
-                this.Drop(appId, live);
-                throw new ProviderException("worker_denied", "The Steam helper refused the request.");
-            }
-            catch (RpcException e) when (e.StatusCode == StatusCode.FailedPrecondition &&
-                                         e.Trailers.GetValue(SteamWorkerHandshake.ErrorCodeTrailer) is { } code)
-            {
-                // The helper is fine; Steam said no to this request.
-                throw new ProviderException(code, e.Status.Detail);
-            }
-            catch (RpcException e) when (e.StatusCode != StatusCode.Cancelled)
-            {
-                this.Drop(appId, live);
-                throw new ProviderException("steam_error", e.Status.Detail);
-            }
-            catch (Exception)
-            {
-                // Anything else leaves the helper in an unknown state: the next call starts a new one.
-                this.Drop(appId, live);
-                throw;
-            }
-            finally
-            {
-                live.Gate.Release();
-                live.StartIdleTimer(() => this.Drop(appId, live));
-            }
+            live.Gate.Release();
+            live.StartIdleTimer(() => Drop(appId, live));
         }
+    }
 
-        private async Task<LiveWorker> GetLiveAsync(long appId, bool fresh, CancellationToken cancellationToken)
+    private async Task<LiveWorker> GetLiveAsync(long appId, bool fresh, CancellationToken cancellationToken)
+    {
+        Task<LiveWorker> stale = null;
+        Task<LiveWorker> result;
+        lock (_gate)
         {
-            Task<LiveWorker> stale = null;
-            Task<LiveWorker> result;
-            lock (this._Gate)
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_live.TryGetValue(appId, out var existing) == true && fresh == false)
             {
-                ObjectDisposedException.ThrowIf(this._Disposed, this);
-                if (this._Live.TryGetValue(appId, out var existing) == true && fresh == false)
+                result = existing;
+            }
+            else
+            {
+                if (existing != null)
                 {
-                    result = existing;
+                    stale = existing;
                 }
-                else
-                {
-                    if (existing != null)
-                    {
-                        stale = existing;
-                    }
-                    result = this.StartLiveAsync(appId, cancellationToken);
-                    this._Live[appId] = result;
-                }
-            }
-
-            if (stale != null)
-            {
-                _ = DisposeLaterAsync(stale);
-            }
-            try
-            {
-                return await result;
-            }
-            catch
-            {
-                // A failed start must not be remembered, or every later call would get the same failure.
-                lock (this._Gate)
-                {
-                    if (this._Live.TryGetValue(appId, out var current) == true && ReferenceEquals(current, result) == true)
-                    {
-                        this._Live.Remove(appId);
-                    }
-                }
-                throw;
+                result = StartLiveAsync(appId, cancellationToken);
+                _live[appId] = result;
             }
         }
 
-        private async Task<LiveWorker> StartLiveAsync(long appId, CancellationToken cancellationToken)
+        if (stale != null)
         {
-            var worker = await this._Launcher.StartAsync(appId, cancellationToken);
-            return new LiveWorker(worker, new SteamWorkerChannel(worker.Endpoint), this._Idle);
+            _ = DisposeLaterAsync(stale);
         }
-
-        private void Drop(long appId, LiveWorker live)
+        try
         {
-            Task<LiveWorker> removed = null;
-            lock (this._Gate)
+            return await result;
+        }
+        catch
+        {
+            // A failed start must not be remembered, or every later call would get the same failure.
+            lock (_gate)
             {
-                if (this._Live.TryGetValue(appId, out var current) == true &&
-                    current.IsCompletedSuccessfully == true && ReferenceEquals(current.Result, live) == true)
+                if (_live.TryGetValue(appId, out var current) == true && ReferenceEquals(current, result) == true)
                 {
-                    this._Live.Remove(appId);
-                    removed = current;
+                    _live.Remove(appId);
                 }
             }
-            if (removed != null)
+            throw;
+        }
+    }
+
+    private async Task<LiveWorker> StartLiveAsync(long appId, CancellationToken cancellationToken)
+    {
+        var worker = await _launcher.StartAsync(appId, cancellationToken);
+        return new LiveWorker(worker, new SteamWorkerChannel(worker.Endpoint), _idle);
+    }
+
+    private void Drop(long appId, LiveWorker live)
+    {
+        Task<LiveWorker> removed = null;
+        lock (_gate)
+        {
+            if (_live.TryGetValue(appId, out var current) == true &&
+                current.IsCompletedSuccessfully == true && ReferenceEquals(current.Result, live) == true)
             {
-                _ = DisposeLaterAsync(removed);
+                _live.Remove(appId);
+                removed = current;
             }
         }
-
-        private static async Task DisposeLaterAsync(Task<LiveWorker> live)
+        if (removed != null)
         {
-            try
-            {
-                var worker = await live;
-                await worker.DisposeAsync();
-            }
-            catch (Exception)
-            {
-                // It never started, or is already gone: nothing to let go of.
-            }
+            _ = DisposeLaterAsync(removed);
+        }
+    }
+
+    private static async Task DisposeLaterAsync(Task<LiveWorker> live)
+    {
+        try
+        {
+            var worker = await live;
+            await worker.DisposeAsync();
+        }
+        catch (Exception)
+        {
+            // It never started, or is already gone: nothing to let go of.
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        List<Task<LiveWorker>> all;
+        lock (_gate)
+        {
+            _disposed = true;
+            all = _live.Values.ToList();
+            _live.Clear();
+        }
+        foreach (var live in all)
+        {
+            await DisposeLaterAsync(live);
+        }
+    }
+
+    public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
+
+    /// <summary>A started helper with its connection, its idle timer and the gate that serialises calls to it.</summary>
+    private sealed class LiveWorker : IAsyncDisposable
+    {
+        private readonly ISteamWorker _worker;
+        private readonly TimeSpan _idle;
+        private Timer _timer;
+
+        public SteamWorkerChannel Channel { get; }
+
+        public SemaphoreSlim Gate { get; } = new(1, 1);
+
+        public LiveWorker(ISteamWorker worker, SteamWorkerChannel channel, TimeSpan idle)
+        {
+            _worker = worker;
+            Channel = channel;
+            _idle = idle;
+        }
+
+        public void StopIdleTimer()
+        {
+            var timer = Interlocked.Exchange(ref _timer, null);
+            timer?.Dispose();
+        }
+
+        public void StartIdleTimer(Action expired)
+        {
+            var timer = new Timer(_ => expired(), null, _idle, Timeout.InfiniteTimeSpan);
+            var previous = Interlocked.Exchange(ref _timer, timer);
+            previous?.Dispose();
         }
 
         public async ValueTask DisposeAsync()
         {
-            List<Task<LiveWorker>> all;
-            lock (this._Gate)
-            {
-                this._Disposed = true;
-                all = this._Live.Values.ToList();
-                this._Live.Clear();
-            }
-            foreach (var live in all)
-            {
-                await DisposeLaterAsync(live);
-            }
+            StopIdleTimer();
+            Channel.Dispose();
+            await _worker.DisposeAsync();
         }
-
-        public void Dispose() => this.DisposeAsync().AsTask().GetAwaiter().GetResult();
-
-        /// <summary>A started helper with its connection, its idle timer and the gate that serialises calls to it.</summary>
-        private sealed class LiveWorker : IAsyncDisposable
-        {
-            private readonly ISteamWorker _Worker;
-            private readonly TimeSpan _Idle;
-            private Timer _Timer;
-
-            public SteamWorkerChannel Channel { get; }
-
-            public SemaphoreSlim Gate { get; } = new(1, 1);
-
-            public LiveWorker(ISteamWorker worker, SteamWorkerChannel channel, TimeSpan idle)
-            {
-                this._Worker = worker;
-                this.Channel = channel;
-                this._Idle = idle;
-            }
-
-            public void StopIdleTimer()
-            {
-                var timer = Interlocked.Exchange(ref this._Timer, null);
-                timer?.Dispose();
-            }
-
-            public void StartIdleTimer(Action expired)
-            {
-                var timer = new Timer(_ => expired(), null, this._Idle, Timeout.InfiniteTimeSpan);
-                var previous = Interlocked.Exchange(ref this._Timer, timer);
-                previous?.Dispose();
-            }
-
-            public async ValueTask DisposeAsync()
-            {
-                this.StopIdleTimer();
-                this.Channel.Dispose();
-                await this._Worker.DisposeAsync();
-            }
-        }
-
-        private static StoreAchievement ToModel(Achievement a) => new(
-            a.Id,
-            a.DisplayName,
-            a.Description,
-            string.IsNullOrEmpty(a.IconUrl) ? null : a.IconUrl,
-            a.Hidden,
-            a.HasXp ? a.Xp : null,
-            a.HasRarityPercent ? a.RarityPercent : null,
-            a.Unlocked,
-            a.HasProgress ? a.Progress : null,
-            a.HasUnlockTimeUnix ? DateTimeOffset.FromUnixTimeSeconds(a.UnlockTimeUnix) : null,
-            a.IsProtected);
     }
+
+    private static StoreAchievement ToModel(Achievement a) => new(
+        a.Id,
+        a.DisplayName,
+        a.Description,
+        string.IsNullOrEmpty(a.IconUrl) ? null : a.IconUrl,
+        a.Hidden,
+        a.HasXp ? a.Xp : null,
+        a.HasRarityPercent ? a.RarityPercent : null,
+        a.Unlocked,
+        a.HasProgress ? a.Progress : null,
+        a.HasUnlockTimeUnix ? DateTimeOffset.FromUnixTimeSeconds(a.UnlockTimeUnix) : null,
+        a.IsProtected);
 }

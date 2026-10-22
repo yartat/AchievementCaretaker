@@ -35,243 +35,227 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using AchievementCaretaker.SteamApi;
+using AchievementCaretaker.Providers.Steam.Models;
 
-namespace AchievementCaretaker.Providers.Steam
+namespace AchievementCaretaker.Providers.Steam;
+
+/// <summary>
+/// Reads playtime and achievement counts out of Steam's own on-disk caches.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The live <c>ISteamUserStats</c> interface is scoped to the one app id the
+/// process was initialised with — that is precisely why a separate process is started per game. The picker therefore cannot ask Steam
+/// for another game's achievements, and has to read the caches instead.
+/// </para>
+/// <para>
+/// Totals come from <c>UserGameStatsSchema_&lt;appid&gt;.bin</c>. Earned
+/// counts come from the per-block <c>data</c> bitfield in
+/// <c>UserGameStats_&lt;accountid&gt;_&lt;appid&gt;.bin</c>, masked to the
+/// bits the schema actually defines. Both were validated against the live
+/// API for several games and matched exactly.
+/// </para>
+/// <para>
+/// Coverage is partial by nature: Steam only writes these files for games
+/// that have been launched, so anything else reports <c>null</c> rather than
+/// zero. Do not conflate the two — zero achievements and unknown are
+/// different answers.
+/// </para>
+/// </remarks>
+public sealed class LibraryStats
 {
-    public readonly struct GameStats
+    private readonly struct LocalPlay
     {
-        public readonly int PlaytimeMinutes;
-        public readonly int AchievementsTotal;
-        public readonly int AchievementsEarned;
+        public readonly int Minutes;
         public readonly DateTime? LastPlayed;
 
-        public GameStats(int playtimeMinutes, int achievementsTotal, int achievementsEarned, DateTime? lastPlayed)
+        public LocalPlay(int minutes, DateTime? lastPlayed)
         {
-            this.PlaytimeMinutes = playtimeMinutes;
-            this.AchievementsTotal = achievementsTotal;
-            this.AchievementsEarned = achievementsEarned;
-            this.LastPlayed = lastPlayed;
+            Minutes = minutes;
+            LastPlayed = lastPlayed;
         }
     }
 
-    /// <summary>
-    /// Reads playtime and achievement counts out of Steam's own on-disk caches.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// The live <c>ISteamUserStats</c> interface is scoped to the one app id the
-    /// process was initialised with — that is precisely why a separate process is started per game. The picker therefore cannot ask Steam
-    /// for another game's achievements, and has to read the caches instead.
-    /// </para>
-    /// <para>
-    /// Totals come from <c>UserGameStatsSchema_&lt;appid&gt;.bin</c>. Earned
-    /// counts come from the per-block <c>data</c> bitfield in
-    /// <c>UserGameStats_&lt;accountid&gt;_&lt;appid&gt;.bin</c>, masked to the
-    /// bits the schema actually defines. Both were validated against the live
-    /// API for several games and matched exactly.
-    /// </para>
-    /// <para>
-    /// Coverage is partial by nature: Steam only writes these files for games
-    /// that have been launched, so anything else reports <c>null</c> rather than
-    /// zero. Do not conflate the two — zero achievements and unknown are
-    /// different answers.
-    /// </para>
-    /// </remarks>
-    public sealed class LibraryStats
+    private readonly string _statsPath;
+    private readonly string _accountId;
+    private readonly Dictionary<uint, LocalPlay> _playtime;
+
+    private LibraryStats(string statsPath, string accountId, Dictionary<uint, LocalPlay> playtime)
     {
-        private readonly struct LocalPlay
-        {
-            public readonly int Minutes;
-            public readonly DateTime? LastPlayed;
+        _statsPath = statsPath;
+        _accountId = accountId;
+        _playtime = playtime;
+    }
 
-            public LocalPlay(int minutes, DateTime? lastPlayed)
-            {
-                this.Minutes = minutes;
-                this.LastPlayed = lastPlayed;
-            }
+    public static LibraryStats Create(ulong steamId) =>
+        Create(AchievementCaretaker.SteamApi.Steam.GetInstallPath(), steamId);
+
+    /// <summary>Reads the caches under <paramref name="installPath"/> (Steam's install directory).</summary>
+    public static LibraryStats Create(string installPath, ulong steamId)
+    {
+        if (string.IsNullOrEmpty(installPath) == true)
+        {
+            return null;
         }
 
-        private readonly string _StatsPath;
-        private readonly string _AccountId;
-        private readonly Dictionary<uint, LocalPlay> _Playtime;
+        // userdata and the UserGameStats file names are keyed by the 32-bit
+        // account id, not the full 64-bit SteamID.
+        var accountId = (steamId & 0xFFFFFFFFUL).ToString(CultureInfo.InvariantCulture);
 
-        private LibraryStats(string statsPath, string accountId, Dictionary<uint, LocalPlay> playtime)
+        return new(
+            Path.Combine(installPath, "appcache", "stats"),
+            accountId,
+            LoadPlaytime(installPath, accountId));
+    }
+
+    private static Dictionary<uint, LocalPlay> LoadPlaytime(string installPath, string accountId)
+    {
+        Dictionary<uint, LocalPlay> result = new();
+
+        var path = Path.Combine(installPath, "userdata", accountId, "config", "localconfig.vdf");
+        if (File.Exists(path) == false)
         {
-            this._StatsPath = statsPath;
-            this._AccountId = accountId;
-            this._Playtime = playtime;
-        }
-
-        public static LibraryStats Create(ulong steamId) =>
-            Create(AchievementCaretaker.SteamApi.Steam.GetInstallPath(), steamId);
-
-        /// <summary>Reads the caches under <paramref name="installPath"/> (Steam's install directory).</summary>
-        public static LibraryStats Create(string installPath, ulong steamId)
-        {
-            if (string.IsNullOrEmpty(installPath) == true)
-            {
-                return null;
-            }
-
-            // userdata and the UserGameStats file names are keyed by the 32-bit
-            // account id, not the full 64-bit SteamID.
-            var accountId = (steamId & 0xFFFFFFFFUL).ToString(CultureInfo.InvariantCulture);
-
-            return new(
-                Path.Combine(installPath, "appcache", "stats"),
-                accountId,
-                LoadPlaytime(installPath, accountId));
-        }
-
-        private static Dictionary<uint, LocalPlay> LoadPlaytime(string installPath, string accountId)
-        {
-            Dictionary<uint, LocalPlay> result = new();
-
-            var path = Path.Combine(installPath, "userdata", accountId, "config", "localconfig.vdf");
-            if (File.Exists(path) == false)
-            {
-                return result;
-            }
-
-            var root = TextKeyValue.LoadFromFile(path);
-            var apps = root["UserLocalConfigStore"]["Software"]["Valve"]["Steam"]["apps"];
-            if (apps.Valid == false)
-            {
-                return result;
-            }
-
-            foreach (var kv in apps.Children)
-            {
-                if (uint.TryParse(kv.Key, out var appId) == false)
-                {
-                    continue;
-                }
-
-                var minutes = kv.Value["Playtime"].AsInteger(0);
-                var lastPlayed = kv.Value["LastPlayed"].AsInteger(0);
-
-                if (minutes <= 0 && lastPlayed <= 0)
-                {
-                    continue;
-                }
-
-                result[appId] = new(
-                    minutes,
-                    lastPlayed > 0
-                        ? DateTimeOffset.FromUnixTimeSeconds(lastPlayed).LocalDateTime
-                        : null);
-            }
-
             return result;
         }
 
-        public GameStats? TryGet(uint appId)
+        var root = TextKeyValue.LoadFromFile(path);
+        var apps = root["UserLocalConfigStore"]["Software"]["Valve"]["Steam"]["apps"];
+        if (apps.Valid == false)
         {
-            var schema = this.LoadSchemaBits(appId, out var total);
-            this._Playtime.TryGetValue(appId, out var play);
-
-            if (schema == null)
-            {
-                // No schema cached: playtime alone is still worth reporting.
-                return play.Minutes > 0 || play.LastPlayed.HasValue == true
-                    ? new GameStats(play.Minutes, -1, -1, play.LastPlayed)
-                    : null;
-            }
-
-            var earned = this.CountEarned(appId, schema);
-            return new(play.Minutes, total, earned, play.LastPlayed);
+            return result;
         }
 
-        /// <summary>stat block id -&gt; bitmask of achievement bits the schema defines.</summary>
-        private Dictionary<string, uint> LoadSchemaBits(uint appId, out int total)
+        foreach (var kv in apps.Children)
         {
-            total = 0;
-
-            var path = Path.Combine(this._StatsPath, $"UserGameStatsSchema_{appId}.bin");
-            if (File.Exists(path) == false)
+            if (uint.TryParse(kv.Key, out var appId) == false)
             {
-                return null;
+                continue;
             }
 
-            var kv = KeyValue.LoadAsBinary(path);
-            if (kv == null)
+            var minutes = kv.Value["Playtime"].AsInteger(0);
+            var lastPlayed = kv.Value["LastPlayed"].AsInteger(0);
+
+            if (minutes <= 0 && lastPlayed <= 0)
             {
-                return null;
+                continue;
             }
 
-            var stats = kv[appId.ToString(CultureInfo.InvariantCulture)]["stats"];
-            if (stats.Valid == false || stats.Children == null)
+            result[appId] = new(
+                minutes,
+                lastPlayed > 0
+                    ? DateTimeOffset.FromUnixTimeSeconds(lastPlayed).LocalDateTime
+                    : null);
+        }
+
+        return result;
+    }
+
+    public GameStats? TryGet(uint appId)
+    {
+        var schema = LoadSchemaBits(appId, out var total);
+        _playtime.TryGetValue(appId, out var play);
+
+        if (schema == null)
+        {
+            // No schema cached: playtime alone is still worth reporting.
+            return play.Minutes > 0 || play.LastPlayed.HasValue == true
+                ? new GameStats(play.Minutes, -1, -1, play.LastPlayed)
+                : null;
+        }
+
+        var earned = CountEarned(appId, schema);
+        return new(play.Minutes, total, earned, play.LastPlayed);
+    }
+
+    /// <summary>stat block id -&gt; bitmask of achievement bits the schema defines.</summary>
+    private Dictionary<string, uint> LoadSchemaBits(uint appId, out int total)
+    {
+        total = 0;
+
+        var path = Path.Combine(_statsPath, $"UserGameStatsSchema_{appId}.bin");
+        if (File.Exists(path) == false)
+        {
+            return null;
+        }
+
+        var kv = KeyValue.LoadAsBinary(path);
+        if (kv == null)
+        {
+            return null;
+        }
+
+        var stats = kv[appId.ToString(CultureInfo.InvariantCulture)]["stats"];
+        if (stats.Valid == false || stats.Children == null)
+        {
+            return null;
+        }
+
+        Dictionary<string, uint> result = new();
+        foreach (var stat in stats.Children)
+        {
+            if (stat.Valid == false || stat.Children == null)
             {
-                return null;
+                continue;
             }
 
-            Dictionary<string, uint> result = new();
-            foreach (var stat in stats.Children)
+            uint mask = 0;
+            var count = 0;
+            foreach (var bits in stat.Children.Where(
+                b => string.Equals(b.Name, "bits", StringComparison.OrdinalIgnoreCase) == true))
             {
-                if (stat.Valid == false || stat.Children == null)
+                if (bits.Valid == false || bits.Children == null)
                 {
                     continue;
                 }
-
-                uint mask = 0;
-                var count = 0;
-                foreach (var bits in stat.Children.Where(
-                    b => string.Equals(b.Name, "bits", StringComparison.OrdinalIgnoreCase) == true))
+                foreach (var bit in bits.Children)
                 {
-                    if (bits.Valid == false || bits.Children == null)
+                    if (string.IsNullOrEmpty(bit["name"].AsString("")) == true)
                     {
                         continue;
                     }
-                    foreach (var bit in bits.Children)
+                    if (int.TryParse(bit.Name, out var index) == true && index >= 0 && index < 32)
                     {
-                        if (string.IsNullOrEmpty(bit["name"].AsString("")) == true)
-                        {
-                            continue;
-                        }
-                        if (int.TryParse(bit.Name, out var index) == true && index >= 0 && index < 32)
-                        {
-                            mask |= 1u << index;
-                            count++;
-                        }
+                        mask |= 1u << index;
+                        count++;
                     }
                 }
-
-                if (count > 0)
-                {
-                    result[stat.Name] = mask;
-                    total += count;
-                }
             }
 
-            return result.Count > 0 ? result : null;
+            if (count > 0)
+            {
+                result[stat.Name] = mask;
+                total += count;
+            }
         }
 
-        private int CountEarned(uint appId, Dictionary<string, uint> schemaBits)
+        return result.Count > 0 ? result : null;
+    }
+
+    private int CountEarned(uint appId, Dictionary<string, uint> schemaBits)
+    {
+        var path = Path.Combine(_statsPath, $"UserGameStats_{_accountId}_{appId}.bin");
+        if (File.Exists(path) == false)
         {
-            var path = Path.Combine(this._StatsPath, $"UserGameStats_{this._AccountId}_{appId}.bin");
-            if (File.Exists(path) == false)
-            {
-                return 0;
-            }
-
-            var kv = KeyValue.LoadAsBinary(path);
-            var cache = kv?["cache"];
-            if (cache == null || cache.Valid == false || cache.Children == null)
-            {
-                return 0;
-            }
-
-            var earned = 0;
-            foreach (var block in cache.Children)
-            {
-                if (schemaBits.TryGetValue(block.Name, out var mask) == false)
-                {
-                    continue;
-                }
-                var data = unchecked((uint)block["data"].AsInteger(0));
-                earned += BitOperations.PopCount(data & mask);
-            }
-            return earned;
+            return 0;
         }
+
+        var kv = KeyValue.LoadAsBinary(path);
+        var cache = kv?["cache"];
+        if (cache == null || cache.Valid == false || cache.Children == null)
+        {
+            return 0;
+        }
+
+        var earned = 0;
+        foreach (var block in cache.Children)
+        {
+            if (schemaBits.TryGetValue(block.Name, out var mask) == false)
+            {
+                continue;
+            }
+            var data = unchecked((uint)block["data"].AsInteger(0));
+            earned += BitOperations.PopCount(data & mask);
+        }
+        return earned;
     }
 }

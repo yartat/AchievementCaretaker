@@ -34,143 +34,142 @@ using System.IO;
 using System.Text.Json;
 using AchievementCaretaker.App.Common;
 
-namespace AchievementCaretaker.App.Library
+namespace AchievementCaretaker.App.Library;
+
+/// <summary>
+/// Persists the user's own like/dislike ratings.
+/// </summary>
+/// <remarks>
+/// Stored at <c>~/.sac/ratings.json</c>, alongside the settings file and the
+/// caches, rather than next to the executable: this is per-user data, and
+/// the app directory is not reliably writable. See <see cref="OwnRating"/>
+/// for why this is local-only and never round-trips to Steam.
+/// </remarks>
+internal sealed class RatingStore
 {
     /// <summary>
-    /// Persists the user's own like/dislike ratings.
+    /// Where ratings lived before they joined the rest of the per-user
+    /// files in the home directory. Read once, then moved.
     /// </summary>
-    /// <remarks>
-    /// Stored at <c>~/.sac/ratings.json</c>, alongside the settings file and the
-    /// caches, rather than next to the executable: this is per-user data, and
-    /// the app directory is not reliably writable. See <see cref="OwnRating"/>
-    /// for why this is local-only and never round-trips to Steam.
-    /// </remarks>
-    internal sealed class RatingStore
+    private static string LegacyPath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "SteamAchievementManager",
+        "ratings.json");
+
+    private readonly string _path;
+    private readonly Dictionary<uint, OwnRating> _ratings;
+
+    private RatingStore(string path, Dictionary<uint, OwnRating> ratings)
     {
-        /// <summary>
-        /// Where ratings lived before they joined the rest of the per-user
-        /// files in the home directory. Read once, then moved.
-        /// </summary>
-        private static string LegacyPath => Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "SteamAchievementManager",
-            "ratings.json");
+        _path = path;
+        _ratings = ratings;
+    }
 
-        private readonly string _Path;
-        private readonly Dictionary<uint, OwnRating> _Ratings;
+    public static RatingStore Load()
+    {
+        // This runs as a field initialiser, so it can be the first thing in
+        // the process to touch the home directory.
+        AppSettings.EnsureMigrated();
 
-        private RatingStore(string path, Dictionary<uint, OwnRating> ratings)
+        var path = Path.Combine(AppSettings.HomeDirectory, "ratings.json");
+        var source = Migrate(path);
+
+        Dictionary<uint, OwnRating> ratings = new();
+        try
         {
-            this._Path = path;
-            this._Ratings = ratings;
-        }
-
-        public static RatingStore Load()
-        {
-            // This runs as a field initialiser, so it can be the first thing in
-            // the process to touch the home directory.
-            AppSettings.EnsureMigrated();
-
-            var path = Path.Combine(AppSettings.HomeDirectory, "ratings.json");
-            var source = Migrate(path);
-
-            Dictionary<uint, OwnRating> ratings = new();
-            try
+            if (File.Exists(source) == true)
             {
-                if (File.Exists(source) == true)
+                var parsed = JsonSerializer.Deserialize<Dictionary<string, int>>(File.ReadAllText(source));
+                if (parsed != null)
                 {
-                    var parsed = JsonSerializer.Deserialize<Dictionary<string, int>>(File.ReadAllText(source));
-                    if (parsed != null)
+                    foreach (var kv in parsed)
                     {
-                        foreach (var kv in parsed)
+                        if (uint.TryParse(kv.Key, out var id) == true &&
+                            Enum.IsDefined(typeof(OwnRating), kv.Value) == true)
                         {
-                            if (uint.TryParse(kv.Key, out var id) == true &&
-                                Enum.IsDefined(typeof(OwnRating), kv.Value) == true)
-                            {
-                                ratings[id] = (OwnRating)kv.Value;
-                            }
+                            ratings[id] = (OwnRating)kv.Value;
                         }
                     }
                 }
             }
-            catch (Exception)
-            {
-                // A corrupt or unreadable ratings file is not worth blocking
-                // startup over; it is a convenience, not user content.
-            }
-
-            // Always the new location, whatever they were read from: the next
-            // Set() lands there even if the move could not be done.
-            return new(path, ratings);
+        }
+        catch (Exception)
+        {
+            // A corrupt or unreadable ratings file is not worth blocking
+            // startup over; it is a convenience, not user content.
         }
 
-        /// <summary>
-        /// Moves a pre-home-directory ratings file across, once. Returns the file
-        /// that actually holds the ratings now — still the old one if the move
-        /// failed, so a locked or read-only profile loses nothing.
-        /// </summary>
-        private static string Migrate(string path)
-        {
-            try
-            {
-                var legacy = LegacyPath;
-                if (File.Exists(path) == true || File.Exists(legacy) == false)
-                {
-                    return path;
-                }
+        // Always the new location, whatever they were read from: the next
+        // Set() lands there even if the move could not be done.
+        return new(path, ratings);
+    }
 
-                Directory.CreateDirectory(Path.GetDirectoryName(path));
-                File.Move(legacy, path);
+    /// <summary>
+    /// Moves a pre-home-directory ratings file across, once. Returns the file
+    /// that actually holds the ratings now — still the old one if the move
+    /// failed, so a locked or read-only profile loses nothing.
+    /// </summary>
+    private static string Migrate(string path)
+    {
+        try
+        {
+            var legacy = LegacyPath;
+            if (File.Exists(path) == true || File.Exists(legacy) == false)
+            {
                 return path;
             }
-            catch (Exception)
-            {
-                return File.Exists(path) == true ? path : LegacyPath;
-            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            File.Move(legacy, path);
+            return path;
         }
-
-        public OwnRating Get(uint appId)
+        catch (Exception)
         {
-            return this._Ratings.TryGetValue(appId, out var rating) == true
-                ? rating
-                : OwnRating.None;
+            return File.Exists(path) == true ? path : LegacyPath;
         }
+    }
 
-        /// <summary>Returns false if the change could not be persisted.</summary>
-        public bool Set(uint appId, OwnRating rating)
+    public OwnRating Get(uint appId)
+    {
+        return _ratings.TryGetValue(appId, out var rating) == true
+            ? rating
+            : OwnRating.None;
+    }
+
+    /// <summary>Returns false if the change could not be persisted.</summary>
+    public bool Set(uint appId, OwnRating rating)
+    {
+        if (rating == OwnRating.None)
         {
-            if (rating == OwnRating.None)
-            {
-                this._Ratings.Remove(appId);
-            }
-            else
-            {
-                this._Ratings[appId] = rating;
-            }
-            return this.Save();
+            _ratings.Remove(appId);
         }
-
-        private bool Save()
+        else
         {
-            try
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(this._Path));
+            _ratings[appId] = rating;
+        }
+        return Save();
+    }
 
-                Dictionary<string, int> payload = new();
-                foreach (var kv in this._Ratings)
-                {
-                    payload[kv.Key.ToString(System.Globalization.CultureInfo.InvariantCulture)] = (int)kv.Value;
-                }
+    private bool Save()
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(_path));
 
-                File.WriteAllText(
-                    this._Path,
-                    JsonSerializer.Serialize(payload, new JsonSerializerOptions() { WriteIndented = true }));
-                return true;
-            }
-            catch (Exception)
+            Dictionary<string, int> payload = new();
+            foreach (var kv in _ratings)
             {
-                return false;
+                payload[kv.Key.ToString(System.Globalization.CultureInfo.InvariantCulture)] = (int)kv.Value;
             }
+
+            File.WriteAllText(
+                _path,
+                JsonSerializer.Serialize(payload, new JsonSerializerOptions() { WriteIndented = true }));
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
         }
     }
 }

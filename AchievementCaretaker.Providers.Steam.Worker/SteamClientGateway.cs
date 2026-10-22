@@ -35,168 +35,167 @@ using System.Threading;
 using System.Threading.Tasks;
 using AchievementCaretaker.SteamApi;
 
-namespace AchievementCaretaker.Providers.Steam
+namespace AchievementCaretaker.Providers.Steam;
+
+/// <summary>
+/// <see cref="ISteamAppGateway"/> over the real Steam client, initialised with the one app id
+/// this process serves. Every native call is made under one lock: the gRPC server calls from
+/// pool threads, and Steam's interfaces are not thread-safe.
+/// </summary>
+public sealed class SteamClientGateway : ISteamAppGateway
 {
-    /// <summary>
-    /// <see cref="ISteamAppGateway"/> over the real Steam client, initialised with the one app id
-    /// this process serves. Every native call is made under one lock: the gRPC server calls from
-    /// pool threads, and Steam's interfaces are not thread-safe.
-    /// </summary>
-    public sealed class SteamClientGateway : ISteamAppGateway
+    private static readonly TimeSpan _statsTimeout = TimeSpan.FromSeconds(30);
+
+    private readonly object _gate = new();
+    private readonly Client _client;
+    private Task _userStats;
+
+    public long AppId { get; }
+
+    public string Language { get; }
+
+    /// <summary>Connects to Steam as the given app. Throws <see cref="ClientInitializeException"/> if it cannot.</summary>
+    public SteamClientGateway(long appId)
     {
-        private static readonly TimeSpan StatsTimeout = TimeSpan.FromSeconds(30);
-
-        private readonly object _Gate = new();
-        private readonly Client _Client;
-        private Task _UserStats;
-
-        public long AppId { get; }
-
-        public string Language { get; }
-
-        /// <summary>Connects to Steam as the given app. Throws <see cref="ClientInitializeException"/> if it cannot.</summary>
-        public SteamClientGateway(long appId)
+        AppId = appId;
+        _client = new Client();
+        try
         {
-            this.AppId = appId;
-            this._Client = new Client();
-            try
+            _client.Initialize(appId);
+            Language = _client.SteamApps008.GetCurrentGameLanguage();
+        }
+        catch
+        {
+            _client.Dispose();
+            throw;
+        }
+    }
+
+    public Task EnsureUserStatsAsync(CancellationToken cancellationToken)
+    {
+        lock (_gate)
+        {
+            _userStats ??= RequestUserStatsAsync();
+            return _userStats.WaitAsync(cancellationToken);
+        }
+    }
+
+    private async Task RequestUserStatsAsync()
+    {
+        TaskCompletionSource<int> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        var callback = _client.CreateAndRegisterCallback<SteamApi.Callbacks.UserStatsReceived>();
+        callback.OnRun += param => answer.TrySetResult(param.Result);
+
+        lock (_gate)
+        {
+            var steamId = _client.SteamUser.GetSteamId();
+            if (_client.SteamUserStats.RequestUserStats(steamId) == CallHandle.Invalid)
             {
-                this._Client.Initialize(appId);
-                this.Language = this._Client.SteamApps008.GetCurrentGameLanguage();
-            }
-            catch
-            {
-                this._Client.Dispose();
-                throw;
+                throw new InvalidOperationException("Steam would not accept the request for the user's stats.");
             }
         }
 
-        public Task EnsureUserStatsAsync(CancellationToken cancellationToken)
+        using CancellationTokenSource timeout = new(_statsTimeout);
+        try
         {
-            lock (this._Gate)
+            while (answer.Task.IsCompleted == false)
             {
-                this._UserStats ??= this.RequestUserStatsAsync();
-                return this._UserStats.WaitAsync(cancellationToken);
-            }
-        }
-
-        private async Task RequestUserStatsAsync()
-        {
-            TaskCompletionSource<int> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            var callback = this._Client.CreateAndRegisterCallback<SteamApi.Callbacks.UserStatsReceived>();
-            callback.OnRun += param => answer.TrySetResult(param.Result);
-
-            lock (this._Gate)
-            {
-                var steamId = this._Client.SteamUser.GetSteamId();
-                if (this._Client.SteamUserStats.RequestUserStats(steamId) == CallHandle.Invalid)
+                lock (_gate)
                 {
-                    throw new InvalidOperationException("Steam would not accept the request for the user's stats.");
+                    _client.RunCallbacks(false);
                 }
-            }
-
-            using CancellationTokenSource timeout = new(StatsTimeout);
-            try
-            {
-                while (answer.Task.IsCompleted == false)
-                {
-                    lock (this._Gate)
-                    {
-                        this._Client.RunCallbacks(false);
-                    }
-                    await Task.Delay(50, timeout.Token);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                throw new TimeoutException("Steam did not answer the request for the user's stats.");
-            }
-
-            if (answer.Task.Result != 1)
-            {
-                throw new InvalidOperationException(
-                    string.Create(CultureInfo.InvariantCulture, $"Steam refused the user's stats (result {answer.Task.Result})."));
+                await Task.Delay(50, timeout.Token);
             }
         }
-
-        public KeyValue LoadSchema()
+        catch (OperationCanceledException)
         {
-            var path = Path.Combine(
-                AchievementCaretaker.SteamApi.Steam.GetInstallPath(), "appcache", "stats",
-                string.Create(CultureInfo.InvariantCulture, $"UserGameStatsSchema_{this.AppId}.bin"));
-            return File.Exists(path) == true ? KeyValue.LoadAsBinary(path) : null;
+            throw new TimeoutException("Steam did not answer the request for the user's stats.");
         }
 
-        public bool TryGetAchievement(string id, out bool unlocked, out uint unlockTime)
+        if (answer.Task.Result != 1)
         {
-            lock (this._Gate)
-            {
-                return this._Client.SteamUserStats.GetAchievementAndUnlockTime(id, out unlocked, out unlockTime);
-            }
+            throw new InvalidOperationException(
+                string.Create(CultureInfo.InvariantCulture, $"Steam refused the user's stats (result {answer.Task.Result})."));
         }
+    }
 
-        public bool SetAchievement(string id, bool unlocked)
+    public KeyValue LoadSchema()
+    {
+        var path = Path.Combine(
+            AchievementCaretaker.SteamApi.Steam.GetInstallPath(), "appcache", "stats",
+            string.Create(CultureInfo.InvariantCulture, $"UserGameStatsSchema_{AppId}.bin"));
+        return File.Exists(path) == true ? KeyValue.LoadAsBinary(path) : null;
+    }
+
+    public bool TryGetAchievement(string id, out bool unlocked, out uint unlockTime)
+    {
+        lock (_gate)
         {
-            lock (this._Gate)
-            {
-                return this._Client.SteamUserStats.SetAchievement(id, unlocked);
-            }
+            return _client.SteamUserStats.GetAchievementAndUnlockTime(id, out unlocked, out unlockTime);
         }
+    }
 
-        public bool TryGetIntStat(string id, out int value)
+    public bool SetAchievement(string id, bool unlocked)
+    {
+        lock (_gate)
         {
-            lock (this._Gate)
-            {
-                return this._Client.SteamUserStats.GetStatValue(id, out value);
-            }
+            return _client.SteamUserStats.SetAchievement(id, unlocked);
         }
+    }
 
-        public bool TryGetFloatStat(string id, out float value)
+    public bool TryGetIntStat(string id, out int value)
+    {
+        lock (_gate)
         {
-            lock (this._Gate)
-            {
-                return this._Client.SteamUserStats.GetStatValue(id, out value);
-            }
+            return _client.SteamUserStats.GetStatValue(id, out value);
         }
+    }
 
-        public bool SetIntStat(string id, int value)
+    public bool TryGetFloatStat(string id, out float value)
+    {
+        lock (_gate)
         {
-            lock (this._Gate)
-            {
-                return this._Client.SteamUserStats.SetStatValue(id, value);
-            }
+            return _client.SteamUserStats.GetStatValue(id, out value);
         }
+    }
 
-        public bool SetFloatStat(string id, float value)
+    public bool SetIntStat(string id, int value)
+    {
+        lock (_gate)
         {
-            lock (this._Gate)
-            {
-                return this._Client.SteamUserStats.SetStatValue(id, value);
-            }
+            return _client.SteamUserStats.SetStatValue(id, value);
         }
+    }
 
-        public bool ResetAllStats(bool includeAchievements)
+    public bool SetFloatStat(string id, float value)
+    {
+        lock (_gate)
         {
-            lock (this._Gate)
-            {
-                return this._Client.SteamUserStats.ResetAllStats(includeAchievements);
-            }
+            return _client.SteamUserStats.SetStatValue(id, value);
         }
+    }
 
-        public bool StoreStats()
+    public bool ResetAllStats(bool includeAchievements)
+    {
+        lock (_gate)
         {
-            lock (this._Gate)
-            {
-                return this._Client.SteamUserStats.StoreStats();
-            }
+            return _client.SteamUserStats.ResetAllStats(includeAchievements);
         }
+    }
 
-        public void Dispose()
+    public bool StoreStats()
+    {
+        lock (_gate)
         {
-            lock (this._Gate)
-            {
-                this._Client.Dispose();
-            }
+            return _client.SteamUserStats.StoreStats();
+        }
+    }
+
+    public void Dispose()
+    {
+        lock (_gate)
+        {
+            _client.Dispose();
         }
     }
 }

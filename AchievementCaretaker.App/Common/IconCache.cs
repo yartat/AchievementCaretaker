@@ -33,229 +33,228 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 
-namespace AchievementCaretaker.App.Common
+namespace AchievementCaretaker.App.Common;
+
+/// <summary>
+/// On-disk cache of downloaded images, shared by both applications: the
+/// picker's capsule art, one file per app id, and the game window's
+/// achievement icons, one file per app id and icon name.
+/// </summary>
+/// <remarks>
+/// The file name carries the app id only; the URL it was fetched from is
+/// kept in the database alongside the game. When Steam changes a capsule
+/// the stored URL stops matching and the image is re-fetched, so the two
+/// stores stay honest about each other without a second index here.
+/// <para>
+/// Achievement icons are named <c>&lt;appid&gt;_&lt;icon&gt;</c> so that
+/// <see cref="Prune"/> and <see cref="MoveTo"/> can still recover the app
+/// id they belong to, and so a capsule can never collide with one.
+/// </para>
+/// </remarks>
+internal sealed class IconCache
 {
-    /// <summary>
-    /// On-disk cache of downloaded images, shared by both applications: the
-    /// picker's capsule art, one file per app id, and the game window's
-    /// achievement icons, one file per app id and icon name.
-    /// </summary>
-    /// <remarks>
-    /// The file name carries the app id only; the URL it was fetched from is
-    /// kept in the database alongside the game. When Steam changes a capsule
-    /// the stored URL stops matching and the image is re-fetched, so the two
-    /// stores stay honest about each other without a second index here.
-    /// <para>
-    /// Achievement icons are named <c>&lt;appid&gt;_&lt;icon&gt;</c> so that
-    /// <see cref="Prune"/> and <see cref="MoveTo"/> can still recover the app
-    /// id they belong to, and so a capsule can never collide with one.
-    /// </para>
-    /// </remarks>
-    internal sealed class IconCache
+    public string Path { get; private set; }
+
+    public IconCache(string path)
     {
-        public string Path { get; private set; }
+        Path = path;
+        TryCreate(path);
+    }
 
-        public IconCache(string path)
+    private static void TryCreate(string path)
+    {
+        try
         {
-            this.Path = path;
-            TryCreate(path);
+            Directory.CreateDirectory(path);
         }
-
-        private static void TryCreate(string path)
+        catch (Exception)
         {
-            try
-            {
-                Directory.CreateDirectory(path);
-            }
-            catch (Exception)
-            {
-                // Surfaced when a read or write actually fails.
-            }
+            // Surfaced when a read or write actually fails.
         }
+    }
 
-        private string FileFor(uint appId)
+    private string FileFor(uint appId)
+    {
+        return System.IO.Path.Combine(
+            Path,
+            appId.ToString(CultureInfo.InvariantCulture) + ".img");
+    }
+
+    /// <summary>
+    /// Returns null when <paramref name="iconName"/> is anything other than
+    /// a plain file name. It comes out of Steam's schema blob, so it is not
+    /// allowed to steer a write out of the cache directory.
+    /// </summary>
+    private string FileFor(uint appId, string iconName)
+    {
+        if (string.IsNullOrEmpty(iconName) == true ||
+            iconName != System.IO.Path.GetFileName(iconName) ||
+            iconName.IndexOfAny(System.IO.Path.GetInvalidFileNameChars()) >= 0)
         {
-            return System.IO.Path.Combine(
-                this.Path,
-                appId.ToString(CultureInfo.InvariantCulture) + ".img");
+            return null;
         }
+        return System.IO.Path.Combine(
+            Path,
+            appId.ToString(CultureInfo.InvariantCulture) + "_" + iconName);
+    }
 
-        /// <summary>
-        /// Returns null when <paramref name="iconName"/> is anything other than
-        /// a plain file name. It comes out of Steam's schema blob, so it is not
-        /// allowed to steer a write out of the cache directory.
-        /// </summary>
-        private string FileFor(uint appId, string iconName)
+    public byte[] TryRead(uint appId)
+    {
+        return TryReadFile(FileFor(appId));
+    }
+
+    public byte[] TryRead(uint appId, string iconName)
+    {
+        return TryReadFile(FileFor(appId, iconName));
+    }
+
+    private static byte[] TryReadFile(string file)
+    {
+        if (file == null)
         {
-            if (string.IsNullOrEmpty(iconName) == true ||
-                iconName != System.IO.Path.GetFileName(iconName) ||
-                iconName.IndexOfAny(System.IO.Path.GetInvalidFileNameChars()) >= 0)
-            {
-                return null;
-            }
-            return System.IO.Path.Combine(
-                this.Path,
-                appId.ToString(CultureInfo.InvariantCulture) + "_" + iconName);
+            return null;
         }
-
-        public byte[] TryRead(uint appId)
+        try
         {
-            return TryReadFile(this.FileFor(appId));
+            return File.Exists(file) == true ? File.ReadAllBytes(file) : null;
         }
-
-        public byte[] TryRead(uint appId, string iconName)
+        catch (Exception)
         {
-            return TryReadFile(this.FileFor(appId, iconName));
+            return null;
         }
+    }
 
-        private static byte[] TryReadFile(string file)
+    public void Write(uint appId, byte[] data)
+    {
+        WriteFile(FileFor(appId), data);
+    }
+
+    public void Write(uint appId, string iconName, byte[] data)
+    {
+        WriteFile(FileFor(appId, iconName), data);
+    }
+
+    private void WriteFile(string file, byte[] data)
+    {
+        if (file == null)
         {
-            if (file == null)
-            {
-                return null;
-            }
-            try
-            {
-                return File.Exists(file) == true ? File.ReadAllBytes(file) : null;
-            }
-            catch (Exception)
-            {
-                return null;
-            }
+            return;
         }
-
-        public void Write(uint appId, byte[] data)
+        try
         {
-            this.WriteFile(this.FileFor(appId), data);
+            TryCreate(Path);
+            File.WriteAllBytes(file, data);
         }
-
-        public void Write(uint appId, string iconName, byte[] data)
+        catch (Exception)
         {
-            this.WriteFile(this.FileFor(appId, iconName), data);
+            // A cache that cannot be written is a slow app, not a broken one.
         }
+    }
 
-        private void WriteFile(string file, byte[] data)
+    /// <summary>
+    /// Recovers the app id a cached file belongs to: the whole stem for a
+    /// capsule, the part before the first underscore for an achievement
+    /// icon. False for anything this cache did not write.
+    /// </summary>
+    private static bool TryGetAppId(string file, out uint appId)
+    {
+        var name = System.IO.Path.GetFileNameWithoutExtension(file);
+        var separator = name.IndexOf('_');
+        if (separator > 0)
         {
-            if (file == null)
-            {
-                return;
-            }
-            try
-            {
-                TryCreate(this.Path);
-                File.WriteAllBytes(file, data);
-            }
-            catch (Exception)
-            {
-                // A cache that cannot be written is a slow app, not a broken one.
-            }
+            name = name[..separator];
         }
+        return uint.TryParse(name, NumberStyles.None, CultureInfo.InvariantCulture, out appId);
+    }
 
-        /// <summary>
-        /// Recovers the app id a cached file belongs to: the whole stem for a
-        /// capsule, the part before the first underscore for an achievement
-        /// icon. False for anything this cache did not write.
-        /// </summary>
-        private static bool TryGetAppId(string file, out uint appId)
+    /// <summary>
+    /// Every file in <paramref name="directory"/> that this cache wrote,
+    /// paired with the app id it belongs to. Files it did not write are
+    /// skipped rather than touched — the cache directory is user-chosen and
+    /// may not be ours alone.
+    /// </summary>
+    private static IEnumerable<(string File, uint AppId)> EnumerateCacheFiles(string directory)
+    {
+        if (Directory.Exists(directory) == false)
         {
-            var name = System.IO.Path.GetFileNameWithoutExtension(file);
-            var separator = name.IndexOf('_');
-            if (separator > 0)
-            {
-                name = name[..separator];
-            }
-            return uint.TryParse(name, NumberStyles.None, CultureInfo.InvariantCulture, out appId);
+            yield break;
         }
-
-        /// <summary>
-        /// Every file in <paramref name="directory"/> that this cache wrote,
-        /// paired with the app id it belongs to. Files it did not write are
-        /// skipped rather than touched — the cache directory is user-chosen and
-        /// may not be ours alone.
-        /// </summary>
-        private static IEnumerable<(string File, uint AppId)> EnumerateCacheFiles(string directory)
+        foreach (var file in Directory.GetFiles(directory))
         {
-            if (Directory.Exists(directory) == false)
+            if (TryGetAppId(file, out var appId) == false)
             {
-                yield break;
+                continue;
             }
-            foreach (var file in Directory.GetFiles(directory))
+            yield return (file, appId);
+        }
+    }
+
+    /// <summary>Drops cached images for games that are no longer owned.</summary>
+    public void Prune(ICollection<uint> keep)
+    {
+        try
+        {
+            foreach (var (file, appId) in EnumerateCacheFiles(Path))
             {
-                if (TryGetAppId(file, out var appId) == false)
+                if (keep.Contains(appId) == true)
                 {
                     continue;
                 }
-                yield return (file, appId);
+                File.Delete(file);
             }
         }
+        catch (Exception)
+        {
+        }
+    }
 
-        /// <summary>Drops cached images for games that are no longer owned.</summary>
-        public void Prune(ICollection<uint> keep)
+    /// <summary>Moves every cached image to a new directory.</summary>
+    public void MoveTo(string destination)
+    {
+        var source = Path;
+        if (string.Equals(
+                System.IO.Path.GetFullPath(source),
+                System.IO.Path.GetFullPath(destination),
+                StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return;
+        }
+
+        TryCreate(destination);
+
+        foreach (var (file, _) in EnumerateCacheFiles(source))
         {
             try
             {
-                foreach (var (file, appId) in EnumerateCacheFiles(this.Path))
-                {
-                    if (keep.Contains(appId) == true)
-                    {
-                        continue;
-                    }
-                    File.Delete(file);
-                }
+                File.Move(file, System.IO.Path.Combine(destination, System.IO.Path.GetFileName(file)), true);
             }
             catch (Exception)
             {
             }
         }
 
-        /// <summary>Moves every cached image to a new directory.</summary>
-        public void MoveTo(string destination)
+        // The store images are in a subfolder, which the loop above never
+        // enumerates. See StoreImageCache.
+        var storeSource = System.IO.Path.Combine(source, StoreImageCache.FolderName);
+        if (Directory.Exists(storeSource) == true)
         {
-            var source = this.Path;
-            if (string.Equals(
-                    System.IO.Path.GetFullPath(source),
-                    System.IO.Path.GetFullPath(destination),
-                    StringComparison.OrdinalIgnoreCase) == true)
-            {
-                return;
-            }
-
-            TryCreate(destination);
-
-            foreach (var (file, _) in EnumerateCacheFiles(source))
+            foreach (var file in Directory.GetFiles(storeSource, "*", SearchOption.AllDirectories))
             {
                 try
                 {
-                    File.Move(file, System.IO.Path.Combine(destination, System.IO.Path.GetFileName(file)), true);
+                    var target = System.IO.Path.Combine(
+                        destination,
+                        StoreImageCache.FolderName,
+                        System.IO.Path.GetRelativePath(storeSource, file));
+                    Directory.CreateDirectory(System.IO.Path.GetDirectoryName(target));
+                    File.Move(file, target, true);
                 }
                 catch (Exception)
                 {
                 }
             }
-
-            // The store images are in a subfolder, which the loop above never
-            // enumerates. See StoreImageCache.
-            var storeSource = System.IO.Path.Combine(source, StoreImageCache.FolderName);
-            if (Directory.Exists(storeSource) == true)
-            {
-                foreach (var file in Directory.GetFiles(storeSource, "*", SearchOption.AllDirectories))
-                {
-                    try
-                    {
-                        var target = System.IO.Path.Combine(
-                            destination,
-                            StoreImageCache.FolderName,
-                            System.IO.Path.GetRelativePath(storeSource, file));
-                        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(target));
-                        File.Move(file, target, true);
-                    }
-                    catch (Exception)
-                    {
-                    }
-                }
-            }
-
-            this.Path = destination;
         }
+
+        Path = destination;
     }
 }

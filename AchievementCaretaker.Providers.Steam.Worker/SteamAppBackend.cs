@@ -35,168 +35,168 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using AchievementCaretaker.Providers;
+using AchievementCaretaker.Providers.Models;
 
-namespace AchievementCaretaker.Providers.Steam
+namespace AchievementCaretaker.Providers.Steam;
+
+/// <summary>
+/// The helper's work: read one game's achievements from Steam, and set and store them.
+/// Steam is reached through an <see cref="ISteamAppGateway"/>.
+/// </summary>
+public sealed class SteamAppBackend : ISteamAppBackend
 {
-    /// <summary>
-    /// The helper's work: read one game's achievements from Steam, and set and store them.
-    /// Steam is reached through an <see cref="ISteamAppGateway"/>.
-    /// </summary>
-    public sealed class SteamAppBackend : ISteamAppBackend
+    private readonly ISteamAppGateway _gateway;
+
+    public SteamAppBackend(ISteamAppGateway gateway)
     {
-        private readonly ISteamAppGateway _Gateway;
+        _gateway = gateway;
+    }
 
-        public SteamAppBackend(ISteamAppGateway gateway)
+    public async Task<IReadOnlyList<StoreAchievement>> GetAchievementsAsync(CancellationToken cancellationToken)
+    {
+        await _gateway.EnsureUserStatsAsync(cancellationToken);
+
+        var schema = _gateway.LoadSchema()
+            ?? throw new ProviderException("no_schema", "Steam has no achievement schema cached for this game yet.");
+
+        List<StoreAchievement> result = new();
+        foreach (var def in SteamSchemaReader.ReadAchievements(schema, _gateway.AppId, _gateway.Language))
         {
-            this._Gateway = gateway;
-        }
-
-        public async Task<IReadOnlyList<StoreAchievement>> GetAchievementsAsync(CancellationToken cancellationToken)
-        {
-            await this._Gateway.EnsureUserStatsAsync(cancellationToken);
-
-            var schema = this._Gateway.LoadSchema()
-                ?? throw new ProviderException("no_schema", "Steam has no achievement schema cached for this game yet.");
-
-            List<StoreAchievement> result = new();
-            foreach (var def in SteamSchemaReader.ReadAchievements(schema, this._Gateway.AppId, this._Gateway.Language))
+            if (string.IsNullOrEmpty(def.Id) == true ||
+                _gateway.TryGetAchievement(def.Id, out var unlocked, out var unlockTime) == false)
             {
-                if (string.IsNullOrEmpty(def.Id) == true ||
-                    this._Gateway.TryGetAchievement(def.Id, out var unlocked, out var unlockTime) == false)
+                continue;
+            }
+
+            var icon = unlocked == true || string.IsNullOrEmpty(def.IconLocked) == true ? def.IconNormal : def.IconLocked;
+            result.Add(new StoreAchievement(
+                def.Id,
+                def.Name,
+                def.Description,
+                string.IsNullOrEmpty(icon)
+                    ? null
+                    : string.Create(CultureInfo.InvariantCulture,
+                        $"https://cdn.steamstatic.com/steamcommunity/public/images/apps/{_gateway.AppId}/{icon}"),
+                def.Hidden,
+                null,
+                null,
+                unlocked,
+                null,
+                unlocked == true && unlockTime > 0 ? DateTimeOffset.FromUnixTimeSeconds(unlockTime) : null,
+                (def.Permission & 3) != 0));
+        }
+        return result;
+    }
+
+    public async Task<IReadOnlyList<StoreStat>> GetStatsAsync(CancellationToken cancellationToken)
+    {
+        await _gateway.EnsureUserStatsAsync(cancellationToken);
+
+        var schema = _gateway.LoadSchema()
+            ?? throw new ProviderException("no_schema", "Steam has no schema cached for this game yet.");
+
+        List<StoreStat> result = new();
+        foreach (var def in SteamSchemaReader.ReadStats(schema, _gateway.AppId, _gateway.Language))
+        {
+            double value;
+            if (def.Kind == StoreStatKind.Integer)
+            {
+                if (_gateway.TryGetIntStat(def.Id, out var whole) == false)
                 {
                     continue;
                 }
-
-                var icon = unlocked == true || string.IsNullOrEmpty(def.IconLocked) == true ? def.IconNormal : def.IconLocked;
-                result.Add(new StoreAchievement(
-                    def.Id,
-                    def.Name,
-                    def.Description,
-                    string.IsNullOrEmpty(icon)
-                        ? null
-                        : string.Create(CultureInfo.InvariantCulture,
-                            $"https://cdn.steamstatic.com/steamcommunity/public/images/apps/{this._Gateway.AppId}/{icon}"),
-                    def.Hidden,
-                    null,
-                    null,
-                    unlocked,
-                    null,
-                    unlocked == true && unlockTime > 0 ? DateTimeOffset.FromUnixTimeSeconds(unlockTime) : null,
-                    (def.Permission & 3) != 0));
+                value = whole;
             }
-            return result;
+            else
+            {
+                if (_gateway.TryGetFloatStat(def.Id, out var fraction) == false)
+                {
+                    continue;
+                }
+                value = fraction;
+            }
+            result.Add(new StoreStat(
+                def.Id, def.DisplayName, def.Kind, value, def.Min, def.Max, def.MaxChange,
+                def.IncrementOnly, def.DefaultValue, def.Protected));
+        }
+        return result;
+    }
+
+    public async Task CommitAsync(
+        IReadOnlyCollection<KeyValuePair<string, bool>> achievements,
+        IReadOnlyCollection<KeyValuePair<string, double>> statistics,
+        CancellationToken cancellationToken)
+    {
+        if (achievements.Count == 0 && statistics.Count == 0)
+        {
+            return;
         }
 
-        public async Task<IReadOnlyList<StoreStat>> GetStatsAsync(CancellationToken cancellationToken)
-        {
-            await this._Gateway.EnsureUserStatsAsync(cancellationToken);
+        await _gateway.EnsureUserStatsAsync(cancellationToken);
 
-            var schema = this._Gateway.LoadSchema()
+        if (achievements.Count > 0)
+        {
+            var schema = _gateway.LoadSchema();
+            var protectedIds = schema == null
+                ? new HashSet<string>()
+                : SteamSchemaReader.ReadAchievements(schema, _gateway.AppId, _gateway.Language)
+                    .Where(d => (d.Permission & 3) != 0).Select(d => d.Id).ToHashSet();
+            foreach (var change in achievements)
+            {
+                if (protectedIds.Contains(change.Key) == true)
+                {
+                    throw new ProviderException(
+                        "protected", $"{change.Key} is protected by Steam; nothing has been stored.");
+                }
+                if (_gateway.SetAchievement(change.Key, change.Value) == false)
+                {
+                    throw new ProviderException(
+                        "set_failed", $"Steam would not change {change.Key}; nothing has been stored.");
+                }
+            }
+        }
+
+        if (statistics.Count > 0)
+        {
+            var schema = _gateway.LoadSchema()
                 ?? throw new ProviderException("no_schema", "Steam has no schema cached for this game yet.");
-
-            List<StoreStat> result = new();
-            foreach (var def in SteamSchemaReader.ReadStats(schema, this._Gateway.AppId, this._Gateway.Language))
+            var definitions = SteamSchemaReader.ReadStats(schema, _gateway.AppId, _gateway.Language)
+                .ToDictionary(d => d.Id);
+            foreach (var change in statistics)
             {
-                double value;
-                if (def.Kind == StoreStatKind.Integer)
+                if (definitions.TryGetValue(change.Key, out var def) == false)
                 {
-                    if (this._Gateway.TryGetIntStat(def.Id, out var whole) == false)
-                    {
-                        continue;
-                    }
-                    value = whole;
+                    throw new ProviderException("unknown_stat", $"{change.Key} is not a statistic of this game.");
                 }
-                else
+                if (def.Protected == true)
                 {
-                    if (this._Gateway.TryGetFloatStat(def.Id, out var fraction) == false)
-                    {
-                        continue;
-                    }
-                    value = fraction;
+                    throw new ProviderException(
+                        "protected", $"{change.Key} is protected by Steam; nothing has been stored.");
                 }
-                result.Add(new StoreStat(
-                    def.Id, def.DisplayName, def.Kind, value, def.Min, def.Max, def.MaxChange,
-                    def.IncrementOnly, def.DefaultValue, def.Protected));
-            }
-            return result;
-        }
 
-        public async Task CommitAsync(
-            IReadOnlyCollection<KeyValuePair<string, bool>> achievements,
-            IReadOnlyCollection<KeyValuePair<string, double>> statistics,
-            CancellationToken cancellationToken)
-        {
-            if (achievements.Count == 0 && statistics.Count == 0)
-            {
-                return;
-            }
-
-            await this._Gateway.EnsureUserStatsAsync(cancellationToken);
-
-            if (achievements.Count > 0)
-            {
-                var schema = this._Gateway.LoadSchema();
-                var protectedIds = schema == null
-                    ? new HashSet<string>()
-                    : SteamSchemaReader.ReadAchievements(schema, this._Gateway.AppId, this._Gateway.Language)
-                        .Where(d => (d.Permission & 3) != 0).Select(d => d.Id).ToHashSet();
-                foreach (var change in achievements)
+                var accepted = def.Kind == StoreStatKind.Integer
+                    ? _gateway.SetIntStat(change.Key, checked((int)Math.Round(change.Value)))
+                    : _gateway.SetFloatStat(change.Key, (float)change.Value);
+                if (accepted == false)
                 {
-                    if (protectedIds.Contains(change.Key) == true)
-                    {
-                        throw new ProviderException(
-                            "protected", $"{change.Key} is protected by Steam; nothing has been stored.");
-                    }
-                    if (this._Gateway.SetAchievement(change.Key, change.Value) == false)
-                    {
-                        throw new ProviderException(
-                            "set_failed", $"Steam would not change {change.Key}; nothing has been stored.");
-                    }
+                    throw new ProviderException(
+                        "set_failed", $"Steam would not change {change.Key}; nothing has been stored.");
                 }
-            }
-
-            if (statistics.Count > 0)
-            {
-                var schema = this._Gateway.LoadSchema()
-                    ?? throw new ProviderException("no_schema", "Steam has no schema cached for this game yet.");
-                var definitions = SteamSchemaReader.ReadStats(schema, this._Gateway.AppId, this._Gateway.Language)
-                    .ToDictionary(d => d.Id);
-                foreach (var change in statistics)
-                {
-                    if (definitions.TryGetValue(change.Key, out var def) == false)
-                    {
-                        throw new ProviderException("unknown_stat", $"{change.Key} is not a statistic of this game.");
-                    }
-                    if (def.Protected == true)
-                    {
-                        throw new ProviderException(
-                            "protected", $"{change.Key} is protected by Steam; nothing has been stored.");
-                    }
-
-                    var accepted = def.Kind == StoreStatKind.Integer
-                        ? this._Gateway.SetIntStat(change.Key, checked((int)Math.Round(change.Value)))
-                        : this._Gateway.SetFloatStat(change.Key, (float)change.Value);
-                    if (accepted == false)
-                    {
-                        throw new ProviderException(
-                            "set_failed", $"Steam would not change {change.Key}; nothing has been stored.");
-                    }
-                }
-            }
-
-            if (this._Gateway.StoreStats() == false)
-            {
-                throw new ProviderException("store_failed", "Steam would not store the changes.");
             }
         }
 
-        public async Task ResetAsync(bool includeAchievements, CancellationToken cancellationToken)
+        if (_gateway.StoreStats() == false)
         {
-            await this._Gateway.EnsureUserStatsAsync(cancellationToken);
-            if (this._Gateway.ResetAllStats(includeAchievements) == false)
-            {
-                throw new ProviderException("reset_failed", "Steam would not reset the statistics.");
-            }
+            throw new ProviderException("store_failed", "Steam would not store the changes.");
+        }
+    }
+
+    public async Task ResetAsync(bool includeAchievements, CancellationToken cancellationToken)
+    {
+        await _gateway.EnsureUserStatsAsync(cancellationToken);
+        if (_gateway.ResetAllStats(includeAchievements) == false)
+        {
+            throw new ProviderException("reset_failed", "Steam would not reset the statistics.");
         }
     }
 }

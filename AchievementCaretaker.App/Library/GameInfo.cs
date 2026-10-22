@@ -33,196 +33,196 @@ using System.Globalization;
 using AchievementCaretaker.Providers.Steam;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
+using AchievementCaretaker.Providers.Steam.Models;
 
-namespace AchievementCaretaker.App.Library
+namespace AchievementCaretaker.App.Library;
+
+internal sealed partial class GameInfo : ObservableObject
 {
-    internal sealed partial class GameInfo : ObservableObject
+    private string _name;
+
+    public uint Id { get; }
+    public string Type { get; }
+    public string ImageUrl { get; set; }
+
+    /// <summary>
+    /// Filled in asynchronously by the logo downloader; the view binds to
+    /// it directly, so the assignment must happen on the UI thread.
+    /// </summary>
+    [ObservableProperty]
+    private Bitmap _logo;
+
+    public string Name
     {
-        private string _Name;
+        get => _name;
+        set => SetProperty(
+            ref _name,
+            value ?? "App " + Id.ToString(CultureInfo.InvariantCulture));
+    }
 
-        public uint Id { get; }
-        public string Type { get; }
-        public string ImageUrl { get; set; }
+    /// <summary>
+    /// Filled in from Steam's on-disk caches by <see cref="LibraryStats"/>.
+    /// Null means "not known" — Steam only writes those caches for games
+    /// that have been launched — which is deliberately distinct from zero.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PlaytimeText))]
+    [NotifyPropertyChangedFor(nameof(AchievementsText))]
+    [NotifyPropertyChangedFor(nameof(LastPlayedText))]
+    [NotifyPropertyChangedFor(nameof(Completion))]
+    [NotifyPropertyChangedFor(nameof(HasCompletion))]
+    [NotifyPropertyChangedFor(nameof(CompletionFraction))]
+    [NotifyPropertyChangedFor(nameof(CompletionText))]
+    [NotifyPropertyChangedFor(nameof(IsPerfect))]
+    private GameStats? _stats;
 
-        /// <summary>
-        /// Filled in asynchronously by the logo downloader; the view binds to
-        /// it directly, so the assignment must happen on the UI thread.
-        /// </summary>
-        [ObservableProperty]
-        private Bitmap _Logo;
+    /// <summary>Steam's community review score as a percentage positive.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SteamRatingText))]
+    [NotifyPropertyChangedFor(nameof(SteamRatingTooltip))]
+    private int? _steamRatingPercent;
 
-        public string Name
+    /// <summary>Steam's 1-9 review band, used for the descriptive tooltip.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SteamRatingTooltip))]
+    private int? _steamRatingScore;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ReleaseDateText))]
+    private DateTime? _releaseDate;
+
+    /// <summary>
+    /// The user's own like/dislike. Stored locally; see <see cref="OwnRating"/>.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsLiked))]
+    [NotifyPropertyChangedFor(nameof(IsDisliked))]
+    private OwnRating _ownRating;
+
+    public bool IsLiked => OwnRating == OwnRating.Like;
+    public bool IsDisliked => OwnRating == OwnRating.Dislike;
+
+    public DateTime? LastPlayed => Stats?.LastPlayed;
+
+    public string LastPlayedText =>
+        Stats.HasValue == true && Stats.Value.LastPlayed.HasValue == true
+            ? Stats.Value.LastPlayed.Value.ToString("d MMM yyyy", CultureInfo.CurrentCulture)
+            : "—";
+
+    public string ReleaseDateText =>
+        ReleaseDate.HasValue == true
+            ? ReleaseDate.Value.ToString("d MMM yyyy", CultureInfo.CurrentCulture)
+            : "—";
+
+    public string SteamRatingText =>
+        SteamRatingPercent.HasValue == true
+            ? SteamRatingPercent.Value.ToString(CultureInfo.CurrentCulture) + "%"
+            : "—";
+
+    public string SteamRatingTooltip
+    {
+        get
         {
-            get => this._Name;
-            set => this.SetProperty(
-                ref this._Name,
-                value ?? "App " + this.Id.ToString(CultureInfo.InvariantCulture));
-        }
-
-        /// <summary>
-        /// Filled in from Steam's on-disk caches by <see cref="LibraryStats"/>.
-        /// Null means "not known" — Steam only writes those caches for games
-        /// that have been launched — which is deliberately distinct from zero.
-        /// </summary>
-        [ObservableProperty]
-        [NotifyPropertyChangedFor(nameof(PlaytimeText))]
-        [NotifyPropertyChangedFor(nameof(AchievementsText))]
-        [NotifyPropertyChangedFor(nameof(LastPlayedText))]
-        [NotifyPropertyChangedFor(nameof(Completion))]
-        [NotifyPropertyChangedFor(nameof(HasCompletion))]
-        [NotifyPropertyChangedFor(nameof(CompletionFraction))]
-        [NotifyPropertyChangedFor(nameof(CompletionText))]
-        [NotifyPropertyChangedFor(nameof(IsPerfect))]
-        private GameStats? _Stats;
-
-        /// <summary>Steam's community review score as a percentage positive.</summary>
-        [ObservableProperty]
-        [NotifyPropertyChangedFor(nameof(SteamRatingText))]
-        [NotifyPropertyChangedFor(nameof(SteamRatingTooltip))]
-        private int? _SteamRatingPercent;
-
-        /// <summary>Steam's 1-9 review band, used for the descriptive tooltip.</summary>
-        [ObservableProperty]
-        [NotifyPropertyChangedFor(nameof(SteamRatingTooltip))]
-        private int? _SteamRatingScore;
-
-        [ObservableProperty]
-        [NotifyPropertyChangedFor(nameof(ReleaseDateText))]
-        private DateTime? _ReleaseDate;
-
-        /// <summary>
-        /// The user's own like/dislike. Stored locally; see <see cref="OwnRating"/>.
-        /// </summary>
-        [ObservableProperty]
-        [NotifyPropertyChangedFor(nameof(IsLiked))]
-        [NotifyPropertyChangedFor(nameof(IsDisliked))]
-        private OwnRating _OwnRating;
-
-        public bool IsLiked => this.OwnRating == OwnRating.Like;
-        public bool IsDisliked => this.OwnRating == OwnRating.Dislike;
-
-        public DateTime? LastPlayed => this.Stats?.LastPlayed;
-
-        public string LastPlayedText =>
-            this.Stats.HasValue == true && this.Stats.Value.LastPlayed.HasValue == true
-                ? this.Stats.Value.LastPlayed.Value.ToString("d MMM yyyy", CultureInfo.CurrentCulture)
-                : "—";
-
-        public string ReleaseDateText =>
-            this.ReleaseDate.HasValue == true
-                ? this.ReleaseDate.Value.ToString("d MMM yyyy", CultureInfo.CurrentCulture)
-                : "—";
-
-        public string SteamRatingText =>
-            this.SteamRatingPercent.HasValue == true
-                ? this.SteamRatingPercent.Value.ToString(CultureInfo.CurrentCulture) + "%"
-                : "—";
-
-        public string SteamRatingTooltip
-        {
-            get
+            if (SteamRatingPercent.HasValue == false)
             {
-                if (this.SteamRatingPercent.HasValue == false)
-                {
-                    return "No Steam review data cached for this game";
-                }
-                var band = DescribeScore(this.SteamRatingScore);
-                return band == null
-                    ? $"{this.SteamRatingPercent.Value}% of Steam reviews are positive"
-                    : $"{band} — {this.SteamRatingPercent.Value}% of Steam reviews are positive";
+                return "No Steam review data cached for this game";
             }
+            var band = DescribeScore(SteamRatingScore);
+            return band == null
+                ? $"{SteamRatingPercent.Value}% of Steam reviews are positive"
+                : $"{band} — {SteamRatingPercent.Value}% of Steam reviews are positive";
         }
+    }
 
-        /// <summary>Steam's published mapping for its 1-9 review score band.</summary>
-        private static string DescribeScore(int? score) => score switch
-        {
-            9 => "Overwhelmingly Positive",
-            8 => "Very Positive",
-            7 => "Positive",
-            6 => "Mostly Positive",
-            5 => "Mixed",
-            4 => "Mostly Negative",
-            3 => "Negative",
-            2 => "Very Negative",
-            1 => "Overwhelmingly Negative",
-            _ => null,
-        };
+    /// <summary>Steam's published mapping for its 1-9 review score band.</summary>
+    private static string DescribeScore(int? score) => score switch
+    {
+        9 => "Overwhelmingly Positive",
+        8 => "Very Positive",
+        7 => "Positive",
+        6 => "Mostly Positive",
+        5 => "Mixed",
+        4 => "Mostly Negative",
+        3 => "Negative",
+        2 => "Very Negative",
+        1 => "Overwhelmingly Negative",
+        _ => null,
+    };
 
-        public string PlaytimeText
+    public string PlaytimeText
+    {
+        get
         {
-            get
+            if (Stats.HasValue == false)
             {
-                if (this.Stats.HasValue == false)
-                {
-                    return "—";
-                }
-                var minutes = this.Stats.Value.PlaytimeMinutes;
-                if (minutes <= 0)
-                {
-                    return "never played";
-                }
-                var hours = minutes / 60.0;
-                return hours < 10
-                    ? hours.ToString("0.0", CultureInfo.CurrentCulture) + " h"
-                    : Math.Round(hours).ToString("0", CultureInfo.CurrentCulture) + " h";
+                return "—";
             }
-        }
-
-        /// <summary>
-        /// How far through this game's achievements the user is, 0..1, or null
-        /// when Steam has never cached a schema for it. The Library grid draws
-        /// a meter from this, and an empty meter has to mean "not known" rather
-        /// than "none earned".
-        /// </summary>
-        public double? Completion
-        {
-            get
+            var minutes = Stats.Value.PlaytimeMinutes;
+            if (minutes <= 0)
             {
-                if (this.Stats.HasValue == false || this.Stats.Value.AchievementsTotal <= 0)
-                {
-                    return null;
-                }
-                return Math.Clamp(
-                    this.Stats.Value.AchievementsEarned / (double)this.Stats.Value.AchievementsTotal,
-                    0.0,
-                    1.0);
+                return "never played";
             }
+            var hours = minutes / 60.0;
+            return hours < 10
+                ? hours.ToString("0.0", CultureInfo.CurrentCulture) + " h"
+                : Math.Round(hours).ToString("0", CultureInfo.CurrentCulture) + " h";
         }
+    }
 
-        public bool HasCompletion => this.Completion.HasValue;
-
-        /// <summary>Width of the meter's filled part, as a fraction of the track.</summary>
-        public double CompletionFraction => this.Completion ?? 0.0;
-
-        public bool IsPerfect => this.Completion.HasValue == true && this.Completion.Value >= 1.0;
-
-        public string CompletionText =>
-            this.Completion.HasValue == false
-                ? "Not cached yet"
-                : (this.Completion.Value * 100.0).ToString("0", CultureInfo.CurrentCulture) + "%";
-
-        public string AchievementsText
+    /// <summary>
+    /// How far through this game's achievements the user is, 0..1, or null
+    /// when Steam has never cached a schema for it. The Library grid draws
+    /// a meter from this, and an empty meter has to mean "not known" rather
+    /// than "none earned".
+    /// </summary>
+    public double? Completion
+    {
+        get
         {
-            get
+            if (Stats.HasValue == false || Stats.Value.AchievementsTotal <= 0)
             {
-                if (this.Stats.HasValue == false || this.Stats.Value.AchievementsTotal < 0)
-                {
-                    return "—";
-                }
-                if (this.Stats.Value.AchievementsTotal == 0)
-                {
-                    return "none";
-                }
-                return $"{this.Stats.Value.AchievementsEarned} / {this.Stats.Value.AchievementsTotal}";
+                return null;
             }
+            return Math.Clamp(
+                Stats.Value.AchievementsEarned / (double)Stats.Value.AchievementsTotal,
+                0.0,
+                1.0);
         }
+    }
 
-        public GameInfo(uint id, string type)
+    public bool HasCompletion => Completion.HasValue;
+
+    /// <summary>Width of the meter's filled part, as a fraction of the track.</summary>
+    public double CompletionFraction => Completion ?? 0.0;
+
+    public bool IsPerfect => Completion.HasValue == true && Completion.Value >= 1.0;
+
+    public string CompletionText =>
+        Completion.HasValue == false
+            ? "Not cached yet"
+            : (Completion.Value * 100.0).ToString("0", CultureInfo.CurrentCulture) + "%";
+
+    public string AchievementsText
+    {
+        get
         {
-            this.Id = id;
-            this.Type = type;
-            this.Name = null;
-            this.ImageUrl = null;
+            if (Stats.HasValue == false || Stats.Value.AchievementsTotal < 0)
+            {
+                return "—";
+            }
+            if (Stats.Value.AchievementsTotal == 0)
+            {
+                return "none";
+            }
+            return $"{Stats.Value.AchievementsEarned} / {Stats.Value.AchievementsTotal}";
         }
+    }
+
+    public GameInfo(uint id, string type)
+    {
+        Id = id;
+        Type = type;
+        Name = null;
+        ImageUrl = null;
     }
 }

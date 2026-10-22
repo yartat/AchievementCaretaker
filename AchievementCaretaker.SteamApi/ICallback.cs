@@ -30,12 +30,11 @@
 
 using System;
 
-namespace AchievementCaretaker.SteamApi
+namespace AchievementCaretaker.SteamApi;
+
+public interface ICallback
 {
-    public interface ICallback
-    {
-        int Id { get; }
-        bool IsServer { get; }
-        void Run(IntPtr param);
-    }
+    int Id { get; }
+    bool IsServer { get; }
+    void Run(IntPtr param);
 }

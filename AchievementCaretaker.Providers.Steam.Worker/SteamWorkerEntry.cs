@@ -33,59 +33,58 @@ using System.Globalization;
 using System.Threading.Tasks;
 using AchievementCaretaker.SteamApi;
 
-namespace AchievementCaretaker.Providers.Steam
+namespace AchievementCaretaker.Providers.Steam;
+
+/// <summary>What <c>AchievementCaretaker.exe --steam-worker &lt;appid&gt;</c> runs.</summary>
+public static class SteamWorkerEntry
 {
-    /// <summary>What <c>AchievementCaretaker.exe --steam-worker &lt;appid&gt;</c> runs.</summary>
-    public static class SteamWorkerEntry
+    private static string Describe(ClientInitializeException e)
     {
-        private static string Describe(ClientInitializeException e)
+        const string Prefix = "Steam is not running. Please start Steam and try again.";
+
+        // Family Share only locks a specific game, so the hint is only worth showing for
+        // the failure that says the account is not available to this one.
+        if (e.Failure == ClientInitializeFailure.ConnectToGlobalUser)
         {
-            const string Prefix = "Steam is not running. Please start Steam and try again.";
-
-            // Family Share only locks a specific game, so the hint is only worth showing for
-            // the failure that says the account is not available to this one.
-            if (e.Failure == ClientInitializeFailure.ConnectToGlobalUser)
-            {
-                return Prefix + " If you have the game through Family Share, the game may be locked "
-                    + "while the Family Share account is playing a game. (" + e.Message + ")";
-            }
-
-            return string.IsNullOrEmpty(e.Message) == false ? Prefix + " (" + e.Message + ")" : Prefix;
+            return Prefix + " If you have the game through Family Share, the game may be locked "
+                + "while the Family Share account is playing a game. (" + e.Message + ")";
         }
 
-        /// <summary>
-        /// Connects to Steam as the app, serves it over gRPC and returns when asked to leave.
-        /// The exit code is 0 for a clean stop and 1 when Steam could not be reached.
-        /// </summary>
-        public static async Task<int> RunAsync(string appIdText)
+        return string.IsNullOrEmpty(e.Message) == false ? Prefix + " (" + e.Message + ")" : Prefix;
+    }
+
+    /// <summary>
+    /// Connects to Steam as the app, serves it over gRPC and returns when asked to leave.
+    /// The exit code is 0 for a clean stop and 1 when Steam could not be reached.
+    /// </summary>
+    public static async Task<int> RunAsync(string appIdText)
+    {
+        if (long.TryParse(appIdText, NumberStyles.None, CultureInfo.InvariantCulture, out var appId) == false || appId == 0)
         {
-            if (long.TryParse(appIdText, NumberStyles.None, CultureInfo.InvariantCulture, out var appId) == false || appId == 0)
-            {
-                await Console.Error.WriteLineAsync("The Steam helper needs an app id.");
-                return 1;
-            }
-
-            SteamClientGateway gateway;
-            try
-            {
-                gateway = new SteamClientGateway(appId);
-            }
-            catch (ClientInitializeException e)
-            {
-                await Console.Error.WriteLineAsync(Describe(e));
-                return 1;
-            }
-            catch (Exception e)
-            {
-                await Console.Error.WriteLineAsync("Steam is not available: " + e.Message);
-                return 1;
-            }
-
-            using (gateway)
-            {
-                await SteamWorkerHost.RunAsync(new SteamAppBackend(gateway), Console.In, Console.Out);
-            }
-            return 0;
+            await Console.Error.WriteLineAsync("The Steam helper needs an app id.");
+            return 1;
         }
+
+        SteamClientGateway gateway;
+        try
+        {
+            gateway = new SteamClientGateway(appId);
+        }
+        catch (ClientInitializeException e)
+        {
+            await Console.Error.WriteLineAsync(Describe(e));
+            return 1;
+        }
+        catch (Exception e)
+        {
+            await Console.Error.WriteLineAsync("Steam is not available: " + e.Message);
+            return 1;
+        }
+
+        using (gateway)
+        {
+            await SteamWorkerHost.RunAsync(new SteamAppBackend(gateway), Console.In, Console.Out);
+        }
+        return 0;
     }
 }

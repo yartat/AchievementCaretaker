@@ -13,24 +13,23 @@ using System.IO;
 using System.Net.Http;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace AchievementCaretaker.Providers.Epic
+namespace AchievementCaretaker.Providers.Epic;
+
+public static class EpicServiceCollectionExtensions
 {
-    public static class EpicServiceCollectionExtensions
+    /// <summary>
+    /// Registers the Epic provider as an <see cref="IStoreProvider"/>, with the named
+    /// <c>HttpClient</c> it asks the factory for.
+    /// </summary>
+    /// <param name="homeDirectory">Where the session file lives: <c>epic.json</c> in it.</param>
+    public static IServiceCollection AddEpicProvider(this IServiceCollection services, string homeDirectory)
     {
-        /// <summary>
-        /// Registers the Epic provider as an <see cref="IStoreProvider"/>, with the named
-        /// <c>HttpClient</c> it asks the factory for.
-        /// </summary>
-        /// <param name="homeDirectory">Where the session file lives: <c>epic.json</c> in it.</param>
-        public static IServiceCollection AddEpicProvider(this IServiceCollection services, string homeDirectory)
-        {
-            services.AddSessionStore();
-            services.AddHttpClient(EpicProvider.HttpClientName, EpicProvider.ConfigureHttpClient);
-            services.AddSingleton<IStoreProvider>(sp => new EpicProvider(
-                sp.GetRequiredService<IHttpClientFactory>(),
-                sp.GetRequiredService<ISessionStore>(),
-                Path.Combine(homeDirectory, "epic.json")));
-            return services;
-        }
+        services.AddSessionStore();
+        services.AddHttpClient(EpicProvider.HttpClientName, EpicProvider.ConfigureHttpClient);
+        services.AddSingleton<IStoreProvider>(sp => new EpicProvider(
+            sp.GetRequiredService<IHttpClientFactory>(),
+            sp.GetRequiredService<ISessionStore>(),
+            Path.Combine(homeDirectory, "epic.json")));
+        return services;
     }
 }

@@ -3,27 +3,20 @@
     <Platform Name="Any CPU" />
     <Platform Name="x86" />
   </Configurations>
-  <Project Path="AchievementCaretaker.App/AchievementCaretaker.App.csproj">
-    <Platform Solution="*|x86" Project="x86" />
-  </Project>
-  <Project Path="AchievementCaretaker.Providers.Abstractions/AchievementCaretaker.Providers.Abstractions.csproj">
-    <Platform Solution="*|x86" Project="x86" />
-  </Project>
-  <Project Path="AchievementCaretaker.Providers.Epic/AchievementCaretaker.Providers.Epic.csproj">
-    <Platform Solution="*|x86" Project="x86" />
-  </Project>
-  <Project Path="AchievementCaretaker.Providers.Gog/AchievementCaretaker.Providers.Gog.csproj">
-    <Platform Solution="*|x86" Project="x86" />
-  </Project>
-  <Project Path="AchievementCaretaker.Providers.Shared/AchievementCaretaker.Providers.Shared.csproj">
-    <Platform Solution="*|x86" Project="x86" />
-  </Project>
-  <Project Path="AchievementCaretaker.SteamApi/AchievementCaretaker.SteamApi.csproj">
-    <Platform Solution="*|x86" Project="x86" />
-  </Project>
-  <Project Path="AchievementCaretaker.Services/AchievementCaretaker.Services.csproj">
-    <Platform Solution="*|x86" Project="x86" />
-  </Project>
+  <Folder Name="/Tests/">
+    <Project Path="tests/AchievementCaretaker.Providers.Steam.Tests/AchievementCaretaker.Providers.Steam.Tests.csproj">
+      <Platform Solution="*|x86" Project="x86" />
+    </Project>
+    <Project Path="tests/AchievementCaretaker.Providers.Tests/AchievementCaretaker.Providers.Tests.csproj">
+      <Platform Solution="*|x86" Project="x86" />
+    </Project>
+    <Project Path="tests/AchievementCaretaker.Services.Tests/AchievementCaretaker.Services.Tests.csproj">
+      <Platform Solution="*|x86" Project="x86" />
+    </Project>
+  </Folder>
+  <Folder Name="/Tools/">
+    <Project Path="tools/ProviderProbe/ProviderProbe.csproj" />
+  </Folder>
   <Folder Name="/Documentation/">
     <File Path="README.md" />
     <File Path="CLAUDE.md" />
@@ -35,25 +28,38 @@
     <File Path="docs/GOG-RESEARCH.md" />
     <File Path="docs/RELEASE-NOTES.md" />
   </Folder>
+  <Folder Name="/Providers/">
+    <Project Path="AchievementCaretaker.Providers.Abstractions/AchievementCaretaker.Providers.Abstractions.csproj">
+      <Platform Solution="*|x86" Project="x86" />
+    </Project>
+    <Project Path="AchievementCaretaker.Providers.Epic/AchievementCaretaker.Providers.Epic.csproj">
+      <Platform Solution="*|x86" Project="x86" />
+    </Project>
+    <Project Path="AchievementCaretaker.Providers.Gog/AchievementCaretaker.Providers.Gog.csproj">
+      <Platform Solution="*|x86" Project="x86" />
+    </Project>
+    <Project Path="AchievementCaretaker.Providers.Shared/AchievementCaretaker.Providers.Shared.csproj">
+      <Platform Solution="*|x86" Project="x86" />
+    </Project>
+    <Project Path="AchievementCaretaker.Providers.Steam.Worker/AchievementCaretaker.Providers.Steam.Worker.csproj">
+      <Platform Solution="*|x86" Project="x86" />
+    </Project>
+    <Project Path="AchievementCaretaker.Providers.Steam/AchievementCaretaker.Providers.Steam.csproj">
+      <Platform Solution="*|x86" Project="x86" />
+    </Project>
+    <Project Path="AchievementCaretaker.SteamApi/AchievementCaretaker.SteamApi.csproj">
+      <Platform Solution="*|x86" Project="x86" />
+    </Project>
+  </Folder>
   <Folder Name="/Solution Items/">
     <File Path=".gitattributes" />
     <File Path=".gitignore" />
     <File Path="global.json" />
   </Folder>
-  <Project Path="tools/ProviderProbe/ProviderProbe.csproj" />
-  <Project Path="tests/AchievementCaretaker.Providers.Tests/AchievementCaretaker.Providers.Tests.csproj">
+  <Project Path="AchievementCaretaker.App/AchievementCaretaker.App.csproj">
     <Platform Solution="*|x86" Project="x86" />
   </Project>
-  <Project Path="tests/AchievementCaretaker.Services.Tests/AchievementCaretaker.Services.Tests.csproj">
-    <Platform Solution="*|x86" Project="x86" />
-  </Project>
-  <Project Path="AchievementCaretaker.Providers.Steam/AchievementCaretaker.Providers.Steam.csproj">
-    <Platform Solution="*|x86" Project="x86" />
-  </Project>
-  <Project Path="AchievementCaretaker.Providers.Steam.Worker/AchievementCaretaker.Providers.Steam.Worker.csproj">
-    <Platform Solution="*|x86" Project="x86" />
-  </Project>
-  <Project Path="tests/AchievementCaretaker.Providers.Steam.Tests/AchievementCaretaker.Providers.Steam.Tests.csproj">
+  <Project Path="AchievementCaretaker.Services/AchievementCaretaker.Services.csproj">
     <Platform Solution="*|x86" Project="x86" />
   </Project>
 </Solution>
