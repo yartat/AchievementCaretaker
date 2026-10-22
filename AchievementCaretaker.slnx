@@ -47,4 +47,13 @@
   <Project Path="tests/AchievementCaretaker.Services.Tests/AchievementCaretaker.Services.Tests.csproj">
     <Platform Solution="*|x86" Project="x86" />
   </Project>
+  <Project Path="AchievementCaretaker.Providers.Steam/AchievementCaretaker.Providers.Steam.csproj">
+    <Platform Solution="*|x86" Project="x86" />
+  </Project>
+  <Project Path="AchievementCaretaker.Providers.Steam.Worker/AchievementCaretaker.Providers.Steam.Worker.csproj">
+    <Platform Solution="*|x86" Project="x86" />
+  </Project>
+  <Project Path="tests/AchievementCaretaker.Providers.Steam.Tests/AchievementCaretaker.Providers.Steam.Tests.csproj">
+    <Platform Solution="*|x86" Project="x86" />
+  </Project>
 </Solution>

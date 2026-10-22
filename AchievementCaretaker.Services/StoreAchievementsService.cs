@@ -62,6 +62,82 @@ namespace AchievementCaretaker.Services
             }
         }
 
+        public bool HasStatistics(IStoreProvider provider) => provider is IStatsStoreProvider;
+
+        public async Task<StoreStatsResult> LoadStatsAsync(IStoreProvider provider, string gameKey, CancellationToken cancellationToken)
+        {
+            if (provider is not IStatsStoreProvider stats)
+            {
+                return new StoreStatsResult(Array.Empty<StoreStat>(), null);
+            }
+
+            try
+            {
+                return new StoreStatsResult(await stats.GetStatsAsync(gameKey, cancellationToken), null);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception e)
+            {
+                return new StoreStatsResult(Array.Empty<StoreStat>(), Describe(provider, e));
+            }
+        }
+
+        public async Task<string> CommitAsync(
+            IStoreProvider provider,
+            string gameKey,
+            IReadOnlyCollection<KeyValuePair<string, bool>> achievements,
+            IReadOnlyCollection<KeyValuePair<string, double>> statistics,
+            CancellationToken cancellationToken)
+        {
+            if (statistics.Count == 0)
+            {
+                return await this.CommitAsync(provider, gameKey, achievements, cancellationToken);
+            }
+            if (provider is not IStatsStoreProvider stats)
+            {
+                return $"{provider.DisplayName} statistics cannot be changed.";
+            }
+
+            try
+            {
+                await stats.CommitAsync(gameKey, achievements, statistics, cancellationToken);
+                return null;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception e)
+            {
+                return Describe(provider, e);
+            }
+        }
+
+        public async Task<string> ResetAsync(IStoreProvider provider, string gameKey, bool includeAchievements, CancellationToken cancellationToken)
+        {
+            if (provider is not IStatsStoreProvider stats)
+            {
+                return $"{provider.DisplayName} statistics cannot be reset.";
+            }
+
+            try
+            {
+                await stats.ResetAsync(gameKey, includeAchievements, cancellationToken);
+                return null;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception e)
+            {
+                return Describe(provider, e);
+            }
+        }
+
         private static string Describe(IStoreProvider provider, Exception e) =>
             e is ProviderException p
                 ? p.ErrorCode == "login_required"

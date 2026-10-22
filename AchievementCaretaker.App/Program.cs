@@ -32,6 +32,7 @@ using System;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using AchievementCaretaker.Providers.Steam;
 using Avalonia;
 
 namespace AchievementCaretaker.App
@@ -66,20 +67,10 @@ namespace AchievementCaretaker.App
         }
 
         /// <summary>
-        /// Starts a second copy of this executable for one game. It has to be a
-        /// separate process rather than a second window: see the remarks on
-        /// <see cref="Program"/>.
-        /// </summary>
-        internal static void LaunchForApp(long appId)
-        {
-            Process.Start(GetExecutablePath(), appId.ToString(CultureInfo.InvariantCulture));
-        }
-
-        /// <summary>
         /// The path of the running executable. <see cref="Environment.ProcessPath"/>
         /// is the apphost; the fallback covers a host that does not report one.
         /// </summary>
-        private static string GetExecutablePath()
+        internal static string GetExecutablePath()
         {
             var path = Environment.ProcessPath;
             if (string.IsNullOrEmpty(path) == false)
@@ -113,9 +104,15 @@ namespace AchievementCaretaker.App
         }
 
         [STAThread]
-        private static void Main(string[] args)
+        private static int Main(string[] args)
         {
-            BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+            // The hidden helper that talks to Steam for one game: no window, no Avalonia.
+            if (args.Length == 2 && args[0] == SteamWorkerProcessLauncher.WorkerSwitch)
+            {
+                return SteamWorkerEntry.RunAsync(args[1]).GetAwaiter().GetResult();
+            }
+
+            return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
         }
 
         // Referenced by the Avalonia XAML previewer.

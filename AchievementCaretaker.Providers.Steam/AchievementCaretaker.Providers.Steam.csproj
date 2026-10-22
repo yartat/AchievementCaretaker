@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyTitle>Achievement Caretaker Providers.Steam</AssemblyTitle>
+    <Company>Yaroslav V Tatarenko</Company>
+    <Authors>Yaroslav V Tatarenko</Authors>
+    <Description>Steam as a store provider for Achievement Caretaker: the client side of the helper process that talks to Steam. Based on Steam Achievement Manager by Rick (gibbed).</Description>
+    <Copyright>Copyright © 2026 Yaroslav V Tatarenko. Steam support based on Steam Achievement Manager, copyright © 2008-2024 Rick (gibbed).</Copyright>
+  </PropertyGroup>
+  <PropertyGroup>
+    <Version>2.1.1</Version>
+    <AssemblyVersion>2.1.1.0</AssemblyVersion>
+    <FileVersion>2.1.1.0</FileVersion>
+  </PropertyGroup>
+  <PropertyGroup>
+    <RepositoryUrl>https://github.com/yartat/AchievementCaretaker/</RepositoryUrl>
+    <RepositoryType>Git</RepositoryType>
+  </PropertyGroup>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Platforms>x86;AnyCPU</Platforms>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AchievementCaretaker.Providers.Abstractions\AchievementCaretaker.Providers.Abstractions.csproj" />
+    <ProjectReference Include="..\AchievementCaretaker.SteamApi\AchievementCaretaker.SteamApi.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Protobuf Include="Protos\steam_worker.proto" GrpcServices="Both" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.36.2" />
+    <PackageReference Include="Grpc.Net.Client" Version="2.84.0" />
+    <PackageReference Include="Grpc.Tools" Version="2.84.0">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Release'">
+    <Optimize>True</Optimize>
+  </PropertyGroup>
+</Project>

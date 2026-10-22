@@ -21,7 +21,7 @@ greater length plus the rules a contributor or coding agent must not break.
 | `AchievementCaretaker.Providers.Epic` | class library | The Epic Games provider over HTTPS, read-only. |
 | `AchievementCaretaker.Providers.Gog` | class library | The GOG provider over HTTPS; it can also unlock and lock. |
 | `AchievementCaretaker.Services` | class library | The logic behind the windows, with no UI: the SQLite caches and the store services (library, achievements, sign-in). |
-| `AchievementCaretaker.App` | `AchievementCaretaker.exe` | The whole application: the library window, the achievement editor, and the store windows. |
+| `AchievementCaretaker.App` | `AchievementCaretaker.exe` | The whole application: the library window, the achievements window for every source (Steam included), and the hidden Steam helper (`--steam-worker`). |
 
 `tools/ProviderProbe` is a command-line probe of the providers. It is in the solution so it builds
 with everything and is never published.
@@ -30,36 +30,35 @@ All of them target plain `net10.0` — not `net10.0-windows`. The interop is wri
 `NativeLibrary` rather than `kernel32`, and the Windows registry lookup is guarded by
 `OperatingSystem.IsWindows()`.
 
-## One executable, two windows
+## One executable, and a helper
 
 Steam's `ISteamUserStats` interface is **scoped to the single application ID the process was
 initialised with**. A process that called `Initialize(0)` to enumerate the library cannot
 then ask Steam for one game's achievements. That constraint, not packaging taste, is why
 Steam Achievement Manager shipped two executables.
 
-Caretaker ships one executable and keeps the constraint:
+Caretaker ships one executable and keeps the constraint, by starting a hidden copy of itself
+for one game at a time:
 
-| Command line | Window | `Client.Initialize` |
+| Command line | What runs | `Client.Initialize` |
 |---|---|---|
-| *(no arguments)* | `GamePickerWindow` — the library | app ID `0`, once Steam is there |
-| `<appid>` | `ManagerWindow` — the achievement editor | that app ID |
+| *(no arguments)* | `GamePickerWindow` — the library, and every achievements window | app ID `0`, once Steam is there |
+| `--steam-worker <appid>` | no window: `SteamWorkerEntry`, before Avalonia starts | that app ID |
 
-`Program.TryParseAppId` reads the command line, `App.CreateMainWindow` picks the window
-(doing the Steam handshake itself only for the editor), and `Program.LaunchForApp` starts a second copy of the same
-executable (`Environment.ProcessPath`) when the user opens a Steam game. A game of another store
-opens in a window of the library's own process instead: a store's HTTPS service has no per-process
-scope, so the constraint above does not apply to it.
-
-A consequence worth remembering: two processes hold the same SQLite database open. The
-schema uses `journal_mode=WAL` and the achievement cache sets a command timeout so overlap
-is a wait rather than a `SQLITE_BUSY`.
+`SteamProvider` (an `IStatsStoreProvider`) starts the helper through `SteamWorkerProcessLauncher`,
+hands it a per-launch certificate and token on its standard input, and talks to it over gRPC on
+`127.0.0.1` with TLS; the helper reads the achievements and statistics through `SteamApi.Client`,
+sets and stores them, and exits when its standard input closes. The helper is kept for 30 s after
+its last call so a read, the statistics and a commit start Steam once. The library's own Steam half
+(ownership sweep, `LibraryStats`, the watch) stays in the library process. A game of another store
+opens in the same window without a helper at all: its HTTPS service has no per-process scope.
 
 ## Project layout
 
 ```
 AchievementCaretaker.App/
-  Program.cs            entry point, command-line dispatch, relaunch
-  App.axaml[.cs]        styles, theme, window selection, the editor's Steam handshake
+  Program.cs            entry point, command-line dispatch (the library, or the Steam helper)
+  App.axaml[.cs]        styles, theme, window selection
   InvariantShorthand.cs the _($"…") invariant-culture helper
   Common/               AppSettings, IconCache, StoreImageCache,
                         SteamConnector, SteamWatch
@@ -67,15 +66,15 @@ AchievementCaretaker.App/
                         StoreGameInfo
   Achievements/         AchievementFilter, StoreAchievementItem
     Stats/              the schema model
-  ViewModels/           ProgressViewModel; the library, editor and settings view models;
+  ViewModels/           ProgressViewModel; the library, store and settings view models;
                         StoreLibraryViewModel, StoreAchievementsViewModel
-  Views/                the library, editor and settings windows; StoreLibraryView,
+  Views/                the library, achievements and settings windows; StoreLibraryView,
                         StoreAchievementsWindow, StoreSignInWindow; the hand-rolled
                         MessageWindow
   Resources/            Icons.axaml, Theme.axaml, the application icon
 
 AchievementCaretaker.Services/
-  LibraryCache.cs, ILibraryCache.cs, GameCache.cs, AchievementCache.cs   the caches
+  LibraryCache.cs, ILibraryCache.cs, GameCache.cs   the caches
   StoreLibraryService.cs, StoreAchievementsService.cs, StoreSessionService.cs   and their interfaces
 AchievementCaretaker.Providers.Abstractions/
   IStoreProvider.cs, IWritableStoreProvider.cs, StoreModels.cs
@@ -133,16 +132,16 @@ No Steamworks SDK is involved. The entire native surface is reimplemented:
 Steam answers by callback, not return value. `Client.RunCallbacks` drains
 `Steam_BGetCallback` and dispatches by numeric ID to registered `ICallback` instances. Both
 view models pump it from a 200 ms Avalonia `DispatcherTimer`, so callbacks arrive on the UI
-thread. `RefreshStats` only *requests*; `OnUserStatsReceived` is where the editor actually
-populates itself.
+thread. The helper pumps its own: it requests the user's stats once and polls until the answer
+arrives.
 
 ## The UI layer
 
 `Program.Main` builds the Avalonia `AppBuilder`;
 `App.OnFrameworkInitializationCompleted` chooses the main
-window — the library, the editor, or a `MessageWindow` carrying the error. Avalonia has no
+window — the library, or a `MessageWindow` carrying the error. Avalonia has no
 `MessageBox`, so `Views/MessageWindow.cs` is a hand-rolled stand-in that doubles as the main
-window when the editor's handshake fails.
+window when the command line is wrong.
 
 The library does not do the handshake at start. It has other sources than Steam, so it opens at
 once, and `SteamConnector` keeps trying to create the Steam pipe in the background. Only when
@@ -153,8 +152,7 @@ It goes on watching after it connects. A pipe to a Steam that quit does not say 
 Steam process does, so the connector compares the process id taken at connection with the one
 running now. When Steam goes, the window stops talking to it, keeps the games on screen, shows
 the banner again, and the search starts over; a refresh that was running when it happened
-discards its results rather than treat "nothing owned" on a dead pipe as the truth. The editor
-locks itself when its Steam goes, since it can neither read nor commit without one.
+discards its results rather than treat "nothing owned" on a dead pipe as the truth.
 
 **Only a finished synchronization may delete a game.** The ownership sweep asks Steam about
 every published app ID, and once Steam is gone every remaining call answers "not owned", so a
@@ -184,8 +182,7 @@ The variant can therefore change while a window is open, both from the OS and fr
 Settings dialog, which previews a selection immediately and reverts it on Cancel. Every
 themed brush must be referenced with `{DynamicResource}`, never `{StaticResource}`.
 
-Each of the two processes reads the setting for itself, so a theme changed in Settings
-reaches an achievement editor that is already open only when it is reopened.
+The library reads the setting once, at start.
 
 Every icon is a `StreamGeometry` in `Resources/Icons.axaml` rendered through a `PathIcon`,
 drawn on a shared 16×16 grid and sized by a single style. There are no icon bitmaps.
@@ -251,18 +248,16 @@ the file name to delete art for games no longer owned by **any** saved account, 
 name yields no app ID are left alone entirely, because the directory is user-chosen and may not
 be ours. The `store/` subfolder is outside its reach on purpose, and nothing prunes it.
 
-## Pending changes in the editor
+## Pending changes in the achievements window
 
-`_PendingStates` — uncommitted toggles by achievement ID — is the model. The visible
-`Achievements` collection is only what the search box and filter last left on screen.
-Keeping the two separate fixes two real bugs: changing a filter used to discard every
-pending toggle, and a change made before switching filters was never committed.
-
-Three rules keep it honest: Steam's last-known states are cached so the list can be rebuilt
-without asking Steam again; a toggle back to Steam's value removes the entry rather than
-storing a no-op, so the count is the number of real changes; and re-reading Steam clears
-pending, because anything toggled against the *cached* list was toggled against unconfirmed
-state.
+The uncommitted ticks live on the items themselves (`StoreAchievementItem.IsAchieved` against
+`OriginalValue`; `StoreStatItem.Value` against the reported value); the visible collection is only
+what the search box and filter last left on screen, so a filter change never loses a pending change.
+A toggle back to the reported value is no change, so the count is the number of real changes.
+Commit sends achievements and statistics together and always reads everything again afterwards,
+because a commit that failed half-way has still changed some. Bulk buttons skip protected rows
+(Steam's permission bits); only Steam has statistics, so only its window has the Statistics tab
+and the reset (asked three times).
 
 ## Threading
 
@@ -276,7 +271,7 @@ thread there** — preserved deliberately from the original, not an invitation t
 
 Capsule art is read, decoded and downloaded by eight workers, off the UI thread, and the disk
 cache is decoded in parallel at start so a warm library shows its art almost at once. The
-editor's achievement icons are loaded the same way.
+achievements window loads its icons with four workers.
 
 ## Epic and GOG
 

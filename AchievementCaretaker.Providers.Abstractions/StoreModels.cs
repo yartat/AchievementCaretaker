@@ -37,6 +37,10 @@ namespace AchievementCaretaker.Providers
     /// zero are different answers. Epic has XP and progress; GOG has neither.
     /// </para>
     /// <para>
+    /// <see cref="Protected"/> marks an achievement the store will not let anyone set (Steam's
+    /// permission bits); the window shows it but does not offer to change it.
+    /// </para>
+    /// <para>
     /// <see cref="Unlocked"/> false with a null <see cref="UnlockDate"/> means "not
     /// earned". A game the store has no record for comes back with every
     /// achievement in that state, which cannot be told from a game played without
@@ -53,7 +57,8 @@ namespace AchievementCaretaker.Providers
         double? RarityPercent,
         bool Unlocked,
         double? Progress,
-        DateTimeOffset? UnlockDate);
+        DateTimeOffset? UnlockDate,
+        bool Protected = false);
 
     /// <summary>What an address reached while signing in means.</summary>
     public enum SignInResultKind

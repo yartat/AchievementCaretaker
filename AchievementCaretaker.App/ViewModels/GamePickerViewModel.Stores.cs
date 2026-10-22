@@ -7,11 +7,14 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Threading.Tasks;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using AchievementCaretaker.App.Common;
+using AchievementCaretaker.App.Library;
 using AchievementCaretaker.Providers;
+using AchievementCaretaker.Providers.Steam;
 
 namespace AchievementCaretaker.App.ViewModels
 {
@@ -126,11 +129,39 @@ namespace AchievementCaretaker.App.ViewModels
         /// <summary>The stores to offer, from the container. Their lifetime is the container's, not this view model's.</summary>
         private readonly IEnumerable<IStoreProvider> _StoreProviders;
 
+        private StoreImageCache _StoreImages;
+
+        /// <summary>
+        /// Opens a Steam game in the achievements window, in this process. The window talks to a
+        /// helper process started for that one app id, which is where the "one process per game"
+        /// rule of Steam's user stats now lives.
+        /// </summary>
+        private void OpenSteamAchievements(GameInfo info)
+        {
+            var id = info.Id.ToString(CultureInfo.InvariantCulture);
+            StoreGameInfo game = new(SteamProvider.ProviderId, id, id) { Name = info.Name };
+            var images = this._StoreImages ??= new(this._IconCache, this._Http);
+
+            this.StoreAchievementsRequested?.Invoke(new StoreAchievementsViewModel(
+                this._SteamProvider,
+                this._StoreAchievements,
+                game,
+                images,
+                (earned, total) =>
+                {
+                    // What the window just read is fresher than the cache files: show it here too.
+                    var known = info.Stats;
+                    info.Stats = new GameStats(known?.PlaytimeMinutes ?? 0, total, earned, known?.LastPlayed);
+                    this.RefreshCollectionCounts();
+                }));
+        }
+
         private void CreateStoreLibraries()
         {
             // One image cache for all of them: it follows the icon cache's directory
             // as it moves, so it is built from that rather than from a path.
             StoreImageCache images = new(this._IconCache, this._Http);
+            this._StoreImages = images;
 
             List<StoreLibraryViewModel> stores = new();
             foreach (var provider in this._StoreProviders)

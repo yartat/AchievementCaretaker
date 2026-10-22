@@ -36,9 +36,9 @@ using System.Linq;
 using System.Numerics;
 using AchievementCaretaker.SteamApi;
 
-namespace AchievementCaretaker.App.Library
+namespace AchievementCaretaker.Providers.Steam
 {
-    internal readonly struct GameStats
+    public readonly struct GameStats
     {
         public readonly int PlaytimeMinutes;
         public readonly int AchievementsTotal;
@@ -60,8 +60,7 @@ namespace AchievementCaretaker.App.Library
     /// <remarks>
     /// <para>
     /// The live <c>ISteamUserStats</c> interface is scoped to the one app id the
-    /// process was initialised with — that is precisely why the application launches a
-    /// separate AchievementCaretaker.App.Achievements process per game. The picker therefore cannot ask Steam
+    /// process was initialised with — that is precisely why a separate process is started per game. The picker therefore cannot ask Steam
     /// for another game's achievements, and has to read the caches instead.
     /// </para>
     /// <para>
@@ -78,7 +77,7 @@ namespace AchievementCaretaker.App.Library
     /// different answers.
     /// </para>
     /// </remarks>
-    internal sealed class LibraryStats
+    public sealed class LibraryStats
     {
         private readonly struct LocalPlay
         {
@@ -103,9 +102,12 @@ namespace AchievementCaretaker.App.Library
             this._Playtime = playtime;
         }
 
-        public static LibraryStats Create(ulong steamId)
+        public static LibraryStats Create(ulong steamId) =>
+            Create(AchievementCaretaker.SteamApi.Steam.GetInstallPath(), steamId);
+
+        /// <summary>Reads the caches under <paramref name="installPath"/> (Steam's install directory).</summary>
+        public static LibraryStats Create(string installPath, ulong steamId)
         {
-            var installPath = Steam.GetInstallPath();
             if (string.IsNullOrEmpty(installPath) == true)
             {
                 return null;

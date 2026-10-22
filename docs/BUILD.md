@@ -122,9 +122,8 @@ changing how one is cut.
 5. Ship the whole publish directory in the archive, not just the executable.
 6. Update [RELEASE-NOTES.md](RELEASE-NOTES.md) and the `Version` / `AssemblyVersion` /
    `FileVersion` properties in both `.csproj` files. They are kept in step.
-7. Update the version in the two window-title literals, which are not generated from the
-   assembly version: `Title=` in `Views/GamePickerWindow.axaml`, and `_Title` plus the
-   `this.Title = …` assignment in `ViewModels/ManagerViewModel.cs`.
+7. Update the version in the window-title literal, which is not generated from the
+   assembly version: `Title=` in `Views/GamePickerWindow.axaml`.
 
 ### The application icon
 
@@ -222,10 +221,10 @@ the portable archive carry them, and the Debian package installs `PRIVACY.md` un
 ### The version gate
 
 The pipeline does **not** override the version from the tag. `packaging/check-version.sh`
-instead fails the pipeline unless the tag, all three `.csproj` files, both window-title literals
+instead fails the pipeline unless the tag, every `.csproj` file, the window-title literal
 and the `docs/RELEASE-NOTES.md` heading all say the same thing.
 
-That is deliberate: the titles are literals that cannot be driven from the assembly
+That is deliberate: the title is a literal that cannot be driven from the assembly
 version, so overriding the version from the tag would ship a binary whose window said
 something else. Run it yourself before tagging:
 

@@ -30,6 +30,7 @@
 
 using System;
 using System.Globalization;
+using AchievementCaretaker.Providers.Steam;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 

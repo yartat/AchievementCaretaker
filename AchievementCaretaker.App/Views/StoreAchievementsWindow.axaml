@@ -57,6 +57,23 @@
           <PathIcon Data="{StaticResource RefreshIcon}" />
         </Button>
 
+        <!-- Steam only: the statistics beside the achievements. -->
+        <StackPanel DockPanel.Dock="Right"
+                    Orientation="Horizontal"
+                    Spacing="7"
+                    Margin="0,0,10,0"
+                    VerticalAlignment="Center"
+                    IsVisible="{Binding HasStatistics}">
+          <Button Classes="chip" Classes.on="{Binding IsShowingAchievements}"
+                  Command="{Binding ShowTabCommand}"
+                  CommandParameter="achievements"
+                  Content="Achievements" />
+          <Button Classes="chip" Classes.on="{Binding IsShowingStatistics}"
+                  Command="{Binding ShowTabCommand}"
+                  CommandParameter="stats"
+                  Content="Statistics" />
+        </StackPanel>
+
         <StackPanel Spacing="7" VerticalAlignment="Center">
           <TextBlock Text="{Binding GameName}"
                      FontSize="16"
@@ -197,7 +214,7 @@
       <DockPanel IsVisible="{Binding IsReady}">
 
         <!-- Filters -->
-        <Border DockPanel.Dock="Top" Padding="6,10,6,10">
+        <Border DockPanel.Dock="Top" Padding="6,10,6,10" IsVisible="{Binding IsShowingAchievements}">
           <DockPanel>
             <TextBox DockPanel.Dock="Right"
                      Text="{Binding MatchingString}"
@@ -267,8 +284,59 @@
           </DockPanel>
         </Border>
 
+        <Panel>
+
+        <!-- Statistics, as in the Steam editor: name, editable value, limits. -->
+        <DockPanel IsVisible="{Binding IsShowingStatistics}">
+          <Border DockPanel.Dock="Top" Padding="6,10,6,10">
+            <DockPanel>
+              <Button DockPanel.Dock="Right"
+                      Classes="quiet"
+                      Command="{Binding ResetStatisticsCommand}"
+                      ToolTip.Tip="Reset every statistic of this game">
+                <TextBlock Text="Reset all statistics..." FontSize="12" />
+              </Button>
+              <TextBlock Text="{Binding StatsError}"
+                         IsVisible="{Binding HasStatsError}"
+                         TextWrapping="Wrap"
+                         FontSize="12"
+                         Foreground="{StaticResource RatingDislikeBrush}"
+                         VerticalAlignment="Center" />
+            </DockPanel>
+          </Border>
+          <ListBox Background="Transparent"
+                   BorderThickness="0"
+                   ItemsSource="{Binding Statistics}">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="local:StoreStatItem">
+                <Grid MinHeight="34" ColumnDefinitions="*,150,260">
+                  <TextBlock Grid.Column="0"
+                             Text="{Binding Name}"
+                             FontSize="12"
+                             Foreground="{DynamicResource SamTextBrush}"
+                             TextTrimming="CharacterEllipsis"
+                             VerticalAlignment="Center" />
+                  <TextBox Grid.Column="1"
+                           Text="{Binding ValueText}"
+                           IsReadOnly="{Binding IsProtected}"
+                           Height="26"
+                           FontSize="12"
+                           Margin="8,4" />
+                  <TextBlock Grid.Column="2"
+                             Text="{Binding RangeText}"
+                             FontSize="11"
+                             Foreground="{DynamicResource SamSecondaryTextBrush}"
+                             TextTrimming="CharacterEllipsis"
+                             VerticalAlignment="Center"
+                             Margin="8,0" />
+                </Grid>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+
         <!-- List and detail, as in the Steam editor. -->
-        <Grid ColumnDefinitions="*,272">
+        <Grid ColumnDefinitions="*,272" IsVisible="{Binding IsShowingAchievements}">
 
         <!-- The XP and rarity columns share a size group across the rows, so they line
              up, and collapse together when the store has no such thing (GOG has no XP). -->
@@ -281,7 +349,7 @@
                  SelectedItem="{Binding SelectedAchievement}">
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="local:StoreAchievementItem">
-              <Grid MinHeight="36" ToolTip.Tip="{Binding Description}">
+              <Grid MinHeight="36" ToolTip.Tip="{Binding Description}" Background="{Binding RowBackground}">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="26" />
                   <ColumnDefinition Width="32" />
@@ -291,10 +359,13 @@
                   <ColumnDefinition Width="96" />
                 </Grid.ColumnDefinitions>
 
-                <CheckBox Grid.Column="0"
-                          IsChecked="{Binding IsAchieved}"
-                          IsEnabled="{Binding $parent[ListBox].((vm:StoreAchievementsViewModel)DataContext).IsInputEnabled}"
-                          VerticalAlignment="Center" />
+                <!-- Off while a commit is on its way (the panel), and for a protected row (the box). -->
+                <Panel Grid.Column="0"
+                       IsEnabled="{Binding $parent[ListBox].((vm:StoreAchievementsViewModel)DataContext).IsInputEnabled}">
+                  <CheckBox IsChecked="{Binding IsAchieved}"
+                            IsEnabled="{Binding IsEditable}"
+                            VerticalAlignment="Center" />
+                </Panel>
                 <Border Grid.Column="1"
                         Width="26" Height="26"
                         CornerRadius="4"
@@ -421,6 +492,7 @@
           </ScrollViewer>
         </Border>
         </Grid>
+        </Panel>
       </DockPanel>
     </Panel>
   </DockPanel>

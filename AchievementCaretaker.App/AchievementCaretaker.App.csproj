@@ -94,6 +94,7 @@
   <ItemGroup>
     <ProjectReference Include="..\AchievementCaretaker.SteamApi\AchievementCaretaker.SteamApi.csproj" />
     <ProjectReference Include="..\AchievementCaretaker.Services\AchievementCaretaker.Services.csproj" />
+    <ProjectReference Include="..\AchievementCaretaker.Providers.Steam.Worker\AchievementCaretaker.Providers.Steam.Worker.csproj" />
     <ProjectReference Include="..\AchievementCaretaker.Providers.Abstractions\AchievementCaretaker.Providers.Abstractions.csproj" />
     <ProjectReference Include="..\AchievementCaretaker.Providers.Epic\AchievementCaretaker.Providers.Epic.csproj" />
     <ProjectReference Include="..\AchievementCaretaker.Providers.Gog\AchievementCaretaker.Providers.Gog.csproj" />

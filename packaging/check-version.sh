@@ -6,10 +6,10 @@
 #
 # Fails unless every place that states a version agrees with the one given.
 #
-# The version lives in more places than it should: the three projects, and two
-# window-title literals that are not generated from the assembly version. Rather
+# The version lives in more places than it should: the projects, and a
+# window-title literal that is not generated from the assembly version. Rather
 # than paper over that in CI by overriding the version from the tag - which
-# would leave the titles saying something else - this refuses to release until
+# would leave the title saying something else - this refuses to release until
 # the repository and the tag say the same thing.
 
 set -euo pipefail
@@ -39,7 +39,7 @@ echo "checking that the repository says $version"
 
 for project in AchievementCaretaker.App AchievementCaretaker.SteamApi AchievementCaretaker.Providers.Abstractions \
     AchievementCaretaker.Providers.Shared AchievementCaretaker.Providers.Epic AchievementCaretaker.Providers.Gog \
-    AchievementCaretaker.Services; do
+    AchievementCaretaker.Services AchievementCaretaker.Providers.Steam AchievementCaretaker.Providers.Steam.Worker; do
     csproj="$project/$project.csproj"
     expect "$project Version"         "$csproj" "<Version>$version</Version>"
     expect "$project AssemblyVersion" "$csproj" "<AssemblyVersion>$assembly</AssemblyVersion>"
@@ -49,9 +49,6 @@ done
 expect "library window title" \
     "AchievementCaretaker.App/Views/GamePickerWindow.axaml" \
     "Achievement Caretaker $title |"
-expect "editor window title" \
-    "AchievementCaretaker.App/ViewModels/ManagerViewModel.cs" \
-    "\"Achievement Caretaker $title\""
 
 expect "release notes entry" "docs/RELEASE-NOTES.md" "## $version "
 

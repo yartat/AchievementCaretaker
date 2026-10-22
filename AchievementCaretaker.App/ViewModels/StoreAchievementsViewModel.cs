@@ -48,7 +48,14 @@ namespace AchievementCaretaker.App.ViewModels
         private readonly List<StoreAchievementItem> _All = new();
         private readonly CancellationTokenSource _Lifetime = new();
 
+        private readonly List<StoreStatItem> _Stats = new();
+
         public ObservableCollection<StoreAchievementItem> Achievements { get; } = new();
+
+        public ObservableCollection<StoreStatItem> Statistics { get; } = new();
+
+        /// <summary>Raised before something that cannot be undone; the window asks. Title, message.</summary>
+        public event Func<string, string, Task<bool>> ConfirmRequested;
 
         public string GameName => this._Game.Name;
 
@@ -62,6 +69,28 @@ namespace AchievementCaretaker.App.ViewModels
         /// its window has none.
         /// </summary>
         public bool CanModify => this._Service.CanModify(this._Provider);
+
+        /// <summary>Whether the store has statistics beside achievements (only Steam does).</summary>
+        public bool HasStatistics => this._Service.HasStatistics(this._Provider);
+
+        private bool _ShowStatistics;
+
+        public bool IsShowingStatistics => this._ShowStatistics;
+
+        public bool IsShowingAchievements => this._ShowStatistics == false;
+
+        [RelayCommand]
+        private void ShowTab(string tab)
+        {
+            this._ShowStatistics = tab == "stats" && this.HasStatistics == true;
+            this.OnPropertyChanged(nameof(this.IsShowingStatistics));
+            this.OnPropertyChanged(nameof(this.IsShowingAchievements));
+        }
+
+        [ObservableProperty]
+        private string _StatsError = "";
+
+        public bool HasStatsError => string.IsNullOrEmpty(this.StatsError) == false;
 
         private bool _IsCommitting;
 
@@ -209,7 +238,9 @@ namespace AchievementCaretaker.App.ViewModels
 
         #region Pending changes
 
-        private int ChangedCount => this._All.Count(a => a.IsChanged == true);
+        private int ChangedStatCount => this._Stats.Count(s => s.IsModified == true);
+
+        private int ChangedCount => this._All.Count(a => a.IsChanged == true) + this.ChangedStatCount;
 
         public bool HasPendingChanges => this.ChangedCount > 0;
 
@@ -218,7 +249,7 @@ namespace AchievementCaretaker.App.ViewModels
             get
             {
                 var unlock = this._All.Count(a => a.IsChanged == true && a.IsAchieved == true);
-                var relock = this.ChangedCount - unlock;
+                var relock = this._All.Count(a => a.IsChanged == true) - unlock;
                 List<string> parts = new();
                 if (unlock > 0)
                 {
@@ -228,6 +259,10 @@ namespace AchievementCaretaker.App.ViewModels
                 {
                     parts.Add($"{relock} to lock");
                 }
+                if (this.ChangedStatCount > 0)
+                {
+                    parts.Add(this.ChangedStatCount == 1 ? "1 statistic" : $"{this.ChangedStatCount} statistics");
+                }
                 return string.Join(", ", parts);
             }
         }
@@ -236,7 +271,7 @@ namespace AchievementCaretaker.App.ViewModels
 
         private void OnItemChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
-            if (e.PropertyName == nameof(StoreAchievementItem.IsAchieved))
+            if (e.PropertyName == nameof(StoreAchievementItem.IsAchieved) || e.PropertyName == nameof(StoreStatItem.IsModified))
             {
                 this.RefreshPending();
             }
@@ -254,6 +289,10 @@ namespace AchievementCaretaker.App.ViewModels
         {
             foreach (var item in this.Achievements.ToList())
             {
+                if (item.IsProtected == true)
+                {
+                    continue;
+                }
                 item.IsAchieved = wanted(item);
             }
         }
@@ -274,6 +313,55 @@ namespace AchievementCaretaker.App.ViewModels
             {
                 item.IsAchieved = item.OriginalValue;
             }
+            foreach (var stat in this._Stats)
+            {
+                stat.Discard();
+            }
+        }
+
+        /// <summary>
+        /// Resets every statistic, and the achievements too if the user says so. Asks three
+        /// times, as the old editor did: it cannot be undone.
+        /// </summary>
+        [RelayCommand(CanExecute = nameof(IsInputEnabled))]
+        private async Task ResetStatisticsAsync()
+        {
+            if (this.ConfirmRequested == null || this.HasStatistics == false)
+            {
+                return;
+            }
+            if (await this.ConfirmRequested("Warning", "Are you absolutely sure you want to reset stats?") == false)
+            {
+                return;
+            }
+            var achievementsToo = await this.ConfirmRequested("Question", "Do you want to reset achievements too?");
+            if (await this.ConfirmRequested("Warning", "Really really sure?") == false)
+            {
+                return;
+            }
+
+            this.SetCommitting(true);
+            this.BeginProgress("Resetting...");
+            string failure;
+            try
+            {
+                failure = await this._Service.ResetAsync(this._Provider, this._Game.Key, achievementsToo, this._Lifetime.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            finally
+            {
+                this.EndProgress();
+                this.SetCommitting(false);
+            }
+
+            await this.ReloadAsync();
+            if (this.State == StoreAchievementsState.Ready)
+            {
+                this.StatusText = failure == null ? "Statistics reset." : $"Could not reset: {failure}";
+            }
         }
 
         /// <summary>
@@ -288,18 +376,23 @@ namespace AchievementCaretaker.App.ViewModels
                 .Where(a => a.IsChanged == true)
                 .Select(a => new KeyValuePair<string, bool>(a.Source.Id, a.IsAchieved))
                 .ToList();
-            if (changes.Count == 0)
+            var statChanges = this._Stats
+                .Where(s => s.IsModified == true)
+                .Select(s => new KeyValuePair<string, double>(s.Id, s.Value))
+                .ToList();
+            if (changes.Count + statChanges.Count == 0)
             {
                 return;
             }
+            var sent = changes.Count + statChanges.Count;
 
             this.SetCommitting(true);
             this.BeginProgress("Sending changes...");
-            this.StatusText = $"Sending {changes.Count} change(s) to {this._Provider.DisplayName}...";
+            this.StatusText = $"Sending {sent} change(s) to {this._Provider.DisplayName}...";
             string failure;
             try
             {
-                failure = await this._Service.CommitAsync(this._Provider, this._Game.Key, changes, this._Lifetime.Token);
+                failure = await this._Service.CommitAsync(this._Provider, this._Game.Key, changes, statChanges, this._Lifetime.Token);
             }
             catch (OperationCanceledException)
             {
@@ -315,7 +408,7 @@ namespace AchievementCaretaker.App.ViewModels
             if (this.State == StoreAchievementsState.Ready)
             {
                 this.StatusText = failure == null
-                    ? $"Sent {changes.Count} change(s). {this.UnlockedCount} of {this.TotalCount} unlocked."
+                    ? $"Sent {sent} change(s). {this.UnlockedCount} of {this.TotalCount} unlocked."
                     : $"Not everything was sent: {failure}";
             }
         }
@@ -328,6 +421,7 @@ namespace AchievementCaretaker.App.ViewModels
             this.UnlockAllCommand.NotifyCanExecuteChanged();
             this.InvertAllCommand.NotifyCanExecuteChanged();
             this.DiscardChangesCommand.NotifyCanExecuteChanged();
+            this.ResetStatisticsCommand.NotifyCanExecuteChanged();
             this.StoreCommand.NotifyCanExecuteChanged();
         }
 
@@ -384,11 +478,14 @@ namespace AchievementCaretaker.App.ViewModels
                 {
                     item.PropertyChanged += this.OnItemChanged;
                 }
+                await this.LoadStatsAsync(token);
                 this.RefreshPending();
                 this.RefreshCounts();
                 this.RefreshList();
 
-                this.State = this._All.Count == 0 ? StoreAchievementsState.Empty : StoreAchievementsState.Ready;
+                this.State = this._All.Count == 0 && this._Stats.Count == 0
+                    ? StoreAchievementsState.Empty
+                    : StoreAchievementsState.Ready;
                 this.StatusText = this._All.Count == 0
                     ? $"{this._Provider.DisplayName} lists no achievements for this game."
                     : $"{this.UnlockedCount} of {this.TotalCount} unlocked.";
@@ -403,6 +500,38 @@ namespace AchievementCaretaker.App.ViewModels
             finally
             {
                 this.EndProgress();
+            }
+        }
+
+        private async Task LoadStatsAsync(CancellationToken token)
+        {
+            foreach (var old in this._Stats)
+            {
+                old.PropertyChanged -= this.OnItemChanged;
+            }
+            this._Stats.Clear();
+            this.Statistics.Clear();
+            this.StatsError = "";
+            this.OnPropertyChanged(nameof(this.HasStatsError));
+            if (this.HasStatistics == false)
+            {
+                return;
+            }
+
+            var result = await this._Service.LoadStatsAsync(this._Provider, this._Game.Key, token);
+            if (result.Failure != null)
+            {
+                // The achievements are still good; only the statistics tab says what went wrong.
+                this.StatsError = result.Failure;
+                this.OnPropertyChanged(nameof(this.HasStatsError));
+                return;
+            }
+            foreach (var stat in result.Stats)
+            {
+                StoreStatItem item = new(stat);
+                item.PropertyChanged += this.OnItemChanged;
+                this._Stats.Add(item);
+                this.Statistics.Add(item);
             }
         }
 

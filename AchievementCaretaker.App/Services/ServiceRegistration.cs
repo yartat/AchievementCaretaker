@@ -10,6 +10,7 @@ using AchievementCaretaker.App.Common;
 using AchievementCaretaker.App.ViewModels;
 using AchievementCaretaker.Services;
 using AchievementCaretaker.Providers;
+using AchievementCaretaker.Providers.Steam;
 using AchievementCaretaker.Providers.Epic;
 using AchievementCaretaker.Providers.Gog;
 using Microsoft.Extensions.DependencyInjection;
@@ -51,6 +52,12 @@ namespace AchievementCaretaker.App.Services
             // One cache for the process. It can be moved from the settings dialog, and it can fail
             // to open: that is a cache that says so, not an exception at start.
             services.AddSingleton<ILibraryCache>(_ => new LibraryCache(AppSettings.Load().DatabasePath));
+
+            // Steam is not one of the stores in the rail (it is the library itself), so it is
+            // registered as itself and not as an IStoreProvider: only the achievements window
+            // uses it. The container disposes it, which lets go of any helper still running.
+            services.AddSingleton<ISteamWorkerLauncher>(_ => new SteamWorkerProcessLauncher(Program.GetExecutablePath()));
+            services.AddSingleton<SteamProvider>();
 
             services.AddSingleton<IStoreAchievementsService, StoreAchievementsService>();
             services.AddSingleton<IStoreLibraryService, StoreLibraryService>();

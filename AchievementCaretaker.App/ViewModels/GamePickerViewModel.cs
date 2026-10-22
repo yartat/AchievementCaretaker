@@ -47,6 +47,7 @@ using CommunityToolkit.Mvvm.Input;
 using AchievementCaretaker.App.Common;
 using AchievementCaretaker.App.Library;
 using AchievementCaretaker.Providers;
+using AchievementCaretaker.Providers.Steam;
 using AchievementCaretaker.Services;
 using static AchievementCaretaker.App.InvariantShorthand;
 using APITypes = AchievementCaretaker.SteamApi.Types;
@@ -117,6 +118,7 @@ namespace AchievementCaretaker.App.ViewModels
         private readonly IStoreAchievementsService _StoreAchievements;
         private readonly IStoreLibraryService _StoreLibrary;
         private readonly IStoreSessionService _StoreSession;
+        private readonly SteamProvider _SteamProvider;
         private IconCache _IconCache;
 
         private bool _IsContentView;
@@ -546,6 +548,7 @@ namespace AchievementCaretaker.App.ViewModels
         public GamePickerViewModel(SteamConnector steam, IEnumerable<IStoreProvider> storeProviders, ILibraryCache cache,
             IStoreAchievementsService storeAchievements, IStoreLibraryService storeLibrary,
             IStoreSessionService storeSession,
+            SteamProvider steamProvider,
             IHttpClientFactory http)
         {
             this._Steam = steam;
@@ -554,6 +557,7 @@ namespace AchievementCaretaker.App.ViewModels
             this._StoreAchievements = storeAchievements;
             this._StoreLibrary = storeLibrary;
             this._StoreSession = storeSession;
+            this._SteamProvider = steamProvider;
             this._Http = http;
 
             this._Settings = AppSettings.Load();
@@ -1305,24 +1309,15 @@ namespace AchievementCaretaker.App.ViewModels
                 return;
             }
 
-            // The editor is a copy of this program that has to reach Steam itself, and
-            // would only open an error; say so here instead.
+            // The helper that reads and writes the achievements has to reach Steam itself, and
+            // would only report that it could not; say so here instead.
             if (this._SteamClient == null)
             {
                 this.ErrorRaised?.Invoke("Steam is not running. The achievement editor needs it: start Steam and try again.");
                 return;
             }
 
-            try
-            {
-                // A second process rather than a second window: ISteamUserStats
-                // is scoped to the application id this process initialised with.
-                Program.LaunchForApp(info.Id);
-            }
-            catch (Exception)
-            {
-                this.ErrorRaised?.Invoke("Failed to open the achievement editor.");
-            }
+            this.OpenSteamAchievements(info);
         }
 
         #endregion

@@ -6,6 +6,7 @@
  */
 
 using System.Globalization;
+using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using AchievementCaretaker.Providers;
@@ -54,6 +55,17 @@ namespace AchievementCaretaker.App.Achievements
         public bool IsChanged => this.IsAchieved != this.OriginalValue;
 
         public bool Hidden => this.Source.Hidden;
+
+        /// <summary>The store will not let this one be changed (Steam's permission bits).</summary>
+        public bool IsProtected => this.Source.Protected;
+
+        /// <summary>The tick box is live: protected rows are shown but cannot be toggled.</summary>
+        public bool IsEditable => this.Source.Protected == false;
+
+        /// <summary>The old editor painted protected rows dark red; keep that cue.</summary>
+        public IBrush RowBackground => this.Source.Protected == true
+            ? new SolidColorBrush(Color.FromArgb(64, 200, 0, 0))
+            : Brushes.Transparent;
 
         /// <summary>
         /// The day it was earned, as in the library and the Steam editor. Blank for a

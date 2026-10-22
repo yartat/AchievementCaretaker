@@ -48,10 +48,12 @@ what would be committed, but do not run `git commit`, `git tag` or `git push` un
 | Project | Output | Role |
 |---|---|---|
 | `AchievementCaretaker.SteamApi` | `AchievementCaretaker.SteamApi.dll` (class library) | All native interop. Loads `steamclient.dll`, resolves vtables, marshals calls, pumps callbacks. Also owns the Valve KeyValues parsers (`KeyValue` binary, `TextKeyValue` text). |
-| `AchievementCaretaker.App` | `bin/AchievementCaretaker.exe` (WinExe) | The whole application: the library window and the per-game achievement editor, in one binary. |
-| `AchievementCaretaker.Providers.Abstractions` | class library | `IStoreProvider`, `IWritableStoreProvider`, `ISessionStore` and the models (`StoreGame`, `StoreAchievement`, `ProviderException`, `SignInResultKind`). Interfaces and models only: no packages, no code that runs. |
+| `AchievementCaretaker.App` | `bin/AchievementCaretaker.exe` (WinExe) | The whole application: the library window, the achievements window (for every source, Steam included) and, started with `--steam-worker <appid>`, the hidden Steam helper, in one binary. |
+| `AchievementCaretaker.Providers.Abstractions` | class library | `IStoreProvider`, `IWritableStoreProvider`, `IStatsStoreProvider` (statistics and reset; only Steam), `ISessionStore` and the models (`StoreGame`, `StoreAchievement` with its `Protected` flag, `StoreStat`, `ProviderException`, `SignInResultKind`). Interfaces and models only: no packages, no code that runs. |
 | `AchievementCaretaker.Providers.Shared` | class library | What the store providers share: the session stores (`DpapiSessionStore`, `PlainSessionStore`), the `AddSessionStore` registration and `JsonHelpers`, public, with the packages they need. |
-| `AchievementCaretaker.Services` | class library | The logic behind the windows, with no UI and no Avalonia: the SQLite caches (`ILibraryCache`/`LibraryCache`, `AchievementCache`) and the store services (`IStoreLibraryService`, `IStoreAchievementsService`). Public interfaces; the cache internals are internal. |
+| `AchievementCaretaker.Services` | class library | The logic behind the windows, with no UI and no Avalonia: the SQLite caches (`ILibraryCache`/`LibraryCache`) and the store services (`IStoreLibraryService`, `IStoreAchievementsService`, `IStoreSessionService`). Public interfaces; the cache internals are internal. |
+| `AchievementCaretaker.Providers.Steam` | class library | Steam as an `IStatsStoreProvider` (`SteamProvider`; achievements, statistics, a single commit for both, reset): every call starts a hidden helper for one app id and talks to it over gRPC on 127.0.0.1 with TLS (a certificate made per launch, pinned by thumbprint) and a per-launch token, both handed over on the helper's standard input. Holds the `.proto`, the handshake, the process launcher and `LibraryStats` (Steam's on-disk caches). The achievements window uses it for Steam games. |
+| `AchievementCaretaker.Providers.Steam.Worker` | class library | The helper's side: the Kestrel gRPC host, `SteamAppBackend` (schema + achievements + set/store through an `ISteamAppGateway`) and `SteamClientGateway` over `SteamApi.Client`. `AchievementCaretaker.exe --steam-worker <appid>` runs it (`Program.Main`, before Avalonia starts). |
 | `AchievementCaretaker.Providers.Epic` | class library | The Epic Games provider, read-only. Every unofficial Epic endpoint is in its `EpicProvider.cs`. |
 | `AchievementCaretaker.Providers.Gog` | class library | The GOG provider; it can also unlock and lock. Every unofficial GOG endpoint is in its `GogProvider.cs`. |
 
@@ -72,9 +74,22 @@ throwaway `tools/ProviderProbe` (listed in the `.slnx` so it builds with everyth
 published) are research, written up in `docs/EPIC-RESEARCH.md` and `docs/GOG-RESEARCH.md`.
 The rules:
 
-- **Steam is not a provider.** Its interface is native, scoped to one app id per process,
-  and can write. A store reached over HTTPS with the user's own sign-in has none of those
-  properties, and hiding them behind one interface would hide what shapes how Steam is used.
+- **Steam is a provider for achievements, not a source in the rail.** `SteamProvider` is an
+  `IStatsStoreProvider` (achievements, statistics, one commit for both, reset), but it is
+  registered as itself, **not** as an `IStoreProvider`: everything that lists the stores asks for
+  `IEnumerable<IStoreProvider>`, and Steam is the library itself, so it must not appear there.
+  Its library list and the ownership sweep stay in `GamePickerViewModel` and `SteamConnector`,
+  in this process, where the Steam pipe, its watch and the "only a finished synchronization may
+  delete" rule live; `SteamProvider.GetLibraryAsync` is `NotSupported` on purpose. What it adds
+  is the one thing the old second process was for: `ISteamUserStats` is scoped to the app id a
+  process was initialised with, so each call starts a hidden **helper** (this same executable
+  with `--steam-worker <appid>`), which talks to Steam and serves gRPC on `127.0.0.1` over TLS.
+  The helper's certificate and a token are made per launch and handed to it on standard input,
+  never on the command line, in the environment or on disk; the application accepts only the
+  certificate whose thumbprint it was told, and the helper refuses any call without the token.
+  A helper is kept for 30 s after its last call so one editing session starts Steam once, and
+  `GetAchievementsAsync` always starts a fresh one (a reload must see Steam's current state).
+  Closing its standard input is what makes it exit, so a crashed application leaves none behind.
 - **Epic is read-only; GOG can write.** Epic: no unlocking, no re-locking, no EOS SDK, no
   reading a game's client secret. Epic cannot re-lock an achievement anyway, and the tools that
   unlock inject into the game or need that secret. GOG: changing an achievement needs a token
@@ -84,7 +99,7 @@ The rules:
   error message, and the account's own session is not touched by the game token. Writing is a
   separate interface, `IWritableStoreProvider`, which only GOG implements; the achievements
   window shows the checkboxes and the Lock / Invert / Unlock buttons only for a provider that
-  has it, and sends the pending changes with Commit as the Steam editor does. Verified against a
+  has it, and sends the pending changes with Commit, as Steam's does. Verified against a
   live GOG account (unlock and re-lock), unlike Steam's write path.
 - **Every unofficial endpoint lives in its store's one `*Provider.cs`.** They are the
   stores' own and can change; keep them in one file each.
@@ -162,10 +177,12 @@ SOURCE section; Steam is the default and is `SelectedStoreLibrary == null`, not 
   (`StoreImageCache`). The subfolder is what keeps `IconCache.Prune`, which parses app ids out
   of file names and only walks the top level, away from them. `IconCache.MoveTo` moves the
   subfolder along with the files; keep it doing that. Nothing prunes these images.
-- **A store game's achievements open in a window of this process**
-  (`StoreAchievementsWindow`), not through `Program.LaunchForApp`. The one-process-per-game
-  rule exists because `ISteamUserStats` is scoped to the app id a process initialised with;
-  a store's HTTPS service has no such scope.
+- **A game's achievements open in a window of this process** (`StoreAchievementsWindow`), for
+  Steam too: the helper, not a second copy of the application with a window, is what Steam's
+  one-process-per-app-id rule costs now. A provider that is an `IStatsStoreProvider` also gets a
+  Statistics tab (editable values checked by `StatValueParser`, a reset with three confirmations)
+  and one Commit that sends achievements and statistics together. Protected achievements and
+  statistics are shown, tinted, and cannot be changed.
 - **Progress is read on request, and once when an account signs in.** A library listing
   carries no achievement counts, and reading them costs a request or more per game (GOG's two
   more to GOGDB, which is run by volunteers). A game's counts are known once its window has
@@ -192,34 +209,31 @@ SOURCE section; Steam is the default and is `SelectedStoreLibrary == null`, not 
   both report a refused refresh as `login_required` for that. A database from before accounts
   were recorded has no way to say whose rows its library tables hold, so `GameCache.Open`
   drops `games` and `store_games` when they lack the `account` column and rebuilds them:
-  they were only ever a cache, and nothing else is migrated. `AchievementCache` was already
-  per account and language.
+  they were only ever a cache, and nothing else is migrated.
 - **An element's own bindings read from its own `DataContext`.** The store view is hosted
   with `DataContext="{Binding SelectedStoreLibrary}"`, so its visibility is on a wrapper
   `Panel`, not on the view itself, or `IsVisible="{Binding IsStoreSelected}"` is looked up on
   the store.
 
-### One executable, two windows
+### One executable: the library, and a helper
 
 SAM shipped `SAM.Picker.exe` and `SAM.Game.exe` as separate programs. Caretaker ships one
-`AchievementCaretaker.exe`, but it still starts **one process per game**, because that
-part was never a packaging choice:
+`AchievementCaretaker.exe`, and the rule that made SAM need two still stands:
 
 > **`ISteamUserStats` is scoped to the one app id the process was initialised with.**
 
-A process that called `Initialize(0)` to enumerate the library cannot then ask Steam for
-one game's achievements. So the executable dispatches on its command line:
+A process that called `Initialize(0)` to enumerate the library cannot then ask Steam for one
+game's achievements. So the executable runs in one of two modes:
 
-| Command line | Window | Steam initialised with |
+| Command line | What runs | Steam initialised with |
 |---|---|---|
-| *(no arguments)* | `GamePickerWindow` — the library | app id `0`, once Steam is there |
-| `<appid>` | `ManagerWindow` — the achievement editor | that app id |
+| *(none)* | `GamePickerWindow`, the library, and every achievements window | app id `0`, once Steam is there |
+| `--steam-worker <appid>` | no window: `SteamWorkerEntry`, called from `Program.Main` before Avalonia starts | that app id |
 
-`Program.LaunchForApp` starts a second copy of **this same executable**
-(`Environment.ProcessPath`) with the app id, and `App.CreateMainWindow` chooses the window.
-Do not try to "finish the merge" by opening the editor as a second window in the same
-process, and do not try to "just call `RequestUserStats` in a loop" from the library
-window — that is a dead end, not an optimisation problem.
+The helper is started by `SteamWorkerProcessLauncher` from `Environment.ProcessPath`. An app id
+on its own on the command line (which used to open the editor) is accepted and ignored.
+Do not call `RequestUserStats` in a loop from the library process: that is a dead end, not an
+optimisation problem.
 
 The executable refuses to run from the Steam install directory
 (`Program.IsRunningFromSteamDirectory`).
@@ -231,9 +245,8 @@ The executable refuses to run from the Steam install directory
 | *(root)* | `AchievementCaretaker.App` | `Program`, `App`, `InvariantShorthand`, `GlobalSuppressions`, `app.manifest` |
 | `Common/` | `…App.Common` | `AppSettings`, `IconCache` — settings and the icon directory, used by both windows |
 | `Library/` | `…App.Library` | `GameInfo`, `GameCache`, `LibraryStats`, `RatingStore`, `OwnRating` |
-| `Achievements/` | `…App.Achievements` | `AchievementCache`, `AchievementFilter` |
-| `Achievements/Stats/` | `…App.Achievements.Stats` | the schema model — `AchievementDefinition`, `StatInfo`, … |
-| `ViewModels/` | `…App.ViewModels` | `ProgressViewModel`, `GamePickerViewModel`, `ManagerViewModel`, `SettingsViewModel` |
+| `Achievements/` | `…App.Achievements` | `AchievementFilter`, `StoreAchievementItem`, `StoreStatItem` |
+| `ViewModels/` | `…App.ViewModels` | `ProgressViewModel`, `GamePickerViewModel`, `StoreLibraryViewModel`, `StoreAchievementsViewModel`, `SettingsViewModel` |
 | `Views/` | `…App.Views` | the windows, plus the hand-rolled `MessageWindow` |
 | `Resources/` | — | `Icons.axaml`, `Theme.axaml`, `AchievementCaretaker.ico` |
 | `Services/` | `…App.Services` | the composition root (`ServiceRegistration`), and the services that view models call |
@@ -243,10 +256,8 @@ These used to be three projects plus a `Shared/` folder linked into both executa
 and `Icons.axaml` no longer has to be given a matching `avares` path in two places.
 
 One C# rule this layout keeps tripping over: **a `using` directive imports a namespace's
-types but not its nested namespaces.** `ManagerViewModel` refers to the schema model as
-`Stats.AchievementInfo`, so it carries `using Stats = …App.Achievements.Stats;` — a
-namespace alias, not a plain using. The same applies to anything else that wants to
-qualify by folder.
+types but not its nested namespaces.** Anything that wants to qualify by folder needs a
+namespace alias (`using Foo = …App.Foo;`), not a plain using.
 
 Both projects target **`net10.0`** — plain, not `net10.0-windows`. The SDK version is
 pinned in `global.json`; do not remove it, or builds drift onto whatever preview SDK is
@@ -353,6 +364,10 @@ dotnet test --solution AchievementCaretaker.slnx -c Release
   not to open the assembly. This is the point of the service layer.
 - `AchievementCaretaker.Services.Tests` covers the caches (accounts side by side, partial
   sync, moving, an unavailable cache) and the store services, against a fake provider.
+- `AchievementCaretaker.Providers.Steam.Tests` covers the helper over a real loopback TLS
+  connection with a fake backend (token and certificate checks), the stdin protocol, the schema
+  reader (both schema shapes) and the backend against a fake gateway. Not covered: `SteamClientGateway`
+  and the process launcher, which need a live Steam and the built executable.
 - `AchievementCaretaker.Providers.Tests` covers the session stores (including the plain file
   written by versions before 2.1.0, and a byte-order mark), `JsonHelpers`, and what the provider
   registrations promise: the named clients, the sign-in end addresses, which store can write.
@@ -370,7 +385,7 @@ See also "Verifying without Steam" under [Running](#running) for what a unit tes
 
 ## Running
 
-The Steam features (the Steam library, the achievement editor) need the Steam client
+The Steam features (the Steam library, the Steam achievements window) need the Steam client
 installed, running, and logged in; the library window itself opens without it. On Windows the
 install path
 comes from `HKLM\Software\Valve\Steam\InstallPath`; elsewhere the candidate directories in
@@ -404,8 +419,8 @@ session that ran it: if a check is worth running twice, it belongs in `tests/`.*
 Starting `bin/AchievementCaretaker.exe` with no Steam running is also a real check: it
 must come up as the library window, with the "No active Steam" banner and the cached games,
 rather than an error or nothing, which proves `App.Initialize` loaded every style and resource
-dictionary. With an app id and no Steam it shows the error `MessageWindow` instead: the
-editor cannot do anything without Steam.
+dictionary. Opening a Steam game with no Steam running shows an error instead of a window: the
+helper cannot do anything without Steam.
 
 What none of this can reach is anything behind `SteamApi.Client`: the vtable dispatch, the
 schema parse, `LibraryStats`, and every number the windows actually display.
@@ -487,7 +502,7 @@ Windows and System V AMD64 disagree about how that works, and the difference is 
 arises today. With the Windows form used on Linux it does not throw — it reads a slot
 nobody wrote and returns **0**, which then silently poisons everything keyed off the
 account id (`LibraryStats`' playtime and achievement lookups, and
-`RequestUserStats(steamId)` in the editor). `SteamUser012.GetSteamId` therefore branches on
+`RequestUserStats(steamId)` in the helper). `SteamUser012.GetSteamId` therefore branches on
 `OperatingSystem.IsWindows()` and caches its delegate locally, because `NativeWrapper`'s
 cache is keyed on the function pointer alone and two delegate types sharing one vtable slot
 would collide.
@@ -505,25 +520,24 @@ instances. Both view models poll it from an Avalonia `DispatcherTimer` (`OnTimer
 so callbacks arrive on the UI thread. `_RunningCallbacks` guards against re-entrancy.
 Stopping that timer on window close is what `Shutdown()` is for.
 
-`ManagerViewModel` drives everything from `OnUserStatsReceived`: it loads the schema, then
-populates achievements and stats. `RefreshStats` only *requests* — nothing is populated
-synchronously.
+The helper (`SteamClientGateway`) pumps callbacks itself: it requests the user's stats once, then
+calls `RunCallbacks` every 50 ms until `UserStatsReceived` arrives (30 s limit). `RequestUserStats`
+only *requests*; nothing can be read before the answer. All native calls take one lock, because
+the gRPC server calls from pool threads.
 
 ### The UI layer
 
 - `Program.Main` builds the `AppBuilder` and calls `StartWithClassicDesktopLifetime`.
-- `App.OnFrameworkInitializationCompleted` *chooses* the main window: the library, the
-  editor, or a `MessageWindow` carrying the error. This replaces the WinForms pattern of
+- `App.OnFrameworkInitializationCompleted` *chooses* the main window: the library, or a
+  `MessageWindow` carrying the error. This replaces the WinForms pattern of
   showing a `MessageBox` before `Application.Run`.
-- **Only the editor does the Steam handshake up front.** It is one game's Steam session and
-  is useless without one, so a failure there is the error window; its `SteamApi.Client` is
-  owned by `App` and disposed on `ShutdownRequested`. **The library does not**: it has other
+- **The library does not do the Steam handshake up front**: it has other
   sources than Steam, so it opens at once and `SteamConnector` keeps trying to create the
   Steam pipe in the background (every 3 s, off the UI thread, a fresh `Client` each try).
   Only when that works does `GamePickerViewModel.ConnectSteam` register the callback, start
   the callback timer and refresh the library. Until then the Steam source shows the cached
   games under a "No active Steam" banner with the reason (not installed, not running, nobody
-  logged in), the refresh button is off, and what needs Steam (opening the editor, the App
+  logged in), the refresh button is off, and what needs Steam (opening a game's achievements, the App
   ID box) says so rather than failing. The connector owns the client and the view model
   disposes it in `Shutdown`.
   **It keeps watching after it connects.** A pipe to a Steam that quit does not say so, so
@@ -535,8 +549,7 @@ synchronously.
   stops its timer and callback, turns refresh off and shows the banner again, and the connector
   starts looking again. **A refresh remembers `_SteamGeneration` and throws its results away if
   it changed**: on a dead pipe the ownership sweep sees nothing owned, and merging that would
-  empty the library and then the cache. The editor watches too and locks itself
-  (`IsInputEnabled`) when its Steam goes, since it can neither read nor commit without one.
+  empty the library and then the cache.
   Not exercised against a real Steam restart: whether the already-loaded client library can open
   a pipe to a Steam that started after it was loaded; nor the Linux and macOS process lookup.
 
@@ -556,7 +569,7 @@ synchronously.
 - `Views/MessageWindow.cs` is a hand-rolled stand-in for `MessageBox`, which Avalonia has
   no equivalent of. View models cannot show dialogs (no window to parent to), so they raise
   `ErrorRaised` / `MessageRaised` / `ConfirmRequested` and the window handles them. It
-  doubles as the main window when the editor's Steam handshake fails, which is why it sets
+  doubles as the main window when the command line is wrong, which is why it sets
   `ShowInTaskbar`; `ShowAsync` returns a completed task when there is no owner to parent to.
 - Bindings are compiled (`AvaloniaUseCompiledBindingsByDefault`), so every `DataTemplate`
   needs an `x:DataType` and binding typos are build errors rather than silent no-ops.
@@ -633,13 +646,13 @@ cached a schema** (`HasCompletion`): an empty track would read as "none earned",
 unknown and zero are different answers. Both views still bind the same `FilteredGames`;
 only `IsVisible` differs.
 
-**The editor** is a game header, filter chips, a list, and a detail pane. The detail pane
+**The achievements window** is a game header, filter chips, a list, and a detail pane. The detail pane
 exists because the description had nowhere to go in the old three-column grid.
 
 Each list row carries the name with the description under it on **one trimmed line**
 (collapsed when empty, as it is for hidden achievements), and a fixed 96-wide unlock-date
-column so the dates line up. `AchievementInfo.UnlockDateText` gives the day only, in the
-library's `d MMM yyyy`, from `UnlockTime`, which is already local time. It is blank for a
+column so the dates line up. `StoreAchievementItem.UnlockDateText` gives the day only, in the
+library's `d MMM yyyy`, from the unlock date, shown in local time. It is blank for a
 locked achievement and `—` for one Steam reports unlocked with no timestamp — keyed on
 `OriginalValue`, not `IsAchieved`, so a ticked-but-uncommitted box does not claim an unlock
 whose date was lost.
@@ -658,8 +671,8 @@ system while a window is open, and the Settings dialog previews a chosen variant
 The variant itself comes from `AppSettings.Theme` (`Common/AppTheme.cs`), applied in
 `App.OnFrameworkInitializationCompleted` before the window is built. `AppTheme.System` maps
 to `ThemeVariant.Default` — it is not a third palette, it is what makes Avalonia track the
-system setting. Each process reads the setting for itself, so a change made in Settings
-reaches an editor window that is already open only when that window is relaunched.
+system setting. The library reads the setting for itself, so a change made in Settings
+reaches a helper only by being read again when it next starts (a helper has no window).
 
 Gold is the accent because the subject is achievements, and it is deliberately **not the
 same value in both variants**: `#DDA63A` reads well on near-black and manages about 2:1 on
@@ -705,7 +718,7 @@ Both windows derive their view model from `ViewModels/ProgressViewModel.cs` and 
 same indicator: an icon, a line of text and a `ProgressBar`.
 
 Phases with a known total count out of it; those without — the game-list download, and the
-editor waiting on the `RequestUserStats` callback — show the running bar instead. Loops
+achievements window waiting on a store — show the running bar instead. Loops
 that run off the UI thread report through an `IProgress<int>` **created on the UI thread**,
 which is what marshals the callback back; `ProgressStep` throttles them to about 200 updates
 so a sweep over tens of thousands of published app ids does not post a message per item.
@@ -722,7 +735,7 @@ cannot ask Steam for another game's achievements. `Library/LibraryStats.cs` read
 own on-disk caches instead:
 
 - **Total achievements** — `appcache/stats/UserGameStatsSchema_<appid>.bin`, the same file
-  and parser `ManagerViewModel` already uses.
+  and parser (`SteamSchemaReader`) the helper uses.
 - **Earned achievements** — `appcache/stats/UserGameStats_<accountid>_<appid>.bin`. Under
   `cache`, each numbered block holds a `data` Int32 **bitfield** plus an
   `AchievementTimes` subkey. Earned is the popcount of `data` masked to the bits the
@@ -786,23 +799,16 @@ Two things about it are easy to get wrong:
 | Store | Owner | Holds |
 |---|---|---|
 | `games` table | `Library/GameCache.cs` | each Steam account's owned game list and its stats |
-| `achievements` table | `Achievements/AchievementCache.cs` | one game's achievement list and its unlock state |
 | `<appid>.img` | `Common/IconCache.cs` | capsule art, one file per app id |
-| `<appid>_<icon>` | `Common/IconCache.cs` | achievement icons, one file per app id and icon name |
 
-Two processes hold the same database file open at once — the library window and every
-editor window it launched. That works because the schema is created with
-`journal_mode=WAL` — concurrent readers alongside one writer — and `AchievementCache` sets
-`Default Timeout` so the moment they overlap is a wait rather than a `SQLITE_BUSY`. Do not
-"simplify" either by dropping WAL. Merging the two executables did **not** remove this:
-they are still separate processes.
+Only the application process opens the database now (the helper never does), so WAL is no longer
+about two processes. It still stays on: readers and the one writer overlap inside the process
+(the Steam library saves from a pool thread while the stores read). Do not "simplify" it away.
 
-**The achievement icon naming is load-bearing.** `IconCache.Prune` walks the whole
-directory and deletes what belongs to a game that is no longer owned, recovering the app id
-from the file name: the whole stem for a capsule, the part before the first underscore for
-an achievement icon. Name an achievement icon anything else and the next library refresh
-silently eats it. Files whose name yields no app id are left alone entirely — the directory
-is user-chosen and may not be ours.
+**`IconCache.Prune` walks the whole directory** and deletes what belongs to a game that is no
+longer owned, recovering the app id from the file name (the whole stem for a capsule, `<appid>.img`).
+Files whose name yields no app id are left alone entirely — the directory is user-chosen and may
+not be ours — which is also what keeps it away from the `store/` subfolder.
 
 Startup order matters and is deliberate:
 
@@ -865,81 +871,29 @@ because a `RadioButton` is a `ToggleButton` — see the rule above about not bin
 `IsChecked` to view-model state. `ThemeOption` exists only because a compiled binding cannot
 call `AppThemes.GetDisplayName` for the enum member.
 
-### The achievement cache (the editor)
+### Pending changes (the achievements window)
 
-The editor used to show an empty window until Steam answered `RequestUserStats`, then
-download every achievement icon from the CDN one at a time. Both now have a warm path.
+`StoreAchievementsViewModel` keeps the user's uncommitted ticks on the items themselves
+(`StoreAchievementItem.IsAchieved` against `OriginalValue`, `StoreStatItem.Value` against the
+reported one); the list on screen is only what the filter and search left. A toggle back to the
+reported value is no change, so the count is the number of real changes. Commit sends achievements
+and statistics together (`IStoreAchievementsService.CommitAsync`) and **always reads everything
+again afterwards**, whatever happened, because a commit that failed half-way has still changed some.
+Bulk buttons skip protected rows. Only Steam has the Statistics tab.
 
-Constructor order is deliberate and mirrors the library window:
-
-1. `RefreshStats()` asks Steam. It only *asks* — the answer arrives later, on the callback
-   timer.
-2. `LoadFromCache()` then runs **synchronously**, painting the achievement list from the
-   `achievements` table. It has to come after `RefreshStats()`, which clears the
-   collections.
-3. `OnUserStatsReceived` rebuilds the list from live data and calls `SaveCache()`.
-
-`IsInputEnabled` stays false across that window, so nothing cached can be committed to
-Steam. The cached `IsAchieved` is display only; `OriginalValue` is overwritten from Steam
-before Commit is ever reachable.
-
-Three things that are easy to get wrong here:
-
-- **`SaveCache` builds its rows from `_AchievementDefinitions`, not from `Achievements`.**
-  The latter is whatever the search box and the locked/unlocked toggles last left on
-  screen. Persisting it would write a filtered subset over the whole list.
-- **Rows are keyed by account id *and* language.** Achievement state belongs to whoever was
-  logged in, and the cached name and description are the *localized* strings — so
-  `_Language` is read once in the constructor and `LoadUserGameStatsSchema` uses that same
-  field rather than calling `GetCurrentGameLanguage()` again. A language switch must miss
-  the cache, not show the previous language's text.
-- **Writes are chained through `_SaveTask`, not fired off with `Task.Run`.** A
-  `SqliteConnection` cannot serve two commands at once, and pressing Refresh twice produces
-  two callbacks.
-
-Only the achievement list is cached. Stat definitions still come from the schema file on
-every start; it is a local file and the parse is cheap.
-
-### Pending changes (the editor)
-
-`_PendingStates` holds the user's uncommitted toggles by achievement id, and it is the
-model — `Achievements` is only what the filters last left on screen. This is not
-bookkeeping for the Uncommitted bar; it fixes two real bugs the bar would otherwise have
-made obvious:
-
-- Changing a filter rebuilt the list from Steam and **silently discarded every pending
-  toggle**.
-- `StoreAchievements` read the changed rows off `Achievements`, so a change made before
-  switching filters **was never committed**.
-
-Three rules keep it honest:
-
-- `_SteamStates` caches what Steam last said, read once per callback by
-  `RefreshSteamStates`. The list can then be rebuilt for a filter or search change without
-  asking Steam again, and `EffectiveState` is "the override if there is one, else Steam's".
-- A toggle back to Steam's value **removes** the entry rather than storing a no-op, so the
-  count is the number of real changes.
-- `RefreshSteamStates` clears pending. Anything toggled while the *cached* list was on
-  screen was toggled against unconfirmed state, so it is dropped rather than replayed onto
-  the real values.
-
-Bulk operations set `_IsBulkUpdating` so the summary is recomputed once rather than once
-per achievement — on Civilization V that is the difference between 10 and 2,860 property
-notifications.
-
-The filter is one `AchievementFilter` enum, replacing a pair of independent
-"show only locked" / "show only unlocked" booleans that could be set to two different
-combinations meaning the same thing. It filters on the state **on screen**, pending edits
-included, so an achievement does not vanish from Locked the instant it is ticked.
+The old editor cached its achievement list in an `achievements` table so a window painted before
+Steam answered. That cache went with the editor: the helper answers in about a second.
 
 ### The stats schema
 
-`ManagerViewModel.LoadUserGameStatsSchema` parses
+`SteamSchemaReader` (in `AchievementCaretaker.Providers.Steam.Worker`) parses
 `<SteamInstall>/appcache/stats/UserGameStatsSchema_<appid>.bin`, a Valve binary KeyValues
-blob, with the hand-written parser in `AchievementCaretaker.SteamApi/KeyValue.cs`. It
-handles **two schema shapes**: a newer one where `stat.type` is a string enum name, and an
+blob, with the hand-written parser in `AchievementCaretaker.SteamApi/KeyValue.cs`, for both
+achievements and statistics. It handles **two schema shapes**: a newer one where `stat.type` is a string enum name, and an
 older one where `stat.type_int` (or `type`) is an integer. Keep both paths — upstream
-commits in SAM (`4f2b037`, `de8b710`) exist specifically to fix regressions here.
+commits in SAM (`4f2b037`, `de8b710`) exist specifically to fix regressions here. Both are
+covered by tests. A statistic's or achievement's `permission` bits mark it protected (`& 2` for
+statistics, `& 3` for achievements); the helper refuses to set one.
 
 ### Threading
 
@@ -963,11 +917,8 @@ cache with `Parallel.ForEachAsync` and puts each capsule on screen as it finishe
 workers' counters stay safe because every worker resumes on the UI thread after each await.
 The completion test is therefore `completed == queued`, not "the queue is empty", which is
 true while other workers are still busy. Measured against a 626-game library: 624 capsules
-decoded and shown within the first 900 ms of the window. The editor's achievement-icon queue
-(`ManagerViewModel._IconQueue`) has the same eight workers and the same rules, plus
-`_IconLoads`, which keeps two achievements that share an icon from fetching it twice (a failed
-fetch is dropped from it so the next request retries). Not measured: the editor needs a live
-Steam.
+decoded and shown within the first 900 ms of the window. The achievements window loads its icons with four workers through `StoreImageCache`, which keeps
+them under `<icon cache>/store/<provider>/` by a hash of the URL.
 
 ## Dependency injection
 
@@ -987,14 +938,13 @@ adding a provider or a service a registration, not an edit to every view model.
   CA1416 needs a guard. It does not appear inside the implementations or their callers.
 - **No static `HttpClient` anywhere.** Capsule art, the published game list and achievement
   icons use `IHttpClientFactory.CreateClient()` per request (the default client from
-  `AddHttpClient()`), handed to `GamePickerViewModel`, `ManagerViewModel` and `StoreImageCache`.
+  `AddHttpClient()`), handed to `GamePickerViewModel` and `StoreImageCache`.
 - The container is built with `ValidateScopes` and `ValidateOnBuild`, so a singleton that
   depends on a scoped service fails at start, not on first use.
 - **Migration is in progress.** The store half is done: the library window resolves the
   caches and the store services from the container, and the logic (refresh, progress runs,
   commits, failure wording) lives in `AchievementCaretaker.Services`, with tests. View models
-  still create some of their own dependencies (`AppSettings.Load`, `RatingStore.Load`), and `ManagerViewModel` is not resolved
-  from the container yet: the editor needs a live Steam client built from its command line.
+  still create some of their own dependencies (`AppSettings.Load`, `RatingStore.Load`), and the library's Steam half still talks to `SteamApi.Client` directly.
   Moving that logic into services, and the view models onto constructor injection, is the next
   step; do not add new `new`-ed dependencies to a view model while it is under way.
 
@@ -1049,7 +999,7 @@ reintroduced.
   `OrdinalIgnoreCase`. Do not reintroduce a raw `==` on paths.
 - **`Process.Start` defaults to `UseShellExecute=false`** on .NET Core, so a bare
   `"SAM.Picker.exe"` resolved against the *current working directory*, not the app
-  directory. `Program.LaunchForApp` uses `Environment.ProcessPath`, falling back to
+  directory. `Program.GetExecutablePath` uses `Environment.ProcessPath`, falling back to
   `AppContext.BaseDirectory`.
 - **`IntPtr.ToInt32()` overflows on 64-bit pointers.** `NativeWrapper.ToString()` used it;
   harmless while everything was 32-bit, live now that `AnyCPU` means x64. Uses `ToInt64()`.
@@ -1075,7 +1025,7 @@ verified against a live, logged-in Steam client on all three supported targets:
 | `IsLoggedIn()` | True | True | True |
 | `GetSteamId()` | 765611980067…409 | same | same (after invariant #4 fix) |
 | `LibraryStats` playtime | 6614 / 1356 / 5847 min | identical | identical |
-| The editor on Terraria | 137 achievements, 10 stats | identical | — |
+| The helper on Terraria (read) | 137 achievements, 10 stats | identical | — |
 
 Getting there required fixing the `GetISteamApps` signature (invariant #3) and the
 `GetSteamID` struct-return ABI (invariant #4).
@@ -1109,15 +1059,6 @@ A clean build is **0 warnings, 0 errors** on both `AnyCPU` and `x86`. Keep it th
   before. Moving to `ItemsRepeater` + `UniformGridLayout` would restore virtualization and
   visible-only loading, at the cost of hand-rolled selection handling.
 - **Write path is unverified** — see the interop table above.
-- **Orphaned `achievements` rows are never pruned.** `GameCache.Sync` prunes the `games`
-  table and `IconCache.Prune` drops the matching icons, including achievement icons, but
-  nothing deletes achievement *rows* for a game that is no longer owned. They are a few
-  hundred bytes each and a re-purchase makes them current again, so this is noted rather
-  than fixed.
-- **Moving the cache while an editor window is open.** `GameCache.MoveTo` and
-  `IconCache.MoveTo` assume they are the only holder. An editor process keeps its own
-  connection to the same database, so a move performed from the Settings dialog while one
-  is open can fail on Windows.
 - **The library toolbar wraps rather than clips.** It is a `WrapPanel`, not a
   `StackPanel`: when the view-mode control was added, a single fixed row ran off the right
   edge on a narrow window and the last button became unreachable. If you add more toolbar
