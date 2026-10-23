@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyTitle>Achievement Caretaker Providers.Steam.Worker</AssemblyTitle>
+    <Company>Yaroslav V Tatarenko</Company>
+    <Authors>Yaroslav V Tatarenko</Authors>
+    <Description>The server side of the Steam helper process: hosts the gRPC service that one process per game exposes to the application. Based on Steam Achievement Manager by Rick (gibbed).</Description>
+    <Copyright>Copyright © 2026 Yaroslav V Tatarenko. Steam support based on Steam Achievement Manager, copyright © 2008-2024 Rick (gibbed).</Copyright>
+  </PropertyGroup>
+  <PropertyGroup>
+    <Version>2.1.1</Version>
+    <AssemblyVersion>2.1.1.0</AssemblyVersion>
+    <FileVersion>2.1.1.0</FileVersion>
+  </PropertyGroup>
+  <PropertyGroup>
+    <RepositoryUrl>https://github.com/yartat/AchievementCaretaker/</RepositoryUrl>
+    <RepositoryType>Git</RepositoryType>
+  </PropertyGroup>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Platforms>x86;AnyCPU</Platforms>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AchievementCaretaker.Providers.Steam\AchievementCaretaker.Providers.Steam.csproj" />
+    <ProjectReference Include="..\AchievementCaretaker.SteamApi\AchievementCaretaker.SteamApi.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Grpc.AspNetCore.Server" Version="2.84.0" />
+  </ItemGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Release'">
+    <Optimize>True</Optimize>
+  </PropertyGroup>
+</Project>

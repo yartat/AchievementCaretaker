@@ -35,101 +35,100 @@ using AchievementCaretaker.App.ViewModels;
 using AchievementCaretaker.App.Common;
 using AchievementCaretaker.App.Library;
 
-namespace AchievementCaretaker.App.Views
+namespace AchievementCaretaker.App.Views;
+
+public partial class GamePickerWindow : Window
 {
-    public partial class GamePickerWindow : Window
+    private GamePickerViewModel _viewModel;
+
+    public GamePickerWindow()
     {
-        private GamePickerViewModel _ViewModel;
+        InitializeComponent();
+    }
 
-        public GamePickerWindow()
+    protected override void OnDataContextChanged(System.EventArgs e)
+    {
+        if (_viewModel != null)
         {
-            this.InitializeComponent();
+            _viewModel.ErrorRaised -= OnErrorRaised;
+            _viewModel.StoreAchievementsRequested -= OnStoreAchievementsRequested;
+            _viewModel.BrowserSignInRequested -= OnBrowserSignInRequested;
+            _viewModel.ConfirmRequested -= OnConfirmRequested;
         }
 
-        protected override void OnDataContextChanged(System.EventArgs e)
+        _viewModel = DataContext as GamePickerViewModel;
+
+        if (_viewModel != null)
         {
-            if (this._ViewModel != null)
-            {
-                this._ViewModel.ErrorRaised -= this.OnErrorRaised;
-                this._ViewModel.StoreAchievementsRequested -= this.OnStoreAchievementsRequested;
-                this._ViewModel.BrowserSignInRequested -= this.OnBrowserSignInRequested;
-                this._ViewModel.ConfirmRequested -= this.OnConfirmRequested;
-            }
-
-            this._ViewModel = this.DataContext as GamePickerViewModel;
-
-            if (this._ViewModel != null)
-            {
-                this._ViewModel.ErrorRaised += this.OnErrorRaised;
-                this._ViewModel.SettingsRequested += this.OnSettingsRequested;
-                this._ViewModel.StoreAchievementsRequested += this.OnStoreAchievementsRequested;
-                this._ViewModel.BrowserSignInRequested += this.OnBrowserSignInRequested;
-                this._ViewModel.ConfirmRequested += this.OnConfirmRequested;
-            }
-
-            base.OnDataContextChanged(e);
+            _viewModel.ErrorRaised += OnErrorRaised;
+            _viewModel.SettingsRequested += OnSettingsRequested;
+            _viewModel.StoreAchievementsRequested += OnStoreAchievementsRequested;
+            _viewModel.BrowserSignInRequested += OnBrowserSignInRequested;
+            _viewModel.ConfirmRequested += OnConfirmRequested;
         }
 
-        private async System.Threading.Tasks.Task<AppSettings> OnSettingsRequested(AppSettings current)
-        {
-            SettingsViewModel viewModel = new(current);
-            SettingsWindow window = new() { DataContext = viewModel };
-            var accepted = await window.ShowDialog<bool>(this);
-            return accepted == true ? viewModel.ToSettings() : null;
-        }
+        base.OnDataContextChanged(e);
+    }
 
-        protected override void OnClosed(System.EventArgs e)
-        {
-            if (this._ViewModel != null)
-            {
-                this._ViewModel.ErrorRaised -= this.OnErrorRaised;
-                this._ViewModel.SettingsRequested -= this.OnSettingsRequested;
-                this._ViewModel.StoreAchievementsRequested -= this.OnStoreAchievementsRequested;
-                this._ViewModel.BrowserSignInRequested -= this.OnBrowserSignInRequested;
-                this._ViewModel.ConfirmRequested -= this.OnConfirmRequested;
-                this._ViewModel.Shutdown();
-            }
-            base.OnClosed(e);
-        }
+    private async System.Threading.Tasks.Task<AppSettings> OnSettingsRequested(AppSettings current)
+    {
+        SettingsViewModel viewModel = new(current);
+        SettingsWindow window = new() { DataContext = viewModel };
+        var accepted = await window.ShowDialog<bool>(this);
+        return accepted == true ? viewModel.ToSettings() : null;
+    }
 
-        /// <summary>
-        /// Opens a store game's achievements in a window of this same process. Not
-        /// modal: it can stay open while another game is looked at.
-        /// </summary>
-        private void OnStoreAchievementsRequested(StoreAchievementsViewModel viewer)
+    protected override void OnClosed(System.EventArgs e)
+    {
+        if (_viewModel != null)
         {
-            StoreAchievementsWindow window = new() { DataContext = viewer };
-            window.Show(this);
+            _viewModel.ErrorRaised -= OnErrorRaised;
+            _viewModel.SettingsRequested -= OnSettingsRequested;
+            _viewModel.StoreAchievementsRequested -= OnStoreAchievementsRequested;
+            _viewModel.BrowserSignInRequested -= OnBrowserSignInRequested;
+            _viewModel.ConfirmRequested -= OnConfirmRequested;
+            _viewModel.Shutdown();
         }
+        base.OnClosed(e);
+    }
 
-        private System.Threading.Tasks.Task<BrowserSignInResult> OnBrowserSignInRequested(AchievementCaretaker.Providers.IStoreProvider provider)
-        {
-            return StoreSignInWindow.RunAsync(this, provider);
-        }
+    /// <summary>
+    /// Opens a store game's achievements in a window of this same process. Not
+    /// modal: it can stay open while another game is looked at.
+    /// </summary>
+    private void OnStoreAchievementsRequested(StoreAchievementsViewModel viewer)
+    {
+        StoreAchievementsWindow window = new() { DataContext = viewer };
+        window.Show(this);
+    }
 
-        private System.Threading.Tasks.Task<bool> OnConfirmRequested(string title, string message)
-        {
-            return MessageWindow.ShowConfirmAsync(this, title, message);
-        }
+    private System.Threading.Tasks.Task<BrowserSignInResult> OnBrowserSignInRequested(AchievementCaretaker.Providers.IStoreProvider provider)
+    {
+        return StoreSignInWindow.RunAsync(this, provider);
+    }
 
-        private void OnErrorRaised(string message)
-        {
-            _ = MessageWindow.ShowErrorAsync(this, message);
-        }
+    private System.Threading.Tasks.Task<bool> OnConfirmRequested(string title, string message)
+    {
+        return MessageWindow.ShowConfirmAsync(this, title, message);
+    }
 
-        private void OnGameDoubleTapped(object sender, TappedEventArgs e)
-        {
-            this._ViewModel?.LaunchSelectedCommand.Execute(null);
-        }
+    private void OnErrorRaised(string message)
+    {
+        _ = MessageWindow.ShowErrorAsync(this, message);
+    }
 
-        private void OnGameListKeyDown(object sender, KeyEventArgs e)
+    private void OnGameDoubleTapped(object sender, TappedEventArgs e)
+    {
+        _viewModel?.LaunchSelectedCommand.Execute(null);
+    }
+
+    private void OnGameListKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter)
         {
-            if (e.Key != Key.Enter)
-            {
-                return;
-            }
-            this._ViewModel?.LaunchSelectedCommand.Execute(null);
-            e.Handled = true;
+            return;
         }
+        _viewModel?.LaunchSelectedCommand.Execute(null);
+        e.Handled = true;
     }
 }

@@ -12,6 +12,66 @@ Achievement Manager 8.0.
 
 ---
 
+## Unreleased
+
+### Changed
+
+- **A Steam game's achievements open in the same window as the other stores', in the library's own
+  process.** The separate editor window and the second copy of the program that served it are gone.
+  Steam still allows only one app id per process, so Caretaker now starts a small hidden helper
+  (the same executable, run with `--steam-worker`) for the game you open. The helper talks to the
+  application over gRPC on `127.0.0.1` with TLS and a per-launch token that nothing but the two
+  processes ever sees, and it exits when the window closes or the application does.
+- The Steam window has the other stores' look, plus a **Statistics** tab: edit a statistic (values
+  are checked against Steam's limits before anything is sent), and **Reset all statistics…**, which
+  still asks three times. Achievements and statistics are committed together. Protected
+  achievements and statistics are shown, tinted, and cannot be changed.
+- **Capsule art is loaded when its tile comes into view and dropped when it leaves.** The library
+  held every decoded capsule for the life of the window; with an Epic and a GOG library that was over
+  9 GB (the stores' art is up to 4267 px wide). It is now decoded no wider than 480 px and only for
+  tiles on or near the screen, and the application stays at about 0.3 to 0.4 GB however far you scroll (it peaked near 0.9 GB while scrolling a store list before the images were read as streams). Capsules are also
+  downloaded only when first scrolled to, and the status bar no longer shows icon progress. The tile
+  views also create controls only for the tiles on or near the screen (about 125 MB less), and a
+  selected tile is shown with the accent colour as before.
+- **The Steam library is read by the helper too.** The library window no longer holds a connection
+  to Steam of its own: the helper checks the published list of games against your account and
+  reports the ones you own with their names, art, reviews, release dates, playtime and achievement
+  counts. The window finds Steam by asking the machine first (installed? running?) and only then
+  starting a helper, so nothing is started for a Steam that is not there. A game whose details Steam
+  fetched only after the check is blank until the next refresh (the old window was told by Steam and
+  filled it in at once).
+- Passing an app id on the command line no longer opens an editor for that game: the library opens
+  and the app id is ignored.
+- The helper adds ASP.NET's server libraries to the download (about 21 MB unpacked, 7 MB zipped).
+
+### Fixed
+
+- A sign-in to Epic Games or GOG made with a version before 2.1.0 is kept when the session file is
+  encrypted (it used to ask you to sign in again).
+- **Steam on Linux.** Two things only Linux hit, found by running the helper against a live Steam:
+  Steam there ignores the `SteamAppId` environment variable (the helper now writes a
+  `steam_appid.txt` in a private temporary folder instead, on every system), and it lays the two
+  overloads of `GetStat`/`SetStat` out in the opposite order to Windows, so no statistic could be
+  read or written. Both are fixed.
+
+### Removed
+
+- The achievement list cached for the old editor. The window now reads Steam each time it opens
+  (about a second) instead of painting from a cache first.
+
+### Verified
+
+- Through the helper, against a live Steam on Windows x64 and on Debian (WSL2), with the account
+  left as it was found: unlocking and re-locking an achievement (Spacewar), and writing and
+  restoring an integer and a float statistic (Terraria).
+
+### Not verified
+
+- **Resetting statistics** has not been run against Steam, because it cannot be undone.
+- macOS and the 32-bit Steam client.
+
+---
+
 ## 2.1.1 — 2026-10-19
 
 A fix release for the Windows installer, and one cache fix. The application's behaviour is otherwise unchanged.

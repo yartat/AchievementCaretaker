@@ -8,6 +8,9 @@
     <Nullable>disable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\AchievementCaretaker.Providers\AchievementCaretaker.Providers.csproj" />
+    <ProjectReference Include="..\..\AchievementCaretaker.Providers.Abstractions\AchievementCaretaker.Providers.Abstractions.csproj" />
+    <ProjectReference Include="..\..\AchievementCaretaker.Providers.Epic\AchievementCaretaker.Providers.Epic.csproj" />
+    <ProjectReference Include="..\..\AchievementCaretaker.Providers.Gog\AchievementCaretaker.Providers.Gog.csproj" />
+    <ProjectReference Include="..\..\AchievementCaretaker.Providers.Shared\AchievementCaretaker.Providers.Shared.csproj" />
   </ItemGroup>
 </Project>

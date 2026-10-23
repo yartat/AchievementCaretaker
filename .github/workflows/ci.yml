@@ -39,6 +39,11 @@ jobs:
       - name: Build
         run: dotnet build AchievementCaretaker.slnx -c Release -p:TreatWarningsAsErrors=true
 
+      # Runs on Linux, which is the only place the tests of the Unix session store and of
+      # the file permissions run: they skip on Windows, as the DPAPI ones skip here.
+      - name: Test
+        run: dotnet test --solution AchievementCaretaker.slnx -c Release
+
       - name: Install NSIS
         run: |
           sudo apt-get update -qq

@@ -18,451 +18,564 @@ using AchievementCaretaker.App.Achievements;
 using AchievementCaretaker.App.Common;
 using AchievementCaretaker.App.Library;
 using AchievementCaretaker.Providers;
+using AchievementCaretaker.Services;
 
-namespace AchievementCaretaker.App.ViewModels
+namespace AchievementCaretaker.App.ViewModels;
+
+/// <summary>
+/// One Epic or GOG game's achievements. Read-only for Epic; for GOG they can be
+/// ticked and sent back, as in the Steam editor.
+/// </summary>
+/// <remarks>
+/// Runs in the library's own process. Steam's achievement editor cannot: its
+/// interface is scoped to the one app id a process initialised with, which is
+/// why that window is a second copy of the executable. A store's service is
+/// plain HTTPS with no such scope, so nothing of that applies here.
+/// <para>
+/// Everything awaits on the UI thread's synchronization context, like the rest of
+/// the application's downloads, so the collections need no marshalling.
+/// </para>
+/// </remarks>
+internal sealed partial class StoreAchievementsViewModel : ProgressViewModel
 {
+    private const int IconWorkers = 4;
+
+    private readonly IStoreProvider _provider;
+    private readonly IStoreAchievementsService _service;
+    private readonly StoreGameInfo _game;
+    private readonly StoreImageCache _images;
+    private readonly Action<int, int> _progressLoaded;
+    private readonly List<StoreAchievementItem> _all = new();
+    private readonly CancellationTokenSource _lifetime = new();
+
+    private readonly List<StoreStatItem> _stats = new();
+
+    public ObservableCollection<StoreAchievementItem> Achievements { get; } = new();
+
+    public ObservableCollection<StoreStatItem> Statistics { get; } = new();
+
+    /// <summary>Raised before something that cannot be undone; the window asks. Title, message.</summary>
+    public event Func<string, string, Task<bool>> ConfirmRequested;
+
+    public string GameName => _game.Name;
+
+    public string ProviderName => _provider.DisplayName;
+
+    public string Title => $"{_game.Name} - {_provider.DisplayName} achievements";
+
     /// <summary>
-    /// One Epic or GOG game's achievements. Read-only for Epic; for GOG they can be
-    /// ticked and sent back, as in the Steam editor.
+    /// Whether the checkboxes and the lock / invert / unlock buttons are shown.
+    /// Epic's achievements cannot be re-locked, so its provider cannot write and
+    /// its window has none.
     /// </summary>
-    /// <remarks>
-    /// Runs in the library's own process. Steam's achievement editor cannot: its
-    /// interface is scoped to the one app id a process initialised with, which is
-    /// why that window is a second copy of the executable. A store's service is
-    /// plain HTTPS with no such scope, so nothing of that applies here.
-    /// <para>
-    /// Everything awaits on the UI thread's synchronization context, like the rest of
-    /// the application's downloads, so the collections need no marshalling.
-    /// </para>
-    /// </remarks>
-    internal sealed partial class StoreAchievementsViewModel : ProgressViewModel
+    public bool CanModify => _service.CanModify(_provider);
+
+    /// <summary>Whether the store has statistics beside achievements (only Steam does).</summary>
+    public bool HasStatistics => _service.HasStatistics(_provider);
+
+    private bool _showStatistics;
+
+    public bool IsShowingStatistics => _showStatistics;
+
+    public bool IsShowingAchievements => _showStatistics == false;
+
+    [RelayCommand]
+    private void ShowTab(string tab)
     {
-        private const int IconWorkers = 4;
+        _showStatistics = tab == "stats" && HasStatistics == true;
+        OnPropertyChanged(nameof(IsShowingStatistics));
+        OnPropertyChanged(nameof(IsShowingAchievements));
+    }
 
-        private readonly IStoreProvider _Provider;
-        private readonly StoreGameInfo _Game;
-        private readonly StoreImageCache _Images;
-        private readonly Action<int, int> _ProgressLoaded;
-        private readonly List<StoreAchievementItem> _All = new();
-        private readonly CancellationTokenSource _Lifetime = new();
+    [ObservableProperty]
+    private string _statsError = "";
 
-        public ObservableCollection<StoreAchievementItem> Achievements { get; } = new();
+    public bool HasStatsError => string.IsNullOrEmpty(StatsError) == false;
 
-        public string GameName => this._Game.Name;
+    private bool _isCommitting;
 
-        public string ProviderName => this._Provider.DisplayName;
+    /// <summary>False while a commit is on its way, so nothing is ticked under it.</summary>
+    public bool IsInputEnabled => CanModify == true && _isCommitting == false;
 
-        public string Title => $"{this._Game.Name} - {this._Provider.DisplayName} achievements";
+    [ObservableProperty]
+    private string _statusText = "";
 
-        /// <summary>
-        /// Whether the checkboxes and the lock / invert / unlock buttons are shown.
-        /// Epic's achievements cannot be re-locked, so its provider cannot write and
-        /// its window has none.
-        /// </summary>
-        public bool CanModify => this._Provider is IWritableStoreProvider;
+    [ObservableProperty]
+    private string _errorText = "";
 
-        private bool _IsCommitting;
+    [ObservableProperty]
+    private StoreAchievementItem _selectedAchievement;
 
-        /// <summary>False while a commit is on its way, so nothing is ticked under it.</summary>
-        public bool IsInputEnabled => this.CanModify == true && this._IsCommitting == false;
-
-        [ObservableProperty]
-        private string _StatusText = "";
-
-        [ObservableProperty]
-        private string _ErrorText = "";
-
-        [ObservableProperty]
-        private StoreAchievementItem _SelectedAchievement;
-
-        private StoreAchievementsState _State = StoreAchievementsState.Loading;
-        public StoreAchievementsState State
+    private StoreAchievementsState _state = StoreAchievementsState.Loading;
+    public StoreAchievementsState State
+    {
+        get => _state;
+        private set
         {
-            get => this._State;
-            private set
-            {
-                if (this.SetProperty(ref this._State, value) == false)
-                {
-                    return;
-                }
-                this.OnPropertyChanged(nameof(this.IsLoading));
-                this.OnPropertyChanged(nameof(this.IsReady));
-                this.OnPropertyChanged(nameof(this.IsEmpty));
-                this.OnPropertyChanged(nameof(this.IsFailed));
-            }
-        }
-
-        public bool IsLoading => this.State == StoreAchievementsState.Loading;
-        public bool IsReady => this.State == StoreAchievementsState.Ready;
-        public bool IsEmpty => this.State == StoreAchievementsState.Empty;
-        public bool IsFailed => this.State == StoreAchievementsState.Failed;
-
-        #region Counts and filters
-
-        public int TotalCount => this._All.Count;
-        public int UnlockedCount => this._All.Count(a => a.OriginalValue == true);
-        public int LockedCount => this.TotalCount - this.UnlockedCount;
-
-        public double CompletionFraction => this.TotalCount == 0 ? 0.0 : this.UnlockedCount / (double)this.TotalCount;
-
-        public string CompletionText =>
-            this.TotalCount == 0
-                ? ""
-                : $"{this.UnlockedCount} of {this.TotalCount} unlocked · " +
-                  (this.CompletionFraction * 100.0).ToString("0", CultureInfo.CurrentCulture) + "%";
-
-        /// <summary>
-        /// The XP and rarity columns appear only when the store provided them for at
-        /// least one achievement. GOG has no XP, and an empty column of blanks would
-        /// look like a column of zeros.
-        /// </summary>
-        public bool HasXp => this._All.Any(a => a.Source.XP.HasValue);
-        public bool HasRarity => this._All.Any(a => a.Source.RarityPercent.HasValue);
-
-        private AchievementFilter _Filter = AchievementFilter.All;
-        public AchievementFilter Filter
-        {
-            get => this._Filter;
-            private set
-            {
-                if (this.SetProperty(ref this._Filter, value) == false)
-                {
-                    return;
-                }
-                this.OnPropertyChanged(nameof(this.IsShowingAll));
-                this.OnPropertyChanged(nameof(this.IsShowingLocked));
-                this.OnPropertyChanged(nameof(this.IsShowingUnlocked));
-                this.RefreshList();
-            }
-        }
-
-        public bool IsShowingAll => this.Filter == AchievementFilter.All;
-        public bool IsShowingLocked => this.Filter == AchievementFilter.Locked;
-        public bool IsShowingUnlocked => this.Filter == AchievementFilter.Unlocked;
-
-        [RelayCommand]
-        private void ShowFilter(AchievementFilter filter)
-        {
-            this.Filter = filter;
-        }
-
-        private string _MatchingString = "";
-        public string MatchingString
-        {
-            get => this._MatchingString;
-            set
-            {
-                if (this.SetProperty(ref this._MatchingString, value ?? "") == true)
-                {
-                    this.RefreshList();
-                }
-            }
-        }
-
-        private void RefreshList()
-        {
-            var matching = this.MatchingString.Trim();
-            var keep = this.SelectedAchievement;
-
-            this.Achievements.Clear();
-            foreach (var item in this._All)
-            {
-                var wanted = this.Filter switch
-                {
-                    AchievementFilter.Locked => item.IsAchieved == false,
-                    AchievementFilter.Unlocked => item.IsAchieved == true,
-                    _ => true,
-                };
-                if (wanted == false)
-                {
-                    continue;
-                }
-
-                if (matching.Length > 0 &&
-                    item.Name.Contains(matching, StringComparison.OrdinalIgnoreCase) == false &&
-                    item.Description.Contains(matching, StringComparison.OrdinalIgnoreCase) == false)
-                {
-                    continue;
-                }
-                this.Achievements.Add(item);
-            }
-
-            this.SelectedAchievement = keep != null && this.Achievements.Contains(keep) == true ? keep : null;
-        }
-
-        private void RefreshCounts()
-        {
-            foreach (var name in new[]
-            {
-                nameof(this.TotalCount), nameof(this.UnlockedCount), nameof(this.LockedCount),
-                nameof(this.CompletionFraction), nameof(this.CompletionText),
-                nameof(this.HasXp), nameof(this.HasRarity),
-            })
-            {
-                this.OnPropertyChanged(name);
-            }
-        }
-
-        #endregion
-
-        #region Pending changes
-
-        private int ChangedCount => this._All.Count(a => a.IsChanged == true);
-
-        public bool HasPendingChanges => this.ChangedCount > 0;
-
-        public string PendingSummaryText
-        {
-            get
-            {
-                var unlock = this._All.Count(a => a.IsChanged == true && a.IsAchieved == true);
-                var relock = this.ChangedCount - unlock;
-                List<string> parts = new();
-                if (unlock > 0)
-                {
-                    parts.Add($"{unlock} to unlock");
-                }
-                if (relock > 0)
-                {
-                    parts.Add($"{relock} to lock");
-                }
-                return string.Join(", ", parts);
-            }
-        }
-
-        public string CommitText => this.ChangedCount == 1 ? "Commit 1 change" : $"Commit {this.ChangedCount} changes";
-
-        private void OnItemChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
-        {
-            if (e.PropertyName == nameof(StoreAchievementItem.IsAchieved))
-            {
-                this.RefreshPending();
-            }
-        }
-
-        private void RefreshPending()
-        {
-            this.OnPropertyChanged(nameof(this.HasPendingChanges));
-            this.OnPropertyChanged(nameof(this.PendingSummaryText));
-            this.OnPropertyChanged(nameof(this.CommitText));
-        }
-
-        /// <summary>Sets every achievement on screen, not the whole game.</summary>
-        private void SetShown(Func<StoreAchievementItem, bool> wanted)
-        {
-            foreach (var item in this.Achievements.ToList())
-            {
-                item.IsAchieved = wanted(item);
-            }
-        }
-
-        [RelayCommand(CanExecute = nameof(IsInputEnabled))]
-        private void LockAll() => this.SetShown(item => false);
-
-        [RelayCommand(CanExecute = nameof(IsInputEnabled))]
-        private void UnlockAll() => this.SetShown(item => true);
-
-        [RelayCommand(CanExecute = nameof(IsInputEnabled))]
-        private void InvertAll() => this.SetShown(item => item.IsAchieved == false);
-
-        [RelayCommand(CanExecute = nameof(IsInputEnabled))]
-        private void DiscardChanges()
-        {
-            foreach (var item in this._All)
-            {
-                item.IsAchieved = item.OriginalValue;
-            }
-        }
-
-        /// <summary>
-        /// Sends every pending change to the store, then reads the achievements again
-        /// whatever happened: a commit that failed half-way has still changed some, and
-        /// the store is the only source of truth for which.
-        /// </summary>
-        [RelayCommand(CanExecute = nameof(IsInputEnabled))]
-        private async Task StoreAsync()
-        {
-            if (this._Provider is not IWritableStoreProvider writer)
+            if (SetProperty(ref _state, value) == false)
             {
                 return;
             }
-
-            var changes = this._All
-                .Where(a => a.IsChanged == true)
-                .Select(a => new KeyValuePair<string, bool>(a.Source.Id, a.IsAchieved))
-                .ToList();
-            if (changes.Count == 0)
-            {
-                return;
-            }
-
-            this.SetCommitting(true);
-            this.BeginProgress("Sending changes...");
-            this.StatusText = $"Sending {changes.Count} change(s) to {this._Provider.DisplayName}...";
-            string failure = null;
-            try
-            {
-                await writer.SetAchievementsAsync(this._Game.Key, changes, this._Lifetime.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-            catch (ProviderException e)
-            {
-                failure = e.ErrorCode == "login_required"
-                    ? $"You are signed out of {this._Provider.DisplayName}. Sign in again from the library."
-                    : e.Message;
-            }
-            catch (Exception e)
-            {
-                failure = $"Could not reach {this._Provider.DisplayName}: {e.Message}";
-            }
-            finally
-            {
-                this.EndProgress();
-                this.SetCommitting(false);
-            }
-
-            await this.ReloadAsync();
-            if (this.State == StoreAchievementsState.Ready)
-            {
-                this.StatusText = failure == null
-                    ? $"Sent {changes.Count} change(s). {this.UnlockedCount} of {this.TotalCount} unlocked."
-                    : $"Not everything was sent: {failure}";
-            }
-        }
-
-        private void SetCommitting(bool value)
-        {
-            this._IsCommitting = value;
-            this.OnPropertyChanged(nameof(this.IsInputEnabled));
-            this.LockAllCommand.NotifyCanExecuteChanged();
-            this.UnlockAllCommand.NotifyCanExecuteChanged();
-            this.InvertAllCommand.NotifyCanExecuteChanged();
-            this.DiscardChangesCommand.NotifyCanExecuteChanged();
-            this.StoreCommand.NotifyCanExecuteChanged();
-        }
-
-        #endregion
-
-        /// <param name="progressLoaded">
-        /// Told the earned and total counts once they are known, so the library's meter
-        /// for this game can fill in without a separate trip to the store.
-        /// </param>
-        public StoreAchievementsViewModel(
-            IStoreProvider provider,
-            StoreGameInfo game,
-            StoreImageCache images,
-            Action<int, int> progressLoaded)
-        {
-            this._Provider = provider;
-            this._Game = game;
-            this._Images = images;
-            this._ProgressLoaded = progressLoaded;
-
-            // Discarded explicitly: the load reports its own failures.
-            Task load = this.ReloadAsync();
-            GC.KeepAlive(load);
-        }
-
-        [RelayCommand]
-        private async Task ReloadAsync()
-        {
-            var token = this._Lifetime.Token;
-            this.State = StoreAchievementsState.Loading;
-            this.ErrorText = "";
-            this.StatusText = $"Reading {this._Game.Name} from {this._Provider.DisplayName}...";
-            this.BeginProgress("Loading achievements...");
-
-            try
-            {
-                var achievements = await this._Provider.GetAchievementsAsync(this._Game.Key, "en", token);
-
-                foreach (var old in this._All)
-                {
-                    old.PropertyChanged -= this.OnItemChanged;
-                }
-                this._All.Clear();
-                this._All.AddRange(achievements.Select(a => new StoreAchievementItem(a)));
-                foreach (var item in this._All)
-                {
-                    item.PropertyChanged += this.OnItemChanged;
-                }
-                this.RefreshPending();
-                this.RefreshCounts();
-                this.RefreshList();
-
-                this.State = this._All.Count == 0 ? StoreAchievementsState.Empty : StoreAchievementsState.Ready;
-                this.StatusText = this._All.Count == 0
-                    ? $"{this._Provider.DisplayName} lists no achievements for this game."
-                    : $"{this.UnlockedCount} of {this.TotalCount} unlocked.";
-                this._ProgressLoaded?.Invoke(this.UnlockedCount, this.TotalCount);
-
-                await this.LoadIconsAsync(token);
-            }
-            catch (OperationCanceledException)
-            {
-                // The window closed while this was running.
-            }
-            catch (ProviderException e)
-            {
-                this.Fail(e.ErrorCode == "login_required"
-                    ? $"You are signed out of {this._Provider.DisplayName}. Sign in again from the library."
-                    : e.Message);
-            }
-            catch (Exception e)
-            {
-                this.Fail($"Could not reach {this._Provider.DisplayName}: {e.Message}");
-            }
-            finally
-            {
-                this.EndProgress();
-            }
-        }
-
-        private void Fail(string message)
-        {
-            this.State = StoreAchievementsState.Failed;
-            this.ErrorText = message;
-            this.StatusText = "Could not read the achievements.";
-        }
-
-        private async Task LoadIconsAsync(CancellationToken token)
-        {
-            Queue<StoreAchievementItem> queue = new(
-                this._All.Where(item => string.IsNullOrEmpty(item.IconUrl) == false));
-            var total = queue.Count;
-            var done = 0;
-            if (total == 0)
-            {
-                return;
-            }
-
-            async Task Worker()
-            {
-                while (queue.TryDequeue(out var item) == true)
-                {
-                    item.Icon = await this._Images.LoadAsync(this._Provider.Id, item.IconUrl, token);
-                    done++;
-                    this.ReportProgress($"Loading icons, {done:N0} of {total:N0}...", done, total);
-                }
-            }
-
-            await Task.WhenAll(Enumerable.Range(0, IconWorkers).Select(index => Worker()));
-        }
-
-        public void Shutdown()
-        {
-            this._Lifetime.Cancel();
+            OnPropertyChanged(nameof(IsLoading));
+            OnPropertyChanged(nameof(IsReady));
+            OnPropertyChanged(nameof(IsEmpty));
+            OnPropertyChanged(nameof(IsFailed));
         }
     }
 
-    internal enum StoreAchievementsState
+    public bool IsLoading => State == StoreAchievementsState.Loading;
+    public bool IsReady => State == StoreAchievementsState.Ready;
+    public bool IsEmpty => State == StoreAchievementsState.Empty;
+    public bool IsFailed => State == StoreAchievementsState.Failed;
+
+    #region Counts and filters
+
+    public int TotalCount => _all.Count;
+    public int UnlockedCount => _all.Count(a => a.OriginalValue == true);
+    public int LockedCount => TotalCount - UnlockedCount;
+
+    public double CompletionFraction => TotalCount == 0 ? 0.0 : UnlockedCount / (double)TotalCount;
+
+    public string CompletionText =>
+        TotalCount == 0
+            ? ""
+            : $"{UnlockedCount} of {TotalCount} unlocked · " +
+              (CompletionFraction * 100.0).ToString("0", CultureInfo.CurrentCulture) + "%";
+
+    /// <summary>
+    /// The XP and rarity columns appear only when the store provided them for at
+    /// least one achievement. GOG has no XP, and an empty column of blanks would
+    /// look like a column of zeros.
+    /// </summary>
+    public bool HasXp => _all.Any(a => a.Source.XP.HasValue);
+    public bool HasRarity => _all.Any(a => a.Source.RarityPercent.HasValue);
+
+    private AchievementFilter _filter = AchievementFilter.All;
+    public AchievementFilter Filter
     {
-        Loading = 0,
-        Ready = 1,
-        Empty = 2,
-        Failed = 3,
+        get => _filter;
+        private set
+        {
+            if (SetProperty(ref _filter, value) == false)
+            {
+                return;
+            }
+            OnPropertyChanged(nameof(IsShowingAll));
+            OnPropertyChanged(nameof(IsShowingLocked));
+            OnPropertyChanged(nameof(IsShowingUnlocked));
+            RefreshList();
+        }
     }
+
+    public bool IsShowingAll => Filter == AchievementFilter.All;
+    public bool IsShowingLocked => Filter == AchievementFilter.Locked;
+    public bool IsShowingUnlocked => Filter == AchievementFilter.Unlocked;
+
+    [RelayCommand]
+    private void ShowFilter(AchievementFilter filter)
+    {
+        Filter = filter;
+    }
+
+    private string _matchingString = "";
+    public string MatchingString
+    {
+        get => _matchingString;
+        set
+        {
+            if (SetProperty(ref _matchingString, value ?? "") == true)
+            {
+                RefreshList();
+            }
+        }
+    }
+
+    private void RefreshList()
+    {
+        var matching = MatchingString.Trim();
+        var keep = SelectedAchievement;
+
+        Achievements.Clear();
+        foreach (var item in _all)
+        {
+            var wanted = Filter switch
+            {
+                AchievementFilter.Locked => item.IsAchieved == false,
+                AchievementFilter.Unlocked => item.IsAchieved == true,
+                _ => true,
+            };
+            if (wanted == false)
+            {
+                continue;
+            }
+
+            if (matching.Length > 0 &&
+                item.Name.Contains(matching, StringComparison.OrdinalIgnoreCase) == false &&
+                item.Description.Contains(matching, StringComparison.OrdinalIgnoreCase) == false)
+            {
+                continue;
+            }
+            Achievements.Add(item);
+        }
+
+        SelectedAchievement = keep != null && Achievements.Contains(keep) == true ? keep : null;
+    }
+
+    private void RefreshCounts()
+    {
+        foreach (var name in new[]
+        {
+            nameof(TotalCount), nameof(UnlockedCount), nameof(LockedCount),
+            nameof(CompletionFraction), nameof(CompletionText),
+            nameof(HasXp), nameof(HasRarity),
+        })
+        {
+            OnPropertyChanged(name);
+        }
+    }
+
+    #endregion
+
+    #region Pending changes
+
+    private int ChangedStatCount => _stats.Count(s => s.IsModified == true);
+
+    private int ChangedCount => _all.Count(a => a.IsChanged == true) + ChangedStatCount;
+
+    public bool HasPendingChanges => ChangedCount > 0;
+
+    public string PendingSummaryText
+    {
+        get
+        {
+            var unlock = _all.Count(a => a.IsChanged == true && a.IsAchieved == true);
+            var relock = _all.Count(a => a.IsChanged == true) - unlock;
+            List<string> parts = new();
+            if (unlock > 0)
+            {
+                parts.Add($"{unlock} to unlock");
+            }
+            if (relock > 0)
+            {
+                parts.Add($"{relock} to lock");
+            }
+            if (ChangedStatCount > 0)
+            {
+                parts.Add(ChangedStatCount == 1 ? "1 statistic" : $"{ChangedStatCount} statistics");
+            }
+            return string.Join(", ", parts);
+        }
+    }
+
+    public string CommitText => ChangedCount == 1 ? "Commit 1 change" : $"Commit {ChangedCount} changes";
+
+    private void OnItemChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(StoreAchievementItem.IsAchieved) || e.PropertyName == nameof(StoreStatItem.IsModified))
+        {
+            RefreshPending();
+        }
+    }
+
+    private void RefreshPending()
+    {
+        OnPropertyChanged(nameof(HasPendingChanges));
+        OnPropertyChanged(nameof(PendingSummaryText));
+        OnPropertyChanged(nameof(CommitText));
+    }
+
+    /// <summary>Sets every achievement on screen, not the whole game.</summary>
+    private void SetShown(Func<StoreAchievementItem, bool> wanted)
+    {
+        foreach (var item in Achievements.ToList())
+        {
+            if (item.IsProtected == true)
+            {
+                continue;
+            }
+            item.IsAchieved = wanted(item);
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(IsInputEnabled))]
+    private void LockAll() => SetShown(item => false);
+
+    [RelayCommand(CanExecute = nameof(IsInputEnabled))]
+    private void UnlockAll() => SetShown(item => true);
+
+    [RelayCommand(CanExecute = nameof(IsInputEnabled))]
+    private void InvertAll() => SetShown(item => item.IsAchieved == false);
+
+    [RelayCommand(CanExecute = nameof(IsInputEnabled))]
+    private void DiscardChanges()
+    {
+        foreach (var item in _all)
+        {
+            item.IsAchieved = item.OriginalValue;
+        }
+        foreach (var stat in _stats)
+        {
+            stat.Discard();
+        }
+    }
+
+    /// <summary>
+    /// Resets every statistic, and the achievements too if the user says so. Asks three
+    /// times, as the old editor did: it cannot be undone.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(IsInputEnabled))]
+    private async Task ResetStatisticsAsync()
+    {
+        if (ConfirmRequested == null || HasStatistics == false)
+        {
+            return;
+        }
+        if (await ConfirmRequested("Warning", "Are you absolutely sure you want to reset stats?") == false)
+        {
+            return;
+        }
+        var achievementsToo = await ConfirmRequested("Question", "Do you want to reset achievements too?");
+        if (await ConfirmRequested("Warning", "Really really sure?") == false)
+        {
+            return;
+        }
+
+        SetCommitting(true);
+        BeginProgress("Resetting...");
+        string failure;
+        try
+        {
+            failure = await _service.ResetAsync(_provider, _game.Key, achievementsToo, _lifetime.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        finally
+        {
+            EndProgress();
+            SetCommitting(false);
+        }
+
+        await ReloadAsync();
+        if (State == StoreAchievementsState.Ready)
+        {
+            StatusText = failure == null ? "Statistics reset." : $"Could not reset: {failure}";
+        }
+    }
+
+    /// <summary>
+    /// Sends every pending change to the store, then reads the achievements again
+    /// whatever happened: a commit that failed half-way has still changed some, and
+    /// the store is the only source of truth for which.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(IsInputEnabled))]
+    private async Task StoreAsync()
+    {
+        var changes = _all
+            .Where(a => a.IsChanged == true)
+            .Select(a => new KeyValuePair<string, bool>(a.Source.Id, a.IsAchieved))
+            .ToList();
+        var statChanges = _stats
+            .Where(s => s.IsModified == true)
+            .Select(s => new KeyValuePair<string, double>(s.Id, s.Value))
+            .ToList();
+        if (changes.Count + statChanges.Count == 0)
+        {
+            return;
+        }
+        var sent = changes.Count + statChanges.Count;
+
+        SetCommitting(true);
+        BeginProgress("Sending changes...");
+        StatusText = $"Sending {sent} change(s) to {_provider.DisplayName}...";
+        string failure;
+        try
+        {
+            failure = await _service.CommitAsync(_provider, _game.Key, changes, statChanges, _lifetime.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        finally
+        {
+            EndProgress();
+            SetCommitting(false);
+        }
+
+        await ReloadAsync();
+        if (State == StoreAchievementsState.Ready)
+        {
+            StatusText = failure == null
+                ? $"Sent {sent} change(s). {UnlockedCount} of {TotalCount} unlocked."
+                : $"Not everything was sent: {failure}";
+        }
+    }
+
+    private void SetCommitting(bool value)
+    {
+        _isCommitting = value;
+        OnPropertyChanged(nameof(IsInputEnabled));
+        LockAllCommand.NotifyCanExecuteChanged();
+        UnlockAllCommand.NotifyCanExecuteChanged();
+        InvertAllCommand.NotifyCanExecuteChanged();
+        DiscardChangesCommand.NotifyCanExecuteChanged();
+        ResetStatisticsCommand.NotifyCanExecuteChanged();
+        StoreCommand.NotifyCanExecuteChanged();
+    }
+
+    #endregion
+
+    /// <param name="progressLoaded">
+    /// Told the earned and total counts once they are known, so the library's meter
+    /// for this game can fill in without a separate trip to the store.
+    /// </param>
+    public StoreAchievementsViewModel(
+        IStoreProvider provider,
+        IStoreAchievementsService service,
+        StoreGameInfo game,
+        StoreImageCache images,
+        Action<int, int> progressLoaded)
+    {
+        _provider = provider;
+        _service = service;
+        _game = game;
+        _images = images;
+        _progressLoaded = progressLoaded;
+
+        // Discarded explicitly: the load reports its own failures.
+        Task load = ReloadAsync();
+        GC.KeepAlive(load);
+    }
+
+    [RelayCommand]
+    private async Task ReloadAsync()
+    {
+        var token = _lifetime.Token;
+        State = StoreAchievementsState.Loading;
+        ErrorText = "";
+        StatusText = $"Reading {_game.Name} from {_provider.DisplayName}...";
+        BeginProgress("Loading achievements...");
+
+        try
+        {
+            var result = await _service.LoadAsync(_provider, _game.Key, token);
+            if (result.Failure != null)
+            {
+                Fail(result.Failure);
+                return;
+            }
+            var achievements = result.Achievements;
+
+            foreach (var old in _all)
+            {
+                old.PropertyChanged -= OnItemChanged;
+            }
+            _all.Clear();
+            _all.AddRange(achievements.Select(a => new StoreAchievementItem(a)));
+            foreach (var item in _all)
+            {
+                item.PropertyChanged += OnItemChanged;
+            }
+            await LoadStatsAsync(token);
+            RefreshPending();
+            RefreshCounts();
+            RefreshList();
+
+            State = _all.Count == 0 && _stats.Count == 0
+                ? StoreAchievementsState.Empty
+                : StoreAchievementsState.Ready;
+            StatusText = _all.Count == 0
+                ? $"{_provider.DisplayName} lists no achievements for this game."
+                : $"{UnlockedCount} of {TotalCount} unlocked.";
+            _progressLoaded?.Invoke(UnlockedCount, TotalCount);
+
+            await LoadIconsAsync(token);
+        }
+        catch (OperationCanceledException)
+        {
+            // The window closed while this was running.
+        }
+        finally
+        {
+            EndProgress();
+        }
+    }
+
+    private async Task LoadStatsAsync(CancellationToken token)
+    {
+        foreach (var old in _stats)
+        {
+            old.PropertyChanged -= OnItemChanged;
+        }
+        _stats.Clear();
+        Statistics.Clear();
+        StatsError = "";
+        OnPropertyChanged(nameof(HasStatsError));
+        if (HasStatistics == false)
+        {
+            return;
+        }
+
+        var result = await _service.LoadStatsAsync(_provider, _game.Key, token);
+        if (result.Failure != null)
+        {
+            // The achievements are still good; only the statistics tab says what went wrong.
+            StatsError = result.Failure;
+            OnPropertyChanged(nameof(HasStatsError));
+            return;
+        }
+        foreach (var stat in result.Stats)
+        {
+            StoreStatItem item = new(stat);
+            item.PropertyChanged += OnItemChanged;
+            _stats.Add(item);
+            Statistics.Add(item);
+        }
+    }
+
+    private void Fail(string message)
+    {
+        State = StoreAchievementsState.Failed;
+        ErrorText = message;
+        StatusText = "Could not read the achievements.";
+    }
+
+    private async Task LoadIconsAsync(CancellationToken token)
+    {
+        Queue<StoreAchievementItem> queue = new(
+            _all.Where(item => string.IsNullOrEmpty(item.IconUrl) == false));
+        var total = queue.Count;
+        var done = 0;
+        if (total == 0)
+        {
+            return;
+        }
+
+        async Task Worker()
+        {
+            while (queue.TryDequeue(out var item) == true)
+            {
+                item.Icon = await _images.LoadAsync(_provider.Id, item.IconUrl, token);
+                done++;
+                ReportProgress($"Loading icons, {done:N0} of {total:N0}...", done, total);
+            }
+        }
+
+        await Task.WhenAll(Enumerable.Range(0, IconWorkers).Select(index => Worker()));
+    }
+
+    public void Shutdown()
+    {
+        _lifetime.Cancel();
+    }
+}
+
+internal enum StoreAchievementsState
+{
+    Loading = 0,
+    Ready = 1,
+    Empty = 2,
+    Failed = 3,
 }

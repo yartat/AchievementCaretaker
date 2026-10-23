@@ -6,8 +6,8 @@ file says which it belongs to.
 | Part | Based on | Licence of the original |
 |---|---|---|
 | **Steam support**: `AchievementCaretaker.SteamApi`, and the Steam half of the application (the library window, the achievement editor, their caches) | [Steam Achievement Manager](https://github.com/gibbed/SteamAchievementManager) by Rick (gibbed) | zlib |
-| **GOG provider**: `AchievementCaretaker.Providers/Gog` | [GOG Achievements Manager](https://github.com/timendum/gog_achievements) by Timendum | none published |
-| **Epic Games provider**: `AchievementCaretaker.Providers/Epic` | the endpoints documented by [Legendary](https://github.com/derrod/legendary) and Heroic | Legendary: GPL-3.0 |
+| **GOG provider**: `AchievementCaretaker.Providers.Gog` | [GOG Achievements Manager](https://github.com/timendum/gog_achievements) by Timendum | none published |
+| **Epic Games provider**: `AchievementCaretaker.Providers.Epic` | the endpoints documented by [Legendary](https://github.com/derrod/legendary) and Heroic | Legendary: GPL-3.0 |
 | Everything else: the shared store code, the store windows and view models, `tools/`, CI and packaging | this project | — |
 
 ## Steam support is based on Steam Achievement Manager

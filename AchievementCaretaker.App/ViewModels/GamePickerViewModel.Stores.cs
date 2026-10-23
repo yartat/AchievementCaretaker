@@ -7,211 +7,245 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Threading.Tasks;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using AchievementCaretaker.App.Common;
+using AchievementCaretaker.App.Library;
 using AchievementCaretaker.Providers;
+using AchievementCaretaker.Providers.Steam;
+using AchievementCaretaker.Providers.Steam.Models;
 
-namespace AchievementCaretaker.App.ViewModels
+namespace AchievementCaretaker.App.ViewModels;
+
+/// <summary>
+/// The library window's other sources: Epic and GOG beside Steam.
+/// </summary>
+/// <remarks>
+/// A separate file of the same class so the Steam half stays as it was. One source
+/// is on screen at a time. Steam is the default and is represented by
+/// <see cref="SelectedStoreLibrary"/> being null, not by an entry of its own,
+/// because it is not a store: see <see cref="IStoreProvider"/>.
+/// </remarks>
+internal sealed partial class GamePickerViewModel : IProgressSink
 {
-    /// <summary>
-    /// The library window's other sources: Epic and GOG beside Steam.
-    /// </summary>
-    /// <remarks>
-    /// A separate file of the same class so the Steam half stays as it was. One source
-    /// is on screen at a time. Steam is the default and is represented by
-    /// <see cref="SelectedStoreLibrary"/> being null, not by an entry of its own,
-    /// because it is not a store: see <see cref="IStoreProvider"/>.
-    /// </remarks>
-    internal sealed partial class GamePickerViewModel : IProgressSink
+    public IReadOnlyList<StoreLibraryViewModel> StoreLibraries { get; private set; } =
+        Array.Empty<StoreLibraryViewModel>();
+
+    private StoreLibraryViewModel _selectedStoreLibrary;
+
+    /// <summary>The store on screen, or null for Steam.</summary>
+    public StoreLibraryViewModel SelectedStoreLibrary
     {
-        public IReadOnlyList<StoreLibraryViewModel> StoreLibraries { get; private set; } =
-            Array.Empty<StoreLibraryViewModel>();
-
-        private StoreLibraryViewModel _SelectedStoreLibrary;
-
-        /// <summary>The store on screen, or null for Steam.</summary>
-        public StoreLibraryViewModel SelectedStoreLibrary
+        get => _selectedStoreLibrary;
+        private set
         {
-            get => this._SelectedStoreLibrary;
-            private set
-            {
-                var previous = this._SelectedStoreLibrary;
-                if (this.SetProperty(ref this._SelectedStoreLibrary, value) == false)
-                {
-                    return;
-                }
-
-                if (previous != null)
-                {
-                    previous.IsSelected = false;
-                }
-                if (value != null)
-                {
-                    value.IsSelected = true;
-                }
-
-                foreach (var name in new[]
-                {
-                    nameof(this.IsSteamSelected), nameof(this.IsStoreSelected), nameof(this.ShowSteamBanner),
-                    nameof(this.ShowSteamTiles), nameof(this.ShowSteamContent),
-                    nameof(this.ActiveStatusText), nameof(this.HeaderTitle), nameof(this.HeaderSummary),
-                })
-                {
-                    this.OnPropertyChanged(name);
-                }
-            }
-        }
-
-        public bool IsSteamSelected => this.SelectedStoreLibrary == null;
-
-        /// <summary>False until the connector has reached Steam. Cached games are shown meanwhile.</summary>
-        public bool IsSteamConnected => this._SteamClient != null;
-
-        /// <summary>The Steam source is showing, and Steam is not there to refresh it from.</summary>
-        public bool ShowSteamBanner => this.IsSteamSelected == true && this.IsSteamConnected == false;
-
-        /// <summary>Why there is no Steam: not installed, not running, nobody logged in.</summary>
-        public string SteamUnavailableText => this._Steam?.Reason;
-
-        private void NotifySteamState()
-        {
-            this.OnPropertyChanged(nameof(this.IsSteamConnected));
-            this.OnPropertyChanged(nameof(this.ShowSteamBanner));
-            this.OnPropertyChanged(nameof(this.SteamUnavailableText));
-        }
-
-        public bool IsStoreSelected => this.SelectedStoreLibrary != null;
-
-        // The Steam tile and row views are shown only for Steam, and only in the chosen
-        // mode; the store library draws its own.
-        public bool ShowSteamTiles => this.IsSteamSelected == true && this.IsTileView == true;
-
-        public bool ShowSteamContent => this.IsSteamSelected == true && this.IsContentView == true;
-
-        // What the status bar and the header show: the selected source's.
-        public string ActiveStatusText => this.SelectedStoreLibrary?.StatusText ?? this.StatusText;
-
-        public string HeaderTitle => this.SelectedStoreLibrary?.CollectionTitle ?? this.CollectionTitle;
-
-        public string HeaderSummary => this.SelectedStoreLibrary?.LibrarySummaryText ?? this.LibrarySummaryText;
-
-        partial void OnStatusTextChanged(string value)
-        {
-            this.OnPropertyChanged(nameof(this.ActiveStatusText));
-        }
-
-        /// <summary>Raised when a store game's achievements should be shown; the window owns the window.</summary>
-        public event Action<StoreAchievementsViewModel> StoreAchievementsRequested;
-
-        /// <summary>Raised to sign in to a store in a browser inside the application.</summary>
-        public event Func<IStoreProvider, Task<BrowserSignInResult>> BrowserSignInRequested;
-
-        /// <summary>Raised before a sign-out; the window asks the user.</summary>
-        public event Func<string, string, Task<bool>> ConfirmRequested;
-
-        [RelayCommand]
-        private void SelectSteam()
-        {
-            this.SelectedStoreLibrary = null;
-        }
-
-        [RelayCommand]
-        private void SelectStore(StoreLibraryViewModel store)
-        {
-            this.SelectedStoreLibrary = store;
-        }
-
-        private void CreateStoreLibraries()
-        {
-            // One image cache for all of them: it follows the icon cache's directory
-            // as it moves, so it is built from that rather than from a path.
-            StoreImageCache images = new(this._IconCache);
-
-            List<StoreLibraryViewModel> stores = new();
-            foreach (var provider in StoreProviders.CreateAll(AppSettings.HomeDirectory))
-            {
-                // The database can be replaced by a cache move, so hand over how to
-                // reach it rather than the instance.
-                StoreLibraryViewModel store = new(provider, () => this._Cache, images, this)
-                {
-                    IsContentView = this.IsContentView,
-                };
-                store.ErrorRaised += message => this.ErrorRaised?.Invoke(message);
-                store.AchievementsRequested += viewer => this.StoreAchievementsRequested?.Invoke(viewer);
-                store.BrowserSignInRequested += requested =>
-                    this.BrowserSignInRequested?.Invoke(requested) ?? Task.FromResult(new BrowserSignInResult(null, true));
-                store.ConfirmRequested += (title, message) =>
-                    this.ConfirmRequested?.Invoke(title, message) ?? Task.FromResult(true);
-                store.PropertyChanged += this.OnStorePropertyChanged;
-                stores.Add(store);
-            }
-
-            this.StoreLibraries = stores;
-            this.OnPropertyChanged(nameof(this.StoreLibraries));
-        }
-
-        private void OnStorePropertyChanged(object sender, PropertyChangedEventArgs e)
-        {
-            if (ReferenceEquals(sender, this.SelectedStoreLibrary) == false)
+            var previous = _selectedStoreLibrary;
+            if (SetProperty(ref _selectedStoreLibrary, value) == false)
             {
                 return;
             }
 
-            switch (e.PropertyName)
+            if (previous != null)
             {
-                case nameof(StoreLibraryViewModel.StatusText):
-                    this.OnPropertyChanged(nameof(this.ActiveStatusText));
-                    break;
-                case nameof(StoreLibraryViewModel.CollectionTitle):
-                    this.OnPropertyChanged(nameof(this.HeaderTitle));
-                    break;
-                case nameof(StoreLibraryViewModel.LibrarySummaryText):
-                    this.OnPropertyChanged(nameof(this.HeaderSummary));
-                    break;
+                previous.IsSelected = false;
+            }
+            if (value != null)
+            {
+                value.IsSelected = true;
+            }
+
+            foreach (var name in new[]
+            {
+                nameof(IsSteamSelected), nameof(IsStoreSelected), nameof(ShowSteamBanner),
+                nameof(ShowSteamTiles), nameof(ShowSteamContent),
+                nameof(ActiveStatusText), nameof(HeaderTitle), nameof(HeaderSummary),
+            })
+            {
+                OnPropertyChanged(name);
             }
         }
+    }
 
-        private void OnViewModeChanged()
-        {
-            this.OnPropertyChanged(nameof(this.ShowSteamTiles));
-            this.OnPropertyChanged(nameof(this.ShowSteamContent));
-            foreach (var store in this.StoreLibraries)
+    public bool IsSteamSelected => SelectedStoreLibrary == null;
+
+    /// <summary>False until the connector has reached Steam. Cached games are shown meanwhile.</summary>
+    public bool IsSteamConnected => _steamConnected;
+
+    /// <summary>The Steam source is showing, and Steam is not there to refresh it from.</summary>
+    public bool ShowSteamBanner => IsSteamSelected == true && IsSteamConnected == false;
+
+    /// <summary>Why there is no Steam: not installed, not running, nobody logged in.</summary>
+    public string SteamUnavailableText => _steam?.Reason;
+
+    private void NotifySteamState()
+    {
+        OnPropertyChanged(nameof(IsSteamConnected));
+        OnPropertyChanged(nameof(ShowSteamBanner));
+        OnPropertyChanged(nameof(SteamUnavailableText));
+    }
+
+    public bool IsStoreSelected => SelectedStoreLibrary != null;
+
+    // The Steam tile and row views are shown only for Steam, and only in the chosen
+    // mode; the store library draws its own.
+    public bool ShowSteamTiles => IsSteamSelected == true && IsTileView == true;
+
+    public bool ShowSteamContent => IsSteamSelected == true && IsContentView == true;
+
+    // What the status bar and the header show: the selected source's.
+    public string ActiveStatusText => SelectedStoreLibrary?.StatusText ?? StatusText;
+
+    public string HeaderTitle => SelectedStoreLibrary?.CollectionTitle ?? CollectionTitle;
+
+    public string HeaderSummary => SelectedStoreLibrary?.LibrarySummaryText ?? LibrarySummaryText;
+
+    partial void OnStatusTextChanged(string value)
+    {
+        OnPropertyChanged(nameof(ActiveStatusText));
+    }
+
+    /// <summary>Raised when a store game's achievements should be shown; the window owns the window.</summary>
+    public event Action<StoreAchievementsViewModel> StoreAchievementsRequested;
+
+    /// <summary>Raised to sign in to a store in a browser inside the application.</summary>
+    public event Func<IStoreProvider, Task<BrowserSignInResult>> BrowserSignInRequested;
+
+    /// <summary>Raised before a sign-out; the window asks the user.</summary>
+    public event Func<string, string, Task<bool>> ConfirmRequested;
+
+    [RelayCommand]
+    private void SelectSteam()
+    {
+        SelectedStoreLibrary = null;
+    }
+
+    [RelayCommand]
+    private void SelectStore(StoreLibraryViewModel store)
+    {
+        SelectedStoreLibrary = store;
+    }
+
+    /// <summary>The stores to offer, from the container. Their lifetime is the container's, not this view model's.</summary>
+    private readonly IEnumerable<IStoreProvider> _storeProviders;
+
+    private StoreImageCache _storeImages;
+
+    /// <summary>
+    /// Opens a Steam game in the achievements window, in this process. The window talks to a
+    /// helper process started for that one app id, which is where the "one process per game"
+    /// rule of Steam's user stats now lives.
+    /// </summary>
+    private void OpenSteamAchievements(GameInfo info)
+    {
+        var id = info.Id.ToString(CultureInfo.InvariantCulture);
+        StoreGameInfo game = new(SteamProvider.ProviderId, id, id) { Name = info.Name };
+        var images = _storeImages ??= new(_iconCache, _http);
+
+        StoreAchievementsRequested?.Invoke(new StoreAchievementsViewModel(
+            _steamProvider,
+            _storeAchievements,
+            game,
+            images,
+            (earned, total) =>
             {
-                store.IsContentView = this.IsContentView;
-            }
-        }
+                // What the window just read is fresher than the cache files: show it here too.
+                var known = info.Stats;
+                info.Stats = new GameStats(known?.PlaytimeMinutes ?? 0, total, earned, known?.LastPlayed);
+                RefreshCollectionCounts();
+            }));
+    }
 
-        private void ForwardSearchToStores(string text)
+    private void CreateStoreLibraries()
+    {
+        // One image cache for all of them: it follows the icon cache's directory
+        // as it moves, so it is built from that rather than from a path.
+        StoreImageCache images = new(_iconCache, _http);
+        _storeImages = images;
+
+        List<StoreLibraryViewModel> stores = new();
+        foreach (var provider in _storeProviders)
         {
-            foreach (var store in this.StoreLibraries)
+            // The database can be replaced by a cache move, so hand over how to
+            // reach it rather than the instance.
+            StoreLibraryViewModel store = new(provider, _storeLibrary, _storeSession, _storeAchievements, images, this)
             {
-                store.SearchText = text;
-            }
+                IsContentView = IsContentView,
+            };
+            store.ErrorRaised += message => ErrorRaised?.Invoke(message);
+            store.AchievementsRequested += viewer => StoreAchievementsRequested?.Invoke(viewer);
+            store.BrowserSignInRequested += requested =>
+                BrowserSignInRequested?.Invoke(requested) ?? Task.FromResult(new BrowserSignInResult(null, true));
+            store.ConfirmRequested += (title, message) =>
+                ConfirmRequested?.Invoke(title, message) ?? Task.FromResult(true);
+            store.PropertyChanged += OnStorePropertyChanged;
+            stores.Add(store);
         }
 
-        private void ShutdownStoreLibraries()
+        StoreLibraries = stores;
+        OnPropertyChanged(nameof(StoreLibraries));
+    }
+
+    private void OnStorePropertyChanged(object sender, PropertyChangedEventArgs e)
+    {
+        if (ReferenceEquals(sender, SelectedStoreLibrary) == false)
         {
-            foreach (var store in this.StoreLibraries)
-            {
-                store.Shutdown();
-            }
+            return;
         }
 
-        void IProgressSink.Begin(string text)
+        switch (e.PropertyName)
         {
-            this.BeginProgress(text);
+            case nameof(StoreLibraryViewModel.StatusText):
+                OnPropertyChanged(nameof(ActiveStatusText));
+                break;
+            case nameof(StoreLibraryViewModel.CollectionTitle):
+                OnPropertyChanged(nameof(HeaderTitle));
+                break;
+            case nameof(StoreLibraryViewModel.LibrarySummaryText):
+                OnPropertyChanged(nameof(HeaderSummary));
+                break;
         }
+    }
 
-        void IProgressSink.Report(string text, int completed, int total)
+    private void OnViewModeChanged()
+    {
+        OnPropertyChanged(nameof(ShowSteamTiles));
+        OnPropertyChanged(nameof(ShowSteamContent));
+        foreach (var store in StoreLibraries)
         {
-            this.ReportProgress(text, completed, total);
+            store.IsContentView = IsContentView;
         }
+    }
 
-        void IProgressSink.End()
+    private void ForwardSearchToStores(string text)
+    {
+        foreach (var store in StoreLibraries)
         {
-            this.EndProgress();
+            store.SearchText = text;
         }
+    }
+
+    private void ShutdownStoreLibraries()
+    {
+        foreach (var store in StoreLibraries)
+        {
+            store.Shutdown();
+        }
+    }
+
+    void IProgressSink.Begin(string text)
+    {
+        BeginProgress(text);
+    }
+
+    void IProgressSink.Report(string text, int completed, int total)
+    {
+        ReportProgress(text, completed, total);
+    }
+
+    void IProgressSink.End()
+    {
+        EndProgress();
     }
 }

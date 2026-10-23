@@ -32,60 +32,59 @@ using System;
 using System.Runtime.InteropServices;
 using AchievementCaretaker.SteamApi.Interfaces;
 
-namespace AchievementCaretaker.SteamApi.Wrappers
+namespace AchievementCaretaker.SteamApi.Wrappers;
+
+public class SteamUser012 : NativeWrapper<ISteamUser012>
 {
-    public class SteamUser012 : NativeWrapper<ISteamUser012>
+    #region IsLoggedIn
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    private delegate bool NativeLoggedOn(IntPtr self);
+
+    public bool IsLoggedIn()
     {
-        #region IsLoggedIn
-        [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
-        [return: MarshalAs(UnmanagedType.I1)]
-        private delegate bool NativeLoggedOn(IntPtr self);
-
-        public bool IsLoggedIn()
-        {
-            return this.Call<bool, NativeLoggedOn>(this.Functions.LoggedOn, this.ObjectAddress);
-        }
-        #endregion
-
-        #region GetSteamID
-
-        // ISteamUser::GetSteamID() returns CSteamID -- a 64-bit POD -- *by value*,
-        // and the two platform ABIs disagree about how that happens:
-        //
-        //   MSVC x86/x64 : through a hidden pointer passed as an extra argument.
-        //   System V AMD64 (Linux, macOS) : directly in RAX, no extra argument.
-        //
-        // Getting it wrong does not fail loudly; the indirect form on Linux
-        // reads a slot nobody wrote and quietly returns 0, which then poisons
-        // everything keyed off the account id. Verified both ways against a
-        // live client on Windows and on Debian 13.
-        [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
-        private delegate void NativeGetSteamIdIndirect(IntPtr self, out ulong steamId);
-
-        [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
-        private delegate ulong NativeGetSteamIdDirect(IntPtr self);
-
-        // Cached here rather than through GetFunction: the base class keys its
-        // delegate cache on the function pointer alone, so two delegate types
-        // sharing one vtable slot would collide.
-        private NativeGetSteamIdIndirect _GetSteamIdIndirect;
-        private NativeGetSteamIdDirect _GetSteamIdDirect;
-
-        public ulong GetSteamId()
-        {
-            if (OperatingSystem.IsWindows())
-            {
-                this._GetSteamIdIndirect ??=
-                    Marshal.GetDelegateForFunctionPointer<NativeGetSteamIdIndirect>(this.Functions.GetSteamID);
-                this._GetSteamIdIndirect(this.ObjectAddress, out var steamId);
-                return steamId;
-            }
-
-            this._GetSteamIdDirect ??=
-                Marshal.GetDelegateForFunctionPointer<NativeGetSteamIdDirect>(this.Functions.GetSteamID);
-            return this._GetSteamIdDirect(this.ObjectAddress);
-        }
-
-        #endregion
+        return Call<bool, NativeLoggedOn>(Functions.LoggedOn, ObjectAddress);
     }
+    #endregion
+
+    #region GetSteamID
+
+    // ISteamUser::GetSteamID() returns CSteamID -- a 64-bit POD -- *by value*,
+    // and the two platform ABIs disagree about how that happens:
+    //
+    //   MSVC x86/x64 : through a hidden pointer passed as an extra argument.
+    //   System V AMD64 (Linux, macOS) : directly in RAX, no extra argument.
+    //
+    // Getting it wrong does not fail loudly; the indirect form on Linux
+    // reads a slot nobody wrote and quietly returns 0, which then poisons
+    // everything keyed off the account id. Verified both ways against a
+    // live client on Windows and on Debian 13.
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate void NativeGetSteamIdIndirect(IntPtr self, out ulong steamId);
+
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    private delegate ulong NativeGetSteamIdDirect(IntPtr self);
+
+    // Cached here rather than through GetFunction: the base class keys its
+    // delegate cache on the function pointer alone, so two delegate types
+    // sharing one vtable slot would collide.
+    private NativeGetSteamIdIndirect _getSteamIdIndirect;
+    private NativeGetSteamIdDirect _getSteamIdDirect;
+
+    public ulong GetSteamId()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            _getSteamIdIndirect ??=
+                Marshal.GetDelegateForFunctionPointer<NativeGetSteamIdIndirect>(Functions.GetSteamID);
+            _getSteamIdIndirect(ObjectAddress, out var steamId);
+            return steamId;
+        }
+
+        _getSteamIdDirect ??=
+            Marshal.GetDelegateForFunctionPointer<NativeGetSteamIdDirect>(Functions.GetSteamID);
+        return _getSteamIdDirect(ObjectAddress);
+    }
+
+    #endregion
 }

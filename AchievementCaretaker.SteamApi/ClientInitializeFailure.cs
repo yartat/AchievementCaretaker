@@ -27,16 +27,15 @@
  * 3. This notice may not be removed or altered from any source
  *    distribution.
  */
-namespace AchievementCaretaker.SteamApi
+namespace AchievementCaretaker.SteamApi;
+
+public enum ClientInitializeFailure : byte
 {
-    public enum ClientInitializeFailure : byte
-    {
-        Unknown = 0,
-        GetInstallPath,
-        Load,
-        CreateSteamClient,
-        CreateSteamPipe,
-        ConnectToGlobalUser,
-        AppIdMismatch,
-    }
+    Unknown = 0,
+    GetInstallPath,
+    Load,
+    CreateSteamClient,
+    CreateSteamPipe,
+    ConnectToGlobalUser,
+    AppIdMismatch,
 }

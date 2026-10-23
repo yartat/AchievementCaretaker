@@ -31,11 +31,10 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace AchievementCaretaker.SteamApi.Interfaces
+namespace AchievementCaretaker.SteamApi.Interfaces;
+
+[StructLayout(LayoutKind.Sequential, Pack = 1)]
+public struct ISteamApps001
 {
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public struct ISteamApps001
-    {
-        public IntPtr GetAppData;
-    }
+    public IntPtr GetAppData;
 }

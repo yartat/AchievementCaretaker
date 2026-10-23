@@ -31,11 +31,10 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace AchievementCaretaker.SteamApi
+namespace AchievementCaretaker.SteamApi;
+
+[StructLayout(LayoutKind.Sequential, Pack = 1, CharSet = CharSet.Ansi)]
+internal struct NativeClass
 {
-    [StructLayout(LayoutKind.Sequential, Pack = 1, CharSet = CharSet.Ansi)]
-    internal struct NativeClass
-    {
-        public IntPtr VirtualTable;
-    }
+    public IntPtr VirtualTable;
 }

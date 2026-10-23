@@ -7,6 +7,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:AchievementCaretaker.App.ViewModels"
+             xmlns:views="using:AchievementCaretaker.App.Views"
              xmlns:local="using:AchievementCaretaker.App.Library"
              x:Class="AchievementCaretaker.App.Views.StoreLibraryView"
              x:DataType="vm:StoreLibraryViewModel">
@@ -119,22 +120,16 @@
     <Panel IsVisible="{Binding IsSignedIn}">
 
       <!-- Tile view -->
-      <ListBox Name="_StoreTileBox"
-               Classes="plain"
-               Margin="0,0,0,8"
-               Padding="14,0"
-               IsVisible="{Binding IsTileView}"
-               ItemsSource="{Binding FilteredGames}"
-               SelectedItem="{Binding SelectedGame}"
-               ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-               DoubleTapped="OnGameDoubleTapped"
-               KeyDown="OnGameListKeyDown">
-        <ListBox.ItemsPanel>
-          <ItemsPanelTemplate>
-            <WrapPanel Orientation="Horizontal" />
-          </ItemsPanelTemplate>
-        </ListBox.ItemsPanel>
-        <ListBox.ItemTemplate>
+      <views:TileGrid Name="_storeTileBox"
+                    Margin="0,0,0,8"
+                    Padding="14,0"
+                    TileWidth="211" TileHeight="158"
+                    IsVisible="{Binding IsTileView}"
+                    ItemsSource="{Binding FilteredGames}"
+                    SelectedItem="{Binding SelectedGame}"
+                    DoubleTapped="OnGameDoubleTapped"
+                    KeyDown="OnGameListKeyDown">
+          <views:TileGrid.ItemTemplate>
           <DataTemplate x:DataType="local:StoreGameInfo">
             <StackPanel Width="183" Margin="2" Spacing="7">
               <Panel>
@@ -142,7 +137,7 @@
                         Background="{DynamicResource SamPlaceholderBrush}"
                         CornerRadius="5"
                         ClipToBounds="True">
-                  <Image Source="{Binding Logo}" Stretch="UniformToFill" />
+                  <views:LazyImage Loader="{Binding LogoLoader}" Stretch="UniformToFill" />
                 </Border>
                 <Border IsVisible="{Binding IsPerfect}"
                         HorizontalAlignment="Right" VerticalAlignment="Top"
@@ -185,8 +180,8 @@
                          ToolTip.Tip="Open the game, or use Load progress, to read its achievements" />
             </StackPanel>
           </DataTemplate>
-        </ListBox.ItemTemplate>
-      </ListBox>
+          </views:TileGrid.ItemTemplate>
+        </views:TileGrid>
 
       <!-- Content view -->
       <DockPanel IsVisible="{Binding IsContentView}">
@@ -221,7 +216,7 @@
           </Grid>
         </Border>
 
-        <ListBox Name="_StoreContentBox"
+        <ListBox Name="_storeContentBox"
                  Classes="plain"
                  Padding="14,0"
                  ItemsSource="{Binding FilteredGames}"
@@ -238,7 +233,7 @@
                         Background="{DynamicResource SamPlaceholderBrush}"
                         CornerRadius="2"
                         ClipToBounds="True">
-                  <Image Source="{Binding Logo}" Stretch="UniformToFill" />
+                  <views:LazyImage Loader="{Binding LogoLoader}" Stretch="UniformToFill" />
                 </Border>
                 <TextBlock Grid.Column="1"
                            Text="{Binding Name}"

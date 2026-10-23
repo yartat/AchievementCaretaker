@@ -30,46 +30,45 @@
 
 using Avalonia.Styling;
 
-namespace AchievementCaretaker.App.Common
+namespace AchievementCaretaker.App.Common;
+
+/// <summary>
+/// Which palette the windows use. <see cref="System"/> is the default and
+/// follows the operating system, which is what the application did before
+/// this was configurable.
+/// </summary>
+internal enum AppTheme
+{
+    System,
+    Light,
+    Dark,
+}
+
+internal static class AppThemes
 {
     /// <summary>
-    /// Which palette the windows use. <see cref="System"/> is the default and
-    /// follows the operating system, which is what the application did before
-    /// this was configurable.
+    /// <see cref="ThemeVariant.Default"/> is not a third palette — it is
+    /// what makes Avalonia track the system setting, so the variant can
+    /// still change while a window is open. That is why every themed brush
+    /// has to be a <c>{DynamicResource}</c>.
     /// </summary>
-    internal enum AppTheme
+    public static ThemeVariant ToVariant(AppTheme theme)
     {
-        System,
-        Light,
-        Dark,
+        return theme switch
+        {
+            AppTheme.Light => ThemeVariant.Light,
+            AppTheme.Dark => ThemeVariant.Dark,
+            _ => ThemeVariant.Default,
+        };
     }
 
-    internal static class AppThemes
+    public static string GetDisplayName(AppTheme theme)
     {
-        /// <summary>
-        /// <see cref="ThemeVariant.Default"/> is not a third palette — it is
-        /// what makes Avalonia track the system setting, so the variant can
-        /// still change while a window is open. That is why every themed brush
-        /// has to be a <c>{DynamicResource}</c>.
-        /// </summary>
-        public static ThemeVariant ToVariant(AppTheme theme)
+        return theme switch
         {
-            return theme switch
-            {
-                AppTheme.Light => ThemeVariant.Light,
-                AppTheme.Dark => ThemeVariant.Dark,
-                _ => ThemeVariant.Default,
-            };
-        }
-
-        public static string GetDisplayName(AppTheme theme)
-        {
-            return theme switch
-            {
-                AppTheme.Light => "Light",
-                AppTheme.Dark => "Dark",
-                _ => "Follow system",
-            };
-        }
+            AppTheme.Light => "Light",
+            AppTheme.Dark => "Dark",
+            _ => "Follow system",
+        };
     }
 }

@@ -6,7 +6,7 @@
 # Template for packaging/winget/build.sh, which fills in the @...@ fields.
 # The installer is the NSIS setup.exe from the release. It installs per user, so
 # no administrator is needed, and /S is its silent switch.
-PackageIdentifier: YaroslavVTatarenko.AchievementCaretaker
+PackageIdentifier: yartat.AchievementCaretaker
 PackageVersion: @VERSION@
 Scope: user
 InstallModes:

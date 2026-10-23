@@ -28,10 +28,9 @@
  *    distribution.
  */
 
-namespace AchievementCaretaker.SteamApi
+namespace AchievementCaretaker.SteamApi;
+
+public enum CallHandle : ulong
 {
-    public enum CallHandle : ulong
-    {
-        Invalid = 0,
-    }
+    Invalid = 0,
 }

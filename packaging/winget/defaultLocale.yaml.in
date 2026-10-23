@@ -4,7 +4,7 @@
 # See LICENSE in the repository root.
 #
 # Template for packaging/winget/build.sh, which fills in the @...@ fields.
-PackageIdentifier: YaroslavVTatarenko.AchievementCaretaker
+PackageIdentifier: yartat.AchievementCaretaker
 PackageVersion: @VERSION@
 PackageLocale: en-US
 Publisher: Yaroslav V Tatarenko
