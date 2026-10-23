@@ -39,18 +39,16 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Xml.XPath;
 using Avalonia.Media.Imaging;
-using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using AchievementCaretaker.App.Common;
 using AchievementCaretaker.App.Library;
 using AchievementCaretaker.Providers;
+using AchievementCaretaker.Providers.Models;
 using AchievementCaretaker.Providers.Steam;
 using AchievementCaretaker.Services;
 using static AchievementCaretaker.App.InvariantShorthand;
-using APITypes = AchievementCaretaker.SteamApi.Types;
 using AchievementCaretaker.Providers.Steam.Models;
 using AchievementCaretaker.Services.Models;
 
@@ -60,17 +58,16 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
 {
     private readonly IHttpClientFactory _http;
 
-    // Steam is looked for in the background and may not be there at all, so the
-    // client, its callback and the timer that pumps it only exist once it has been
-    // reached. Everything that uses them checks _steamClient first.
+    // Steam is looked for in the background and may not be there at all. The
+    // application holds no connection to it: the connector says whether a helper can
+    // reach it, and the library service asks the helper.
     private readonly SteamConnector _steam;
-    private SteamApi.Client _steamClient;
-    private SteamApi.Callbacks.AppDataChanged _appDataChangedCallback;
-    private DispatcherTimer _callbackTimer;
+    private readonly ISteamLibraryService _steamLibrary;
+    private bool _steamConnected;
 
     // Bumped each time Steam is connected or lost. A refresh remembers the number it
-    // started under, and throws away what it found if it has changed: on a dead pipe
-    // the ownership sweep sees nothing owned, and merging that would empty the library
+    // started under, and throws away what it found if it has changed: a scan that
+    // outlived its Steam saw nothing owned, and merging that would empty the library
     // and then the cache.
     private int _steamGeneration;
 
@@ -112,8 +109,6 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
     // Off until Steam has been reached: there is nothing to refresh from before that.
     [ObservableProperty]
     private bool _canRefresh;
-
-    private LibraryStats _libraryStats;
 
     private readonly AppSettings _settings;
     private readonly IGameRepository _cache;
@@ -548,7 +543,7 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
     /// </summary>
     public event Action<string> ErrorRaised;
 
-    public GamePickerViewModel(SteamConnector steam, IEnumerable<IStoreProvider> storeProviders, IGameRepository cache,
+    public GamePickerViewModel(SteamConnector steam, ISteamLibraryService steamLibrary, IEnumerable<IStoreProvider> storeProviders, IGameRepository cache,
         IDatabaseRelocator relocator,
         IStoreAchievementsService storeAchievements, IStoreLibraryService storeLibrary,
         IStoreSessionService storeSession,
@@ -556,6 +551,7 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
         IHttpClientFactory http)
     {
         _steam = steam;
+        _steamLibrary = steamLibrary;
         _storeProviders = storeProviders;
         _cache = cache;
         _relocator = relocator;
@@ -598,64 +594,40 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
 
     private void OnSteamChanged()
     {
-        // The connector's client is the truth. A different one, or none, means the one
+        // The connector's account is the truth. A different one, or none, means the one
         // held here is gone; a new one is a new connection.
-        var client = _steam.Client;
-        if (_steamClient != null && ReferenceEquals(client, _steamClient) == false)
+        var account = _steam.Account;
+        if (_steamConnected == true && account == null)
         {
             DisconnectSteam();
         }
-        if (client != null && _steamClient == null)
+        if (account != null && _steamConnected == false)
         {
-            ConnectSteam();
+            ConnectSteam(account.Value);
         }
         NotifySteamState();
     }
 
     /// <summary>
-    /// Steam has gone. Stop talking to it and keep what is on screen: the cached
-    /// games are still the best there is, and they are refreshed if Steam returns.
+    /// Steam has gone. Keep what is on screen: the cached games are still the best there
+    /// is, and they are refreshed if Steam returns.
     /// </summary>
     private void DisconnectSteam()
     {
         _steamGeneration++;
-
-        _callbackTimer?.Stop();
-        _callbackTimer = null;
-        if (_appDataChangedCallback != null)
-        {
-            _appDataChangedCallback.OnRun -= OnAppDataChanged;
-            _appDataChangedCallback = null;
-        }
-
-        _steamClient = null;
-        _libraryStats = null;
+        _steamConnected = false;
         CanRefresh = false;
         StatusText = $"Steam has stopped. Showing {_games.Count} games saved last time.";
     }
 
     /// <summary>
-    /// Steam is there: start listening to it and refresh the library. This is
-    /// what the constructor used to do unconditionally.
+    /// Steam is there: show its account's library and refresh it.
     /// </summary>
-    private void ConnectSteam()
+    private void ConnectSteam(uint account)
     {
-        var client = _steam.Client;
         _steamGeneration++;
-        _steamClient = client;
-
-        _appDataChangedCallback = client.CreateAndRegisterCallback<SteamApi.Callbacks.AppDataChanged>();
-        _appDataChangedCallback.OnRun += OnAppDataChanged;
-
-        var steamId = client.SteamUser.GetSteamId();
-        _libraryStats = LibraryStats.Create(steamId);
-        UseSteamAccount((uint)(steamId & 0xFFFFFFFF));
-
-        // The WinForms build pumped callbacks from a Forms.Timer; the
-        // dispatcher timer is the direct equivalent and keeps callbacks on
-        // the UI thread, which the rest of this class assumes.
-        _callbackTimer = new(TimeSpan.FromMilliseconds(200), DispatcherPriority.Background, OnTimer);
-        _callbackTimer.Start();
+        _steamConnected = true;
+        UseSteamAccount(account);
 
         Task initialLoad = RefreshLibraryAsync();
         GC.KeepAlive(initialLoad);
@@ -750,35 +722,10 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
 
     public void Shutdown()
     {
-        _callbackTimer?.Stop();
         _steam.Changed -= OnSteamChanged;
         _steam.Dispose();
         ShutdownStoreLibraries();
         // The cache belongs to the container, which disposes it.
-    }
-
-    private void OnTimer(object sender, EventArgs e)
-    {
-        _steamClient?.RunCallbacks(false);
-    }
-
-    private void OnAppDataChanged(APITypes.AppDataChanged param)
-    {
-        if (param.Result == false)
-        {
-            return;
-        }
-        if (_games.TryGetValue(param.Id, out var info) == false)
-        {
-            return;
-        }
-        // An empty answer is Steam going away mid-call, not a game with no name.
-        var name = _steamClient?.SteamApps001.GetAppData(info.Id, "name");
-        if (string.IsNullOrEmpty(name) == false)
-        {
-            info.Name = name;
-        }
-        EnqueueLogo(info);
     }
 
     #region Game list
@@ -786,7 +733,7 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
     [RelayCommand]
     private async Task RefreshAsync()
     {
-        if (_steamClient == null)
+        if (_steamConnected == false)
         {
             return;
         }
@@ -934,87 +881,55 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
     /// longer lists.
     /// </summary>
     /// <returns>
-    /// True only if the synchronization completed: the sweep and the stats pass both
-    /// ran to the end under the same Steam. Anything less may have added games but
-    /// never removes any, because what a cut-short check did not find says nothing
-    /// about ownership: once Steam is gone, every remaining call answers "not owned".
+    /// True only if the synchronization completed: the scan ran to the end under the same
+    /// Steam. Anything less may have added games but never removes any, because what a
+    /// cut-short check did not find says nothing about ownership: once Steam is gone,
+    /// every remaining question is answered "not owned".
     /// </returns>
     private async Task<bool> LoadGamesAsync()
     {
-        // This refresh's Steam: the field may be null by the time the sweep runs.
-        var client = _steamClient;
         var generation = _steamGeneration;
         var account = _steamAccount;
         CanRefresh = false;
         StatusText = "Downloading game list...";
         BeginProgress("Downloading game list...");
 
-        List<KeyValuePair<uint, string>> pairs;
+        LibraryScan scan;
         try
         {
-            var bytes = await _http.CreateClient().GetByteArrayAsync(new Uri("https://gib.me/sam/games.xml"));
-            pairs = ParseGameList(bytes);
+            var candidates = await _steamLibrary.GetPublishedGamesAsync();
+
+            StatusText = "Checking game ownership...";
+            var total = candidates.Count;
+
+            // Created here, on the UI thread, so its callback marshals back to it.
+            IProgress<LibraryScanProgress> sweep = new Progress<LibraryScanProgress>(
+                step => ReportProgress($"Checking ownership, {step.Examined:N0} of {step.Total:N0}...", step.Examined, step.Total));
+            ReportProgress($"Checking ownership, 0 of {total:N0}...", 0, total);
+
+            scan = await _steamLibrary.ScanAsync(candidates, sweep);
         }
-        catch (Exception e)
+        catch (ProviderException e)
         {
-            // The list could not be had, so nothing was learned about ownership and
-            // what is on screen stays as it is. It used to be replaced with Spacewar.
-            CanRefresh = true;
+            // Nothing was learned about ownership, so what is on screen stays as it is.
+            // A Steam that went away is the connector's news, not an error to click away.
+            CanRefresh = _steamConnected;
             EndProgress();
-            ErrorRaised?.Invoke(e.ToString());
+            if (generation == _steamGeneration)
+            {
+                ErrorRaised?.Invoke(e.Message);
+            }
             return false;
         }
 
-        StatusText = "Checking game ownership...";
-
-        // Created here, on the UI thread, so its callback marshals back to
-        // the UI thread from inside the Task.Run below.
-        var total = pairs.Count;
-        var step = ProgressStep(total);
-        IProgress<int> sweep = new Progress<int>(
-            done => ReportProgress($"Checking ownership, {done:N0} of {total:N0}...", done, total));
-        ReportProgress($"Checking ownership, 0 of {total:N0}...", 0, total);
-
-        // Ownership and name lookups are Steam client calls, one per app id
-        // over the whole published list, so they cannot run on the UI
-        // thread. The WinForms build ran them on a BackgroundWorker for the
-        // same reason.
-        var (owned, steamHeld) = await Task.Run(() =>
-        {
-            Dictionary<uint, (string Type, string Name)> result = new();
-            var examined = 0;
-            foreach (var kv in pairs)
-            {
-                examined++;
-                if (examined % step == 0)
-                {
-                    sweep.Report(examined);
-                }
-                if (result.ContainsKey(kv.Key) == true)
-                {
-                    continue;
-                }
-                if (client.SteamApps008.IsSubscribedApp(kv.Key) == false)
-                {
-                    continue;
-                }
-                result.Add(kv.Key, (kv.Value, client.SteamApps001.GetAppData(kv.Key, "name")));
-            }
-
-            // Asked here, the moment the last call is made, and not left to the watch:
-            // that notices a lost Steam every few seconds, and a sweep over the whole
-            // published list can finish inside that time against a pipe that died
-            // halfway, with every later call answering "not owned".
-            return (result, _steam.IsSteamStillRunning());
-        });
-
         // Complete only if it was the same Steam from start to finish.
-        var complete = steamHeld == true && generation == _steamGeneration;
+        var complete = scan.Complete == true && generation == _steamGeneration;
 
         // Steam came back as someone else while this ran: what it found belongs to the
         // account that was on screen when it started, not to the one on screen now.
-        if (account != _steamAccount)
+        if (account != _steamAccount || scan.Account != _steamAccount.ToString(CultureInfo.InvariantCulture))
         {
+            CanRefresh = _steamConnected;
             EndProgress();
             return false;
         }
@@ -1023,196 +938,62 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
         // than rebuilt, because the cached entries already on screen carry decoded
         // capsules and the user's own rating, and replacing them wholesale would blank
         // the window and re-download everything.
-        foreach (var kv in owned)
+        HashSet<uint> owned = new();
+        foreach (var game in scan.Games)
         {
-            if (_games.TryGetValue(kv.Key, out var existing) == true)
+            var id = uint.Parse(game.Id, CultureInfo.InvariantCulture);
+            owned.Add(id);
+            if (_games.TryGetValue(id, out var info) == false)
             {
-                // Never trade a known name for the placeholder: a name asked for just
-                // as Steam went away comes back empty.
-                if (string.IsNullOrEmpty(kv.Value.Name) == false)
+                info = new GameInfo(id, game.Type ?? "normal")
                 {
-                    existing.Name = kv.Value.Name;
-                }
+                    Name = game.Title ?? "",
+                    OwnRating = _ratingStore.Get(id),
+                };
+                _games[id] = info;
+            }
+
+            // Never trade a known name for the placeholder: a name asked for just as
+            // Steam went away comes back empty.
+            if (string.IsNullOrEmpty(game.Title) == false)
+            {
+                info.Name = game.Title;
+            }
+
+            // The details of a cut-short scan may all be empty, and applying them would
+            // blank what the cache has.
+            if (complete == false)
+            {
                 continue;
             }
-            _games[kv.Key] = new GameInfo(kv.Key, kv.Value.Type)
-            {
-                Name = kv.Value.Name,
-                OwnRating = _ratingStore.Get(kv.Key),
-            };
+
+            info.ImageUrl = game.ImageUrl ?? info.ImageUrl;
+            info.ReleaseDate = game.ReleaseDate?.LocalDateTime;
+            info.SteamRatingPercent = game.RatingPercent;
+            info.SteamRatingScore = game.RatingScore;
+            info.Stats = game.PlaytimeMinutes.HasValue == true
+                ? new GameStats(
+                    game.PlaytimeMinutes.Value,
+                    game.AchievementsTotal ?? -1,
+                    game.AchievementsEarned ?? -1,
+                    game.LastPlayed?.LocalDateTime)
+                : null;
         }
 
-        // What Steam no longer lists. Worked out now, applied only once everything below
-        // has finished too.
-        var gone = complete == true
-            ? _games.Keys.Where(id => owned.ContainsKey(id) == false).ToList()
-            : new List<uint>();
+        // Only a finished scan may drop a game.
+        if (complete == true)
+        {
+            foreach (var id in _games.Keys.Where(id => owned.Contains(id) == false).ToList())
+            {
+                _games.Remove(id);
+            }
+        }
 
+        CanRefresh = _steamConnected;
+        EndProgress();
         RefreshCollectionCounts();
         RefreshGames();
-        CanRefresh = _steamClient != null;
-        EndProgress();
-
-        if (complete == false)
-        {
-            return false;
-        }
-
-        if (await LoadLibraryStatsAsync() == false)
-        {
-            return false;
-        }
-
-        // The sweep and the stats pass both finished under the same Steam. Only now may
-        // a game go.
-        foreach (var id in gone)
-        {
-            _games.Remove(id);
-        }
-        if (gone.Count > 0)
-        {
-            RefreshCollectionCounts();
-            RefreshGames();
-        }
-        return true;
-    }
-
-    /// <summary>
-    /// Reads playtime and achievement counts for every owned game off disk.
-    /// Done eagerly in the background rather than on first switch to the
-    /// content view, so the view has data the moment it is shown. It is
-    /// file I/O over a few hundred small files, so it stays off the UI
-    /// thread.
-    /// </summary>
-    private async Task<bool> LoadLibraryStatsAsync()
-    {
-        var games = _games.Values.ToList();
-        var client = _steamClient;
-        var libraryStats = _libraryStats;
-        var generation = _steamGeneration;
-
-        // Own ratings are already in memory; apply them before anything
-        // that might sort on them.
-        foreach (var info in games)
-        {
-            info.OwnRating = _ratingStore.Get(info.Id);
-        }
-
-        var total = games.Count;
-        var step = ProgressStep(total);
-        IProgress<int> pass = new Progress<int>(
-            done => ReportProgress($"Reading library stats, {done:N0} of {total:N0}...", done, total));
-        BeginProgress("Reading library stats...");
-        ReportProgress($"Reading library stats, 0 of {total:N0}...", 0, total);
-
-        // Both halves are slow for a few hundred games: file I/O for the
-        // caches, and two Steam calls per app for the store metadata.
-        var (loaded, steamHeld) = await Task.Run(() =>
-        {
-            Dictionary<uint, (GameStats? Stats, int? Percent, int? Score, DateTime? Released)> result = new();
-            var done = 0;
-            foreach (var info in games)
-            {
-                done++;
-                if (done % step == 0)
-                {
-                    pass.Report(done);
-                }
-                var stats = libraryStats?.TryGet(info.Id);
-                result[info.Id] = (
-                    stats,
-                    ParseInt(client.SteamApps001.GetAppData(info.Id, "review_percentage")),
-                    ParseInt(client.SteamApps001.GetAppData(info.Id, "review_score")),
-                    ParseUnixDate(client.SteamApps001.GetAppData(info.Id, "steam_release_date")));
-            }
-            return (result, _steam.IsSteamStillRunning());
-        });
-
-        // Without Steam the review scores and release dates all came back empty, and
-        // applying them would blank what the cache has.
-        if (steamHeld == false || generation != _steamGeneration)
-        {
-            EndProgress();
-            return false;
-        }
-
-        foreach (var info in games)
-        {
-            if (loaded.TryGetValue(info.Id, out var value) == false)
-            {
-                continue;
-            }
-            info.Stats = value.Stats;
-            info.SteamRatingPercent = value.Percent;
-            info.SteamRatingScore = value.Score;
-            info.ReleaseDate = value.Released;
-        }
-
-        EndProgress();
-        RefreshCollectionCounts();
-
-        // Completion only becomes known here, so a collection or sort that
-        // depends on it has to be re-evaluated.
-        if (SortField != GameSortField.Name ||
-            SelectedCollection != GameCollection.All)
-        {
-            RefreshGames();
-        }
-
-        return true;
-    }
-
-    private static int? ParseInt(string value)
-    {
-        return string.IsNullOrEmpty(value) == false &&
-               int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
-            ? parsed
-            : null;
-    }
-
-    private static DateTime? ParseUnixDate(string value)
-    {
-        return string.IsNullOrEmpty(value) == false &&
-               long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var seconds) &&
-               seconds > 0
-            ? DateTimeOffset.FromUnixTimeSeconds(seconds).LocalDateTime
-            : null;
-    }
-
-    private static List<KeyValuePair<uint, string>> ParseGameList(byte[] bytes)
-    {
-        List<KeyValuePair<uint, string>> pairs = new();
-        using MemoryStream stream = new(bytes, false);
-        XPathDocument document = new(stream);
-        var navigator = document.CreateNavigator();
-        var nodes = navigator.Select("/games/game");
-        while (nodes.MoveNext() == true)
-        {
-            var type = nodes.Current.GetAttribute("type", "");
-            if (string.IsNullOrEmpty(type) == true)
-            {
-                type = "normal";
-            }
-            pairs.Add(new((uint)nodes.Current.ValueAsLong, type));
-        }
-        return pairs;
-    }
-
-    private void AddGame(uint id, string type)
-    {
-        if (_games.ContainsKey(id) == true)
-        {
-            return;
-        }
-        if (_steamClient == null || _steamClient.SteamApps008.IsSubscribedApp(id) == false)
-        {
-            return;
-        }
-        GameInfo info = new(id, type)
-        {
-            Name = _steamClient.SteamApps001.GetAppData(id, "name"),
-        };
-        _games.Add(id, info);
+        return complete;
     }
 
     private void RefreshGames()
@@ -1272,7 +1053,7 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
     }
 
     [RelayCommand]
-    private void AddGameById()
+    private async Task AddGameByIdAsync()
     {
         if (uint.TryParse(AddGameText, out var id) == false)
         {
@@ -1280,13 +1061,23 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
             return;
         }
 
-        if (_steamClient == null)
+        if (_steamConnected == false)
         {
             ErrorRaised?.Invoke("Steam is not running, so a game cannot be looked up by its ID.");
             return;
         }
 
-        if (_steamClient.SteamApps008.IsSubscribedApp(id) == false)
+        StoreGame game;
+        try
+        {
+            game = await _steamLibrary.FindOwnedAsync(id);
+        }
+        catch (ProviderException e)
+        {
+            ErrorRaised?.Invoke(e.Message);
+            return;
+        }
+        if (game == null)
         {
             ErrorRaised?.Invoke("You don't own that game.");
             return;
@@ -1300,7 +1091,12 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
 
         AddGameText = "";
         _games.Clear();
-        AddGame(id, "normal");
+        _games[id] = new GameInfo(id, game.Type ?? "normal")
+        {
+            Name = game.Title ?? "",
+            ImageUrl = game.ImageUrl,
+            OwnRating = _ratingStore.Get(id),
+        };
         ShowGames = true;
         RefreshGames();
     }
@@ -1316,7 +1112,7 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
 
         // The helper that reads and writes the achievements has to reach Steam itself, and
         // would only report that it could not; say so here instead.
-        if (_steamClient == null)
+        if (_steamConnected == false)
         {
             ErrorRaised?.Invoke("Steam is not running. The achievement editor needs it: start Steam and try again.");
             return;
@@ -1329,34 +1125,6 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
 
     #region Logos
 
-    private string GetGameImageUrl(uint id)
-    {
-        var currentLanguage = _steamClient.SteamApps008.GetCurrentGameLanguage();
-
-        var candidate = _steamClient.SteamApps001.GetAppData(id, _($"small_capsule/{currentLanguage}"));
-        if (string.IsNullOrEmpty(candidate) == false)
-        {
-            return _($"https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/{id}/{candidate}");
-        }
-
-        if (currentLanguage != "english")
-        {
-            candidate = _steamClient.SteamApps001.GetAppData(id, "small_capsule/english");
-            if (string.IsNullOrEmpty(candidate) == false)
-            {
-                return _($"https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/{id}/{candidate}");
-            }
-        }
-
-        candidate = _steamClient.SteamApps001.GetAppData(id, "logo");
-        if (string.IsNullOrEmpty(candidate) == false)
-        {
-            return _($"https://cdn.steamstatic.com/steamcommunity/public/images/apps/{id}/{candidate}.jpg");
-        }
-
-        return null;
-    }
-
     private void EnqueueLogo(GameInfo info)
     {
         if (info.Logo != null)
@@ -1364,14 +1132,11 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
             return;
         }
 
-        // Steam knows the current capsule; without it, the address saved with the game.
-        var imageUrl = _steamClient != null ? GetGameImageUrl(info.Id) : info.ImageUrl;
+        var imageUrl = info.ImageUrl;
         if (string.IsNullOrEmpty(imageUrl) == true)
         {
             return;
         }
-
-        info.ImageUrl = imageUrl;
 
         if (_logosAttempted.Add(imageUrl) == false)
         {

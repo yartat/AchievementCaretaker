@@ -49,8 +49,10 @@ for one game at a time:
 hands it a per-launch certificate and token on its standard input, and talks to it over gRPC on
 `127.0.0.1` with TLS; the helper reads the achievements and statistics through `SteamApi.Client`,
 sets and stores them, and exits when its standard input closes. The helper is kept for 30 s after
-its last call so a read, the statistics and a commit start Steam once. The library's own Steam half
-(ownership sweep, `LibraryStats`, the watch) stays in the library process. A game of another store
+its last call so a read, the statistics and a commit start Steam once. The library is the helper's
+too: started with app ID 0 it checks the published list against the account and reports the owned
+games with everything Steam's client and cache files know (`ILibraryScanProvider`); the application
+itself holds no Steam client. A game of another store
 opens in the same window without a helper at all: its HTTPS service has no per-process scope.
 
 ## Project layout
@@ -60,8 +62,7 @@ AchievementCaretaker.App/
   Program.cs            entry point, command-line dispatch (the library, or the Steam helper)
   App.axaml[.cs]        styles, theme, window selection
   InvariantShorthand.cs the _($"…") invariant-culture helper
-  Common/               AppSettings, IconCache, StoreImageCache,
-                        SteamConnector, SteamWatch
+  Common/               AppSettings, IconCache, StoreImageCache
   Library/              GameInfo, LibraryStats, RatingStore, OwnRating,
                         StoreGameInfo
   Achievements/         AchievementFilter, StoreAchievementItem
@@ -145,15 +146,16 @@ window — the library, or a `MessageWindow` carrying the error. Avalonia has no
 window when the command line is wrong.
 
 The library does not do the handshake at start. It has other sources than Steam, so it opens at
-once, and `SteamConnector` keeps trying to create the Steam pipe in the background. Only when
-that works does the Steam library refresh; until then the Steam source shows the games saved
+once, and `SteamConnector` (in the services layer) keeps asking in the background: when the machine
+says Steam is running it starts a helper to name the logged-in account. Only when that works does
+the Steam library refresh; until then the Steam source shows the games saved
 last time under a "No active Steam" banner, with the reason.
 
 It goes on watching after it connects. A pipe to a Steam that quit does not say so, but the
 Steam process does, so the connector compares the process id taken at connection with the one
-running now. When Steam goes, the window stops talking to it, keeps the games on screen, shows
-the banner again, and the search starts over; a refresh that was running when it happened
-discards its results rather than treat "nothing owned" on a dead pipe as the truth.
+running now. When Steam goes, the window keeps the games on screen, shows the banner again, and the
+search starts over; a refresh that was running when it happened discards its results rather than
+treat "nothing owned" as the truth.
 
 **Only a finished synchronization may delete a game.** The ownership sweep asks Steam about
 every published app ID, and once Steam is gone every remaining call answers "not owned", so a

@@ -5,6 +5,7 @@
  * See LICENSE in the repository root.
  */
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -34,4 +35,16 @@ public interface ISteamAppBackend
         CancellationToken cancellationToken);
 
     Task ResetAsync(bool includeAchievements, CancellationToken cancellationToken);
+
+    /// <summary>Which of the candidates the account owns, with what Steam knows about each (the helper for app id 0).</summary>
+    Task<LibraryScan> ScanLibraryAsync(
+        IReadOnlyCollection<LibraryCandidate> candidates,
+        IProgress<LibraryScanProgress> progress,
+        CancellationToken cancellationToken);
+
+    /// <summary>The 32-bit account id Steam is logged in as.</summary>
+    Task<string> GetAccountAsync(CancellationToken cancellationToken);
+
+    /// <summary>The candidate as an owned game, or null when the account does not own it.</summary>
+    Task<StoreGame> FindOwnedAsync(LibraryCandidate candidate, CancellationToken cancellationToken);
 }

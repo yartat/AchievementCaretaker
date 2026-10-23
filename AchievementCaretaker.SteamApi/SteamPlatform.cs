@@ -61,6 +61,20 @@ namespace AchievementCaretaker.SteamApi;
 public static class SteamPlatform
 {
     /// <summary>
+    /// Whether the compiler that built the Steam client lists the overloads of a virtual function
+    /// in reverse declaration order, which is what MSVC does and GCC and Clang do not.
+    /// </summary>
+    /// <remarks>
+    /// <c>ISteamUserStats</c> declares <c>GetStat(int*)</c> before <c>GetStat(float*)</c> (and the same
+    /// for <c>SetStat</c>). The vtable structs here are laid out in the order the Windows client
+    /// has, float first; on Linux and macOS the same two slots hold the integer and the float
+    /// overloads the other way round. Reading an integer statistic through the float slot answers
+    /// false, which is how this was found. See invariant #5 in CLAUDE.md. The decision is made
+    /// here, once, and <see cref="Wrappers.SteamUserStats013"/> asks.
+    /// </remarks>
+    public static bool ReversesOverloadedSlots { get; } = OperatingSystem.IsWindows();
+
+    /// <summary>
     /// False when Valve ships no Steam client for this CPU architecture.
     /// </summary>
     public static bool IsArchitectureSupported =>

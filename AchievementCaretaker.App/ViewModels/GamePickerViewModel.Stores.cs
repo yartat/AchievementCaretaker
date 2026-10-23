@@ -71,7 +71,7 @@ internal sealed partial class GamePickerViewModel : IProgressSink
     public bool IsSteamSelected => SelectedStoreLibrary == null;
 
     /// <summary>False until the connector has reached Steam. Cached games are shown meanwhile.</summary>
-    public bool IsSteamConnected => _steamClient != null;
+    public bool IsSteamConnected => _steamConnected;
 
     /// <summary>The Steam source is showing, and Steam is not there to refresh it from.</summary>
     public bool ShowSteamBanner => IsSteamSelected == true && IsSteamConnected == false;

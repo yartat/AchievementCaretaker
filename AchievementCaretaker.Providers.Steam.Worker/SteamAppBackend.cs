@@ -36,6 +36,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using AchievementCaretaker.Providers;
 using AchievementCaretaker.Providers.Models;
+using AchievementCaretaker.Providers.Steam.Models;
 
 namespace AchievementCaretaker.Providers.Steam;
 
@@ -190,6 +191,132 @@ public sealed class SteamAppBackend : ISteamAppBackend
             throw new ProviderException("store_failed", "Steam would not store the changes.");
         }
     }
+
+    #region Library
+
+    public Task<LibraryScan> ScanLibraryAsync(
+        IReadOnlyCollection<LibraryCandidate> candidates,
+        IProgress<LibraryScanProgress> progress,
+        CancellationToken cancellationToken)
+    {
+        // Every call is a Steam client call, one per candidate over the whole published list: off
+        // the caller's thread, as the library window's sweep always was.
+        return Task.Run(() => Scan(candidates, progress, cancellationToken), cancellationToken);
+    }
+
+    private LibraryScan Scan(
+        IReadOnlyCollection<LibraryCandidate> candidates,
+        IProgress<LibraryScanProgress> progress,
+        CancellationToken cancellationToken)
+    {
+        List<StoreGame> owned = new();
+        HashSet<string> seen = new();
+        var total = candidates.Count;
+        var step = Math.Max(1, total / 200);
+        var examined = 0;
+
+        foreach (var candidate in candidates)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            examined++;
+            if (examined % step == 0)
+            {
+                progress?.Report(new LibraryScanProgress(examined, total));
+            }
+
+            if (uint.TryParse(candidate.Id, NumberStyles.None, CultureInfo.InvariantCulture, out var appId) == false ||
+                seen.Add(candidate.Id) == false ||
+                _gateway.IsSubscribed(appId) == false)
+            {
+                continue;
+            }
+            owned.Add(Describe(appId, candidate.Type));
+        }
+        progress?.Report(new LibraryScanProgress(total, total));
+
+        // Asked here, the moment the last call is made: a scan that ran against a dead pipe is
+        // not a scan, however many "not owned" it collected.
+        var complete = _gateway.IsSteamStillRunning();
+        return new LibraryScan(AccountOf(_gateway.SteamId), owned, complete);
+    }
+
+    public Task<string> GetAccountAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(AccountOf(_gateway.SteamId));
+
+    private static string AccountOf(ulong steamId) => ((uint)(steamId & 0xFFFFFFFFUL)).ToString(CultureInfo.InvariantCulture);
+
+    public Task<StoreGame> FindOwnedAsync(LibraryCandidate candidate, CancellationToken cancellationToken)
+    {
+        var found = uint.TryParse(candidate.Id, NumberStyles.None, CultureInfo.InvariantCulture, out var appId) == true &&
+                    _gateway.IsSubscribed(appId) == true
+            ? Describe(appId, candidate.Type)
+            : null;
+        return Task.FromResult(found);
+    }
+
+    private StoreGame Describe(uint appId, string type)
+    {
+        var id = appId.ToString(CultureInfo.InvariantCulture);
+        var stats = _gateway.GetCachedStats(appId);
+        return new StoreGame(
+            SteamProvider.ProviderId,
+            id,
+            id,
+            _gateway.GetAppData(appId, "name"),
+            ImageUrl(appId),
+            string.IsNullOrEmpty(type) == true ? "normal" : type,
+            ParseUnixDate(_gateway.GetAppData(appId, "steam_release_date")),
+            ParseInt(_gateway.GetAppData(appId, "review_percentage")),
+            ParseInt(_gateway.GetAppData(appId, "review_score")),
+            stats?.PlaytimeMinutes,
+            stats?.LastPlayed == null ? null : new DateTimeOffset(stats.Value.LastPlayed.Value),
+            stats?.AchievementsTotal >= 0 ? stats.Value.AchievementsTotal : null,
+            stats?.AchievementsEarned >= 0 ? stats.Value.AchievementsEarned : null);
+    }
+
+    /// <summary>
+    /// The small capsule in the game's language, then in English, then the old logo: the order the
+    /// library window always looked in.
+    /// </summary>
+    private string ImageUrl(uint appId)
+    {
+        var language = _gateway.Language;
+
+        var candidate = _gateway.GetAppData(appId, $"small_capsule/{language}");
+        if (string.IsNullOrEmpty(candidate) == false)
+        {
+            return $"https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/{appId}/{candidate}";
+        }
+
+        if (language != "english")
+        {
+            candidate = _gateway.GetAppData(appId, "small_capsule/english");
+            if (string.IsNullOrEmpty(candidate) == false)
+            {
+                return $"https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/{appId}/{candidate}";
+            }
+        }
+
+        candidate = _gateway.GetAppData(appId, "logo");
+        return string.IsNullOrEmpty(candidate) == false
+            ? $"https://cdn.steamstatic.com/steamcommunity/public/images/apps/{appId}/{candidate}.jpg"
+            : null;
+    }
+
+    private static int? ParseInt(string value) =>
+        string.IsNullOrEmpty(value) == false &&
+        int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : null;
+
+    private static DateTimeOffset? ParseUnixDate(string value) =>
+        string.IsNullOrEmpty(value) == false &&
+        long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var seconds) &&
+        seconds > 0
+            ? DateTimeOffset.FromUnixTimeSeconds(seconds)
+            : null;
+
+    #endregion
 
     public async Task ResetAsync(bool includeAchievements, CancellationToken cancellationToken)
     {

@@ -31,6 +31,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using AchievementCaretaker.Providers.Steam.Models;
 using AchievementCaretaker.SteamApi;
 
 namespace AchievementCaretaker.Providers.Steam;
@@ -71,4 +72,27 @@ public interface ISteamAppGateway : IDisposable
     bool ResetAllStats(bool includeAchievements);
 
     bool StoreStats();
+
+    #region Library (the helper started for app id 0)
+
+    /// <summary>The 64-bit id of the account Steam is logged in as.</summary>
+    ulong SteamId { get; }
+
+    /// <summary>Whether the account owns the app. Answers false for everything once Steam is gone.</summary>
+    bool IsSubscribed(uint appId);
+
+    /// <summary>One of Steam's metadata keys for an app (<c>name</c>, <c>small_capsule/english</c>, ...), or null.</summary>
+    string GetAppData(uint appId, string key);
+
+    /// <summary>What Steam's own cache files say about a game: playtime and achievement counts. Null when they say nothing.</summary>
+    GameStats? GetCachedStats(uint appId);
+
+    /// <summary>
+    /// Whether the Steam this was connected to is still the one running, asked directly and now.
+    /// A scan over the whole published list can finish against a pipe that died halfway, with every
+    /// later call answering "not owned"; a scan asks this when it ends.
+    /// </summary>
+    bool IsSteamStillRunning();
+
+    #endregion
 }

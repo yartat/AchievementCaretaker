@@ -36,6 +36,17 @@ namespace AchievementCaretaker.SteamApi.Wrappers;
 
 public class SteamUserStats013 : NativeWrapper<ISteamUserStats013>
 {
+    /// <summary>
+    /// The slot of one overload of a pair. <paramref name="floatField"/> and
+    /// <paramref name="integerField"/> are the two fields of the struct, which is in the Windows
+    /// client's order; elsewhere the field named for one holds the other. See
+    /// <see cref="SteamPlatform.ReversesOverloadedSlots"/>.
+    /// </summary>
+    private static IntPtr Overload(IntPtr floatField, IntPtr integerField, bool wantInteger) =>
+        SteamPlatform.ReversesOverloadedSlots == true
+            ? (wantInteger == true ? integerField : floatField)
+            : (wantInteger == true ? floatField : integerField);
+
     #region GetStatValue (int)
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     [return: MarshalAs(UnmanagedType.I1)]
@@ -45,7 +56,7 @@ public class SteamUserStats013 : NativeWrapper<ISteamUserStats013>
     {
         using (var nativeName = NativeStrings.StringToStringHandle(name))
         {
-            var call = GetFunction<NativeGetStatInt>(Functions.GetStatInteger);
+            var call = GetFunction<NativeGetStatInt>(Overload(Functions.GetStatFloat, Functions.GetStatInteger, wantInteger: true));
             return call(ObjectAddress, nativeName.Handle, out value);
         }
     }
@@ -60,7 +71,7 @@ public class SteamUserStats013 : NativeWrapper<ISteamUserStats013>
     {
         using (var nativeName = NativeStrings.StringToStringHandle(name))
         {
-            var call = GetFunction<NativeGetStatFloat>(Functions.GetStatFloat);
+            var call = GetFunction<NativeGetStatFloat>(Overload(Functions.GetStatFloat, Functions.GetStatInteger, wantInteger: false));
             return call(ObjectAddress, nativeName.Handle, out value);
         }
     }
@@ -76,7 +87,7 @@ public class SteamUserStats013 : NativeWrapper<ISteamUserStats013>
         using (var nativeName = NativeStrings.StringToStringHandle(name))
         {
             return Call<bool, NativeSetStatInt>(
-                Functions.SetStatInteger,
+                Overload(Functions.SetStatFloat, Functions.SetStatInteger, wantInteger: true),
                 ObjectAddress,
                 nativeName.Handle,
                 value);
@@ -94,7 +105,7 @@ public class SteamUserStats013 : NativeWrapper<ISteamUserStats013>
         using (var nativeName = NativeStrings.StringToStringHandle(name))
         {
             return Call<bool, NativeSetStatFloat>(
-                Functions.SetStatFloat,
+                Overload(Functions.SetStatFloat, Functions.SetStatInteger, wantInteger: false),
                 ObjectAddress,
                 nativeName.Handle,
                 value);

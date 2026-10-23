@@ -16,6 +16,7 @@ using AchievementCaretaker.Providers;
 using AchievementCaretaker.SteamApi;
 using Xunit;
 using AchievementCaretaker.Providers.Models;
+using AchievementCaretaker.Providers.Steam.Models;
 
 namespace AchievementCaretaker.Providers.Steam.Tests;
 
@@ -178,6 +179,12 @@ public sealed class SteamAppBackendTests
             Calls.Add("store");
             return FailStore == false;
         }
+
+        public ulong SteamId => 0;
+        public bool IsSubscribed(uint appId) => false;
+        public string GetAppData(uint appId, string key) => null;
+        public GameStats? GetCachedStats(uint appId) => null;
+        public bool IsSteamStillRunning() => true;
 
         public void Dispose()
         {

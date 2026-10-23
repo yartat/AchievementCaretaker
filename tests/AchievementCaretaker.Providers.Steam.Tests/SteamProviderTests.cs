@@ -7,6 +7,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using AchievementCaretaker.Providers;
@@ -75,6 +76,41 @@ public sealed class SteamProviderTests
             ResetAchievements = includeAchievements;
             return Task.CompletedTask;
         }
+
+        public IReadOnlyCollection<LibraryCandidate> Scanned { get; private set; }
+        public bool ScanIsComplete { get; set; } = true;
+
+        public Task<LibraryScan> ScanLibraryAsync(
+            IReadOnlyCollection<LibraryCandidate> candidates, IProgress<LibraryScanProgress> progress, CancellationToken cancellationToken)
+        {
+            if (Failure != null)
+            {
+                throw Failure;
+            }
+            Scanned = candidates;
+            progress?.Report(new LibraryScanProgress(1, 2));
+            progress?.Report(new LibraryScanProgress(2, 2));
+            IReadOnlyList<StoreGame> games = new[]
+            {
+                new StoreGame(
+                    "steam", "480", "480", "Spacewar", "https://img/480", "normal",
+                    DateTimeOffset.FromUnixTimeSeconds(1_300_000_000), 93, 8, 120, DateTimeOffset.FromUnixTimeSeconds(1_700_000_000), 5, 2),
+                new StoreGame("steam", "7", "7", null, null, "demo"),
+            };
+            return Task.FromResult(new LibraryScan("12345", games, ScanIsComplete));
+        }
+
+        public Task<string> GetAccountAsync(CancellationToken cancellationToken)
+        {
+            if (Failure != null)
+            {
+                throw Failure;
+            }
+            return Task.FromResult("12345");
+        }
+
+        public Task<StoreGame> FindOwnedAsync(LibraryCandidate candidate, CancellationToken cancellationToken) =>
+            Task.FromResult(candidate.Id == "480" ? new StoreGame("steam", "480", "480", "Spacewar", null, candidate.Type) : null);
     }
 
     /// <summary>Starts the real server in this process, as the process launcher would start it in another.</summary>
@@ -267,6 +303,115 @@ public sealed class SteamProviderTests
 
         Assert.Equal("bad_game", error.ErrorCode);
         Assert.Equal(0, launcher.LastAppId);
+    }
+
+    [Fact]
+    public async Task A_library_scan_round_trips_its_games_details_and_progress()
+    {
+        var backend = new FakeBackend();
+        await using var provider = new SteamProvider(new InProcessLauncher(backend));
+        List<LibraryScanProgress> progress = new();
+
+        var scan = await provider.ScanLibraryAsync(
+            new[] { new LibraryCandidate("480", "normal"), new LibraryCandidate("7", "demo") },
+            new Progress<LibraryScanProgress>(progress.Add),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("12345", scan.Account);
+        Assert.True(scan.Complete);
+        Assert.Equal(2, scan.Games.Count);
+        Assert.Equal(
+            new StoreGame(
+                "steam", "480", "480", "Spacewar", "https://img/480", "normal",
+                DateTimeOffset.FromUnixTimeSeconds(1_300_000_000), 93, 8, 120, DateTimeOffset.FromUnixTimeSeconds(1_700_000_000), 5, 2),
+            scan.Games[0]);
+
+        // What the store does not know stays unknown: no name, no art, no numbers.
+        var bare = scan.Games[1];
+        Assert.Null(bare.Title);
+        Assert.Null(bare.ImageUrl);
+        Assert.Equal("demo", bare.Type);
+        Assert.Null(bare.ReleaseDate);
+        Assert.Null(bare.PlaytimeMinutes);
+        Assert.Null(bare.AchievementsTotal);
+
+        Assert.Equal(new[] { "480", "7" }, backend.Scanned.Select(c => c.Id));
+
+        // Progress<T> delivers on the thread pool, a moment after the call that reported.
+        for (var wait = 0; wait < 100 && progress.Contains(new LibraryScanProgress(2, 2)) == false; wait++)
+        {
+            await Task.Delay(50, TestContext.Current.CancellationToken);
+        }
+        Assert.Contains(new LibraryScanProgress(2, 2), progress);
+    }
+
+    [Fact]
+    public async Task A_scan_cut_short_says_it_was_not_complete()
+    {
+        await using var provider = new SteamProvider(new InProcessLauncher(new FakeBackend { ScanIsComplete = false }));
+
+        var scan = await provider.ScanLibraryAsync(
+            new[] { new LibraryCandidate("480", "normal") }, null, TestContext.Current.CancellationToken);
+
+        Assert.False(scan.Complete);
+    }
+
+    [Fact]
+    public async Task A_scan_always_starts_a_helper_of_its_own()
+    {
+        var launcher = new InProcessLauncher(new FakeBackend());
+        await using var provider = new SteamProvider(launcher);
+        var token = TestContext.Current.CancellationToken;
+
+        await provider.ScanLibraryAsync(new[] { new LibraryCandidate("480", "normal") }, null, token);
+        await provider.ScanLibraryAsync(new[] { new LibraryCandidate("480", "normal") }, null, token);
+
+        Assert.Equal(2, launcher.StartCount);
+        Assert.Equal(0, launcher.LastAppId);
+    }
+
+    [Fact]
+    public async Task A_scan_failure_keeps_its_code_across_the_wire()
+    {
+        await using var provider = new SteamProvider(new InProcessLauncher(
+            new FakeBackend { Failure = new ProviderException("steam_gone", "Steam went away") }));
+
+        var error = await Assert.ThrowsAsync<ProviderException>(() => provider.ScanLibraryAsync(
+            new[] { new LibraryCandidate("480", "normal") }, null, TestContext.Current.CancellationToken));
+
+        Assert.Equal("steam_gone", error.ErrorCode);
+    }
+
+    [Fact]
+    public async Task An_owned_game_is_found_and_one_that_is_not_is_null()
+    {
+        await using var provider = new SteamProvider(new InProcessLauncher(new FakeBackend()));
+        var token = TestContext.Current.CancellationToken;
+
+        var owned = await provider.FindOwnedAsync(new LibraryCandidate("480", "normal"), token);
+        var other = await provider.FindOwnedAsync(new LibraryCandidate("999", "normal"), token);
+
+        Assert.Equal("Spacewar", owned.Title);
+        Assert.Null(other);
+    }
+
+    [Fact]
+    public async Task The_account_comes_back_and_a_failure_keeps_its_reason()
+    {
+        await using var provider = new SteamProvider(new InProcessLauncher(new FakeBackend()));
+        Assert.Equal("12345", await provider.GetAccountAsync(TestContext.Current.CancellationToken));
+
+        await using var broken = new SteamProvider(new InProcessLauncher(new FakeBackend { Failure = new ProviderException("steam_gone", "Steam is not running.") }));
+        var error = await Assert.ThrowsAsync<ProviderException>(() => broken.GetAccountAsync(TestContext.Current.CancellationToken));
+        Assert.Equal("Steam is not running.", error.Message);
+    }
+
+    [Fact]
+    public async Task Listing_through_the_plain_interface_is_not_supported()
+    {
+        await using var provider = new SteamProvider(new InProcessLauncher(new FakeBackend()));
+
+        await Assert.ThrowsAsync<NotSupportedException>(() => provider.GetLibraryAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]

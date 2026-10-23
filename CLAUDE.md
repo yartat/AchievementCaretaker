@@ -52,7 +52,7 @@ what would be committed, but do not run `git commit`, `git tag` or `git push` un
 | `AchievementCaretaker.Providers.Abstractions` | class library | `IStoreProvider`, `IWritableStoreProvider`, `IStatsStoreProvider` (statistics and reset; only Steam), `ISessionStore` and the models (`StoreGame`, `StoreAchievement` with its `Protected` flag, `StoreStat`, `ProviderException`, `SignInResultKind`). Interfaces and models only: no packages, no code that runs. |
 | `AchievementCaretaker.Providers.Shared` | class library | What the store providers share: the session stores (`DpapiSessionStore`, `PlainSessionStore`), the `AddSessionStore` registration and `JsonHelpers`, public, with the packages they need. |
 | `AchievementCaretaker.Services` | class library | The logic behind the windows, with no UI and no Avalonia: the library database (`IGameRepository`/`GameRepository`, over a scoped `IDbConnection`, read and written with Dapper; `IDatabaseMigrator`, `IDatabaseRelocator`, `AddLibraryDatabase`) and the store services (`IStoreLibraryService`, `IStoreAchievementsService`, `IStoreSessionService`). |
-| `AchievementCaretaker.Providers.Steam` | class library | Steam as an `IStatsStoreProvider` (`SteamProvider`; achievements, statistics, a single commit for both, reset): every call starts a hidden helper for one app id and talks to it over gRPC on 127.0.0.1 with TLS (a certificate made per launch, pinned by thumbprint) and a per-launch token, both handed over on the helper's standard input. Holds the `.proto`, the handshake, the process launcher and `LibraryStats` (Steam's on-disk caches). The achievements window uses it for Steam games. |
+| `AchievementCaretaker.Providers.Steam` | class library | Steam as an `IStatsStoreProvider` (`SteamProvider`; achievements, statistics, a single commit for both, reset): every call starts a hidden helper for one app id and talks to it over gRPC on 127.0.0.1 with TLS (a certificate made per launch, pinned by thumbprint) and a per-launch token, both handed over on the helper's standard input. Holds the `.proto`, the handshake, the process launcher and `LibraryStats` (Steam's on-disk caches). The achievements window uses it for Steam games, and the library window for the Steam library (`ILibraryScanProvider`). |
 | `AchievementCaretaker.Providers.Steam.Worker` | class library | The helper's side: the Kestrel gRPC host, `SteamAppBackend` (schema + achievements + set/store through an `ISteamAppGateway`) and `SteamClientGateway` over `SteamApi.Client`. `AchievementCaretaker.exe --steam-worker <appid>` runs it (`Program.Main`, before Avalonia starts). |
 | `AchievementCaretaker.Providers.Epic` | class library | The Epic Games provider, read-only. Every unofficial Epic endpoint is in its `EpicProvider.cs`. |
 | `AchievementCaretaker.Providers.Gog` | class library | The GOG provider; it can also unlock and lock. Every unofficial GOG endpoint is in its `GogProvider.cs`. |
@@ -78,12 +78,21 @@ The rules:
   `IStatsStoreProvider` (achievements, statistics, one commit for both, reset), but it is
   registered as itself, **not** as an `IStoreProvider`: everything that lists the stores asks for
   `IEnumerable<IStoreProvider>`, and Steam is the library itself, so it must not appear there.
-  Its library list and the ownership sweep stay in `GamePickerViewModel` and `SteamConnector`,
-  in this process, where the Steam pipe, its watch and the "only a finished synchronization may
-  delete" rule live; `SteamProvider.GetLibraryAsync` is `NotSupported` on purpose. What it adds
-  is the one thing the old second process was for: `ISteamUserStats` is scoped to the app id a
-  process was initialised with, so each call starts a hidden **helper** (this same executable
-  with `--steam-worker <appid>`), which talks to Steam and serves gRPC on `127.0.0.1` over TLS.
+  The **application holds no `SteamApi.Client` of its own**: everything that touches Steam goes
+  through a hidden **helper** (this same executable with `--steam-worker <appid>`), because
+  `ISteamUserStats` is scoped to the app id a process was initialised with. The library is
+  the helper's too: `SteamProvider` is an `ILibraryScanProvider` (`ScanLibraryAsync` checks the
+  published list of app ids against the account in a helper started with app id 0 and returns the
+  owned games with their names, art, review scores, release dates, playtime and achievement counts;
+  `FindOwnedAsync` is the single-game form behind the App ID box; `GetAccountAsync` names the
+  logged-in account and is how the application learns Steam is there). `GetLibraryAsync` is
+  `NotSupported` on purpose: it is not a listing the account can ask for. `ISteamLibraryService`
+  (Services) downloads the published list and fronts those three calls; `SteamConnector` (Services)
+  keeps asking every 3 s, after the machine has said Steam is installed and running
+  (`ISteamEnvironment`, so no helper is started for nothing), and watches the Steam process id
+  (`SteamWatch`) once connected. A scan reports `Complete` only if Steam was still the same Steam when
+  it ended; **only a complete scan may delete a game**, see The UI layer. The helper serves gRPC on
+  `127.0.0.1` over TLS.
   The helper's certificate and a token are made per launch and handed to it on standard input,
   never on the command line, in the environment or on disk; the application accepts only the
   certificate whose thumbprint it was told, and the helper refuses any call without the token.
@@ -310,6 +319,7 @@ apt-get install -y libfontconfig1 libice6 libsm6
 `libfontconfig1` is needed before `libSkiaSharp` will load at all; `libice6`/`libsm6` are
 needed by `Avalonia.X11`'s session management. With those three the app starts cleanly.
 Package these as documented dependencies for any Linux release.
+The Steam helper (`--steam-worker`) has been run against a live, logged-in Steam on Debian 13 (WSL2): reading and writing achievements and statistics, after the two Linux-only fixes described under invariant #5 and `SteamAppIdFile`.
 
 ## Build
 
@@ -474,7 +484,7 @@ first argument, those declarations are correct on every target.
 x64" covers how *arguments* are passed; it does not cover how a C++ member function
 *returns a struct by value*, and Windows and System V disagree there.
 
-### Four invariants you must not break
+### Five invariants you must not break
 
 **1. Vtable struct field order is an ABI contract.** The structs in `Interfaces/`
 (`ISteamClient018`, `ISteamUserStats013`, `ISteamUtils005`, …) mirror the exact layout of
@@ -521,13 +531,30 @@ An audit of the other `out`/`ref` delegates found no further cases: the paramete
 hidden struct returns. If you add a wrapper for a method whose C++ signature returns a
 `struct`/`class` by value, handle both ABIs and verify on both.
 
+**5. Overloaded virtual functions are laid out in the compiler's order, and MSVC's is
+reversed.** `ISteamUserStats` declares `GetStat(int*)` before `GetStat(float*)`, and `SetStat`
+the same way. MSVC puts the overloads of one function in the vtable in *reverse* declaration
+order; GCC and Clang put them in declaration order. The structs in `Interfaces/` are in the
+Windows client's order (float, then integer), so on Linux and macOS the slot named `GetStatFloat`
+holds the integer overload and the other way round. Nothing throws: reading an integer statistic
+through the float slot just answers false, and the helper listed **no statistics at all** on
+Linux until this was found (6 and 10 expected for Spacewar and Terraria, 0 returned).
+`SteamPlatform.ReversesOverloadedSlots` is the one place that asks which system it is, and
+`SteamUserStats013.Overload` picks the slot. Any new wrapper over an overloaded method (the
+`GetUserStat`, `GetGlobalStat` and `GetAchievementProgressLimits` pairs are in the struct, unused)
+must go through it, and be checked on both systems.
+
 ### Callbacks
 
 Steam delivers results by callback, not return value. `Client.RunCallbacks(false)` drains
 `Steam_BGetCallback` in a loop and dispatches by numeric `Id` to registered `ICallback`
-instances. Both view models poll it from an Avalonia `DispatcherTimer` (`OnTimer`, 200 ms),
-so callbacks arrive on the UI thread. `_runningCallbacks` guards against re-entrancy.
-Stopping that timer on window close is what `Shutdown()` is for.
+instances. Only the helper has a client now, so only the helper pumps them (see below); the
+application has no callback timer.
+
+The helper tells Steam which app it is with a `steam_appid.txt` in a folder of its own that becomes its
+working directory (`SteamAppIdFile`), **not** with the `SteamAppId` environment variable alone:
+Windows honours the variable, Linux ignores it (`GetAppId` answers 0 and `Initialize` fails with
+"appID mismatch"), and the file works on both, so it is written unconditionally.
 
 The helper (`SteamClientGateway`) pumps callbacks itself: it requests the user's stats once, then
 calls `RunCallbacks` every 50 ms until `UserStatsReceived` arrives (30 s limit). `RequestUserStats`
@@ -540,41 +567,37 @@ the gRPC server calls from pool threads.
 - `App.OnFrameworkInitializationCompleted` *chooses* the main window: the library, or a
   `MessageWindow` carrying the error. This replaces the WinForms pattern of
   showing a `MessageBox` before `Application.Run`.
-- **The library does not do the Steam handshake up front**: it has other
-  sources than Steam, so it opens at once and `SteamConnector` keeps trying to create the
-  Steam pipe in the background (every 3 s, off the UI thread, a fresh `Client` each try).
-  Only when that works does `GamePickerViewModel.ConnectSteam` register the callback, start
-  the callback timer and refresh the library. Until then the Steam source shows the cached
-  games under a "No active Steam" banner with the reason (not installed, not running, nobody
-  logged in), the refresh button is off, and what needs Steam (opening a game's achievements, the App
-  ID box) says so rather than failing. The connector owns the client and the view model
-  disposes it in `Shutdown`.
-  **It keeps watching after it connects.** A pipe to a Steam that quit does not say so, so
-  `SteamWatch` compares the Steam process id taken at connection
+- **The library does not do the Steam handshake up front**: it has other sources than Steam,
+  so it opens at once and `SteamConnector` (Services) keeps asking in the background, every 3 s.
+  It asks the machine first (`ISteamEnvironment`: unsupported processor, not installed, no Steam
+  process), and only when a Steam process exists starts a helper for `GetAccountAsync`, whose
+  failure message is the reason shown. When that works, `GamePickerViewModel.ConnectSteam` shows
+  that account's library and refreshes it. Until then the Steam source shows the cached games under
+  a "No active Steam" banner with the reason, the refresh button is off, and what needs Steam
+  (opening a game's achievements, the App ID box) says so rather than failing.
+  **It keeps watching after it connects.** Whatever was learned stops being current when Steam
+  quits and nothing says so, so `SteamWatch` compares the Steam process id taken at connection
   (`SteamPlatform.GetRunningClientProcessId`: the registry's `ActiveProcess\pid` on Windows,
-  checked against the process list) with the one running now, every 3 s. A Steam that quit and
-  came back has a new id and a dead old pipe. On loss the client is `Abandon`ed, not disposed
-  (releasing a pipe means calling into Steam's library over a dead connection), the view model
-  stops its timer and callback, turns refresh off and shows the banner again, and the connector
-  starts looking again. **A refresh remembers `_steamGeneration` and throws its results away if
-  it changed**: on a dead pipe the ownership sweep sees nothing owned, and merging that would
-  empty the library and then the cache.
-  Not exercised against a real Steam restart: whether the already-loaded client library can open
-  a pipe to a Steam that started after it was loaded; nor the Linux and macOS process lookup.
+  checked against the process list) with the one running now, every 3 s. On loss the view model
+  turns refresh off and shows the banner again, and the connector starts looking again. **A refresh
+  remembers `_steamGeneration` and throws its results away if it changed.**
+  Not exercised against a real Steam restart; nor the Linux and macOS process lookup (macOS has no
+  verified Steam at all).
 
-  **Only a finished synchronization may delete a game.** The ownership sweep is one Steam call
-  per published app id, and once Steam is gone every remaining call answers "not owned", so a
-  sweep cut short looks exactly like an account that owns almost nothing (it once left 48 games
-  of 600). `LoadGamesAsync` therefore always *adds and updates* what it found, and returns true
-  only if the sweep **and** the stats pass both ran to the end under the same Steam; only then
-  are the games Steam no longer lists removed. "Under the same Steam" is asked directly with
-  `SteamConnector.IsSteamStillRunning()` as each pass finishes, because the watch notices a loss
-  only every few seconds, which is long enough for the whole sweep. The cache follows the same
-  rule: `IGameRepository.Sync(account, rows, removeMissing: false)` and no `IconCache.Prune` unless the sync
-  completed. A known name is never replaced by an empty one, and a failed download of the
-  published list changes nothing on screen. Not covered: a Steam that stays up but has not
-  finished loading its licences answers incompletely too, and would pass for complete.
-- `ViewModels/` hold all logic and every Steam call. Views are XAML plus thin code-behind.
+  **Only a finished synchronization may delete a game.** The scan asks about every published app
+  id, and once Steam is gone every remaining question answers "not owned", so a scan cut short looks
+  exactly like an account that owns almost nothing (it once left 48 games of 600). The helper
+  therefore says `Complete` only if the Steam process was still the same one when the last question
+  was answered, and `LoadGamesAsync` always *adds* what it found (and a known name is never replaced
+  by an empty one) but applies the details and removes the games Steam no longer lists only for a
+  complete scan under the same `_steamGeneration`. The cache follows the same rule:
+  `IGameRepository.Sync(account, rows, removeMissing: false)` and no `IconCache.Prune` unless the
+  sync completed. A failed download of the published list changes nothing on screen. Not covered: a
+  Steam that stays up but has not finished loading its licences answers incompletely too, and
+  would pass for complete. Not carried over from the in-process days: Steam's `AppDataChanged`
+  callback, which filled in a name and capsule for a game whose data Steam fetched after the
+  check; such a game shows blank until the next refresh.
+- `ViewModels/` hold the UI logic; every Steam call is the helper's. Views are XAML plus thin code-behind.
 - `Views/MessageWindow.cs` is a hand-rolled stand-in for `MessageBox`, which Avalonia has
   no equivalent of. View models cannot show dialogs (no window to parent to), so they raise
   `ErrorRaised` / `MessageRaised` / `ConfirmRequested` and the window handles them. It
@@ -1042,14 +1065,17 @@ verified against a live, logged-in Steam client on all three supported targets:
 | `IsLoggedIn()` | True | True | True |
 | `GetSteamId()` | 765611980067…409 | same | same (after invariant #4 fix) |
 | `LibraryStats` playtime | 6614 / 1356 / 5847 min | identical | identical |
-| The helper on Terraria (read) | 137 achievements, 10 stats | identical | — |
+| The helper on Terraria (read) | 137 achievements, 10 stats | not run | 137 achievements, 10 stats (after invariant #5) |
 
 Getting there required fixing the `GetISteamApps` signature (invariant #3) and the
 `GetSteamID` struct-return ABI (invariant #4).
 
-What remains unverified is the **write** path — `SetAchievement`, `SetStatValue`,
-`StoreStats` and `ResetAllStats`. Those mutate a real Steam account, so they were left
-alone deliberately; exercise them by hand on a throwaway title before trusting a release.
+The **write** path was exercised through the helper on 2026-10-22, on Windows x64 and on Debian
+under WSL2, against the project owner's live account and always put back: unlocking and
+re-locking `ACH_WIN_ONE_GAME` on Spacewar, and writing and restoring one integer
+(`STAT_BUCKETS_OF_BOLTS`) and one float (`STAT_FREQUENT_FLYER`) statistic of Terraria. Each write
+was read back as the new value and each restore as the original. Not exercised: `ResetAllStats`
+(it destroys data), a protected item against real Steam, macOS, and the 32-bit client.
 
 If the interop ever does misbehave, the modern replacement is C# function pointers
 (`delegate* unmanaged[Thiscall]<...>`), which Microsoft documents as "more efficient,
@@ -1075,7 +1101,7 @@ A clean build is **0 warnings, 0 errors** on both `AnyCPU` and `x86`. Keep it th
   published list, so it is a few hundred at worst — but it is more network traffic than
   before. Moving to `ItemsRepeater` + `UniformGridLayout` would restore virtualization and
   visible-only loading, at the cost of hand-rolled selection handling.
-- **Write path is unverified** — see the interop table above.
+- **`ResetAllStats` has never been run against Steam**, because it destroys data. Exercise it by hand on a throwaway title before trusting a release.
 - **The library toolbar wraps rather than clips.** It is a `WrapPanel`, not a
   `StackPanel`: when the view-mode control was added, a single fixed row ran off the right
   edge on a narrow window and the last button became unreachable. If you add more toolbar

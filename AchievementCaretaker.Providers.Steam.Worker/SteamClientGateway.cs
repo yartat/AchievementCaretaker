@@ -33,6 +33,7 @@ using System.IO;
 using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
+using AchievementCaretaker.Providers.Steam.Models;
 using AchievementCaretaker.SteamApi;
 
 namespace AchievementCaretaker.Providers.Steam;
@@ -48,25 +49,35 @@ public sealed class SteamClientGateway : ISteamAppGateway
 
     private readonly object _gate = new();
     private readonly Client _client;
+    private readonly SteamAppIdFile _appIdFile;
+    private readonly int? _processId;
+    private LibraryStats _libraryStats;
     private Task _userStats;
 
     public long AppId { get; }
 
     public string Language { get; }
 
+    public ulong SteamId { get; }
+
     /// <summary>Connects to Steam as the given app. Throws <see cref="ClientInitializeException"/> if it cannot.</summary>
     public SteamClientGateway(long appId)
     {
         AppId = appId;
+        // App id 0 is not a game: it is the library's own session, which needs no file.
+        _appIdFile = appId == 0 ? null : SteamAppIdFile.Create(appId);
         _client = new Client();
         try
         {
             _client.Initialize(appId);
             Language = _client.SteamApps008.GetCurrentGameLanguage();
+            SteamId = _client.SteamUser.GetSteamId();
+            _processId = SteamPlatform.GetRunningClientProcessId();
         }
         catch
         {
             _client.Dispose();
+            _appIdFile?.Dispose();
             throw;
         }
     }
@@ -197,5 +208,39 @@ public sealed class SteamClientGateway : ISteamAppGateway
         {
             _client.Dispose();
         }
+        _appIdFile?.Dispose();
     }
+
+    #region Library
+
+    public bool IsSubscribed(uint appId)
+    {
+        lock (_gate)
+        {
+            return _client.SteamApps008.IsSubscribedApp(appId);
+        }
+    }
+
+    public string GetAppData(uint appId, string key)
+    {
+        lock (_gate)
+        {
+            return _client.SteamApps001.GetAppData(appId, key);
+        }
+    }
+
+    public GameStats? GetCachedStats(uint appId)
+    {
+        _libraryStats ??= LibraryStats.Create(SteamId);
+        return _libraryStats?.TryGet(appId);
+    }
+
+    public bool IsSteamStillRunning()
+    {
+        // With no process id on record there is no way to tell, and a connection that exists is
+        // taken to be held.
+        return _processId == null || SteamPlatform.GetRunningClientProcessId() == _processId;
+    }
+
+    #endregion
 }

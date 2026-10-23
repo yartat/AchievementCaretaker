@@ -38,19 +38,28 @@ namespace AchievementCaretaker.Providers.Steam;
 /// <summary>What <c>AchievementCaretaker.exe --steam-worker &lt;appid&gt;</c> runs.</summary>
 public static class SteamWorkerEntry
 {
-    private static string Describe(ClientInitializeException e)
+    /// <summary>
+    /// Why Steam could not be reached, in the words the library's banner shows (a game's window
+    /// adds what to do about it).
+    /// </summary>
+    private static string Describe(ClientInitializeException e, long appId)
     {
-        const string Prefix = "Steam is not running. Please start Steam and try again.";
-
-        // Family Share only locks a specific game, so the hint is only worth showing for
-        // the failure that says the account is not available to this one.
-        if (e.Failure == ClientInitializeFailure.ConnectToGlobalUser)
+        var advice = appId == 0 ? "" : " Please start Steam and try again.";
+        return e.Failure switch
         {
-            return Prefix + " If you have the game through Family Share, the game may be locked "
-                + "while the Family Share account is playing a game. (" + e.Message + ")";
-        }
+            ClientInitializeFailure.GetInstallPath => "Steam is not installed.",
+            ClientInitializeFailure.Load or ClientInitializeFailure.CreateSteamClient =>
+                "The Steam client library could not be loaded.",
+            ClientInitializeFailure.CreateSteamPipe => "Steam is not running." + advice,
 
-        return string.IsNullOrEmpty(e.Message) == false ? Prefix + " (" + e.Message + ")" : Prefix;
+            // Family Share only locks a specific game, so the hint is only worth showing when one was asked for.
+            ClientInitializeFailure.ConnectToGlobalUser when appId != 0 =>
+                "Steam is running, but no account is logged in. If you have the game through Family Share, "
+                + "the game may be locked while the Family Share account is playing a game.",
+            ClientInitializeFailure.ConnectToGlobalUser => "Steam is running, but no account is logged in.",
+
+            _ => "Could not connect to Steam. (" + e.Message + ")",
+        };
     }
 
     /// <summary>
@@ -59,7 +68,8 @@ public static class SteamWorkerEntry
     /// </summary>
     public static async Task<int> RunAsync(string appIdText)
     {
-        if (long.TryParse(appIdText, NumberStyles.None, CultureInfo.InvariantCulture, out var appId) == false || appId == 0)
+        // App id 0 is the library's session; any other is one game's.
+        if (long.TryParse(appIdText, NumberStyles.None, CultureInfo.InvariantCulture, out var appId) == false)
         {
             await Console.Error.WriteLineAsync("The Steam helper needs an app id.");
             return 1;
@@ -72,7 +82,7 @@ public static class SteamWorkerEntry
         }
         catch (ClientInitializeException e)
         {
-            await Console.Error.WriteLineAsync(Describe(e));
+            await Console.Error.WriteLineAsync(Describe(e, appId));
             return 1;
         }
         catch (Exception e)

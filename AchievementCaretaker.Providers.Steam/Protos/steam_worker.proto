@@ -14,6 +14,12 @@ service SteamWorker {
   rpc Commit (CommitRequest) returns (CommitReply);
   // Resets every statistic, and the achievements too if asked.
   rpc Reset (ResetRequest) returns (ResetReply);
+  // The library helper (app id 0): which of the candidates the account owns, with what Steam
+  // knows about each. Progress is streamed; the last event is the result.
+  rpc ScanLibrary (ScanLibraryRequest) returns (stream ScanLibraryEvent);
+  rpc FindOwned (FindOwnedRequest) returns (FindOwnedReply);
+  // Which account Steam is logged in as; also how the application finds out Steam is there.
+  rpc GetAccount (GetAccountRequest) returns (GetAccountReply);
   // Asks the helper to exit once the reply is sent.
   rpc Shutdown (ShutdownRequest) returns (ShutdownReply);
 }
@@ -86,6 +92,64 @@ message ResetRequest {
 }
 
 message ResetReply {}
+
+message Candidate {
+  uint32 id = 1;
+  string type = 2;
+}
+
+message ScanLibraryRequest {
+  repeated Candidate candidates = 1;
+}
+
+message OwnedGame {
+  uint32 id = 1;
+  string type = 2;
+  string name = 3;
+  string image_url = 4;
+  optional int64 release_unix = 5;
+  optional int32 rating_percent = 6;
+  optional int32 rating_score = 7;
+  optional int32 playtime_minutes = 8;
+  optional int64 last_played_unix = 9;
+  optional int32 achievements_total = 10;
+  optional int32 achievements_earned = 11;
+}
+
+message ScanProgress {
+  int32 examined = 1;
+  int32 total = 2;
+}
+
+message ScanResult {
+  // The 32-bit account id Steam's files are named by.
+  uint32 account = 1;
+  repeated OwnedGame games = 2;
+  bool complete = 3;
+}
+
+message ScanLibraryEvent {
+  oneof event {
+    ScanProgress progress = 1;
+    ScanResult result = 2;
+  }
+}
+
+message FindOwnedRequest {
+  Candidate candidate = 1;
+}
+
+message FindOwnedReply {
+  bool owned = 1;
+  OwnedGame game = 2;
+}
+
+message GetAccountRequest {}
+
+message GetAccountReply {
+  // The 32-bit account id Steam's files are named by.
+  uint32 account = 1;
+}
 
 message ShutdownRequest {}
 

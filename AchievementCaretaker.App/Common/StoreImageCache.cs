@@ -84,14 +84,19 @@ internal sealed class StoreImageCache
     /// hundreds of images and decoding them on the UI thread stalls the window.
     /// The caller assigns the result, on the UI thread.
     /// </remarks>
-    public async Task<Bitmap> LoadAsync(string provider, string url, CancellationToken cancellationToken)
+    /// <param name="decodeWidth">
+    /// Decode no wider than this, or null for the image as it is. A store's capsule art can be
+    /// 4000 pixels wide (some 900 of them were 8.6 GB decoded), and it is shown a few hundred
+    /// wide; small icons need no such limit.
+    /// </param>
+    public async Task<Bitmap> LoadAsync(string provider, string url, CancellationToken cancellationToken, int? decodeWidth = null)
     {
         if (string.IsNullOrEmpty(url) == true)
         {
             return null;
         }
 
-        var cached = await Task.Run(() => Decode(TryRead(provider, url)), cancellationToken);
+        var cached = await Task.Run(() => Decode(TryRead(provider, url), decodeWidth), cancellationToken);
         if (cached != null)
         {
             return cached;
@@ -100,7 +105,7 @@ internal sealed class StoreImageCache
         try
         {
             var data = await _http.CreateClient().GetByteArrayAsync(new Uri(url), cancellationToken);
-            var bitmap = await Task.Run(() => Decode(data), cancellationToken);
+            var bitmap = await Task.Run(() => Decode(data, decodeWidth), cancellationToken);
             if (bitmap != null)
             {
                 await Task.Run(() => Write(provider, url, data), cancellationToken);
@@ -118,7 +123,7 @@ internal sealed class StoreImageCache
     }
 
     /// <summary>Null for no data, and for data that is not an image: a truncated file means a re-download.</summary>
-    private static Bitmap Decode(byte[] data)
+    private static Bitmap Decode(byte[] data, int? decodeWidth)
     {
         if (data == null)
         {
@@ -128,7 +133,7 @@ internal sealed class StoreImageCache
         {
             using MemoryStream stream = new(data, false);
             // Avalonia's Bitmap copies the decoded pixels, so the stream can go.
-            return new Bitmap(stream);
+            return decodeWidth is int width ? Bitmap.DecodeToWidth(stream, width) : new Bitmap(stream);
         }
         catch (Exception)
         {

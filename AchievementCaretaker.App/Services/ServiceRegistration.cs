@@ -59,13 +59,16 @@ internal static class ServiceRegistration
         // uses it. The container disposes it, which lets go of any helper still running.
         services.AddSingleton<ISteamWorkerLauncher>(_ => new SteamWorkerProcessLauncher(Program.GetExecutablePath()));
         services.AddSingleton<SteamProvider>();
+        services.AddSingleton<ILibraryScanProvider>(provider => provider.GetRequiredService<SteamProvider>());
+        services.AddSingleton<ISteamEnvironment, SteamPlatformEnvironment>();
+        services.AddSingleton<ISteamLibraryService, SteamLibraryService>();
 
         services.AddSingleton<IStoreAchievementsService, StoreAchievementsService>();
         // Scoped, because it works through the scoped repository.
         services.AddScoped<IStoreLibraryService, StoreLibraryService>();
         services.AddSingleton<IStoreSessionService, StoreSessionService>();
 
-        services.AddScoped(_ => new SteamConnector());
+        services.AddScoped<SteamConnector>();
         services.AddScoped<GamePickerViewModel>();
 
         return services;

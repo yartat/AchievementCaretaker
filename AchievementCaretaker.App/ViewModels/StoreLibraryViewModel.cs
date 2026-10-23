@@ -68,6 +68,9 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
     private readonly IStoreLibraryService _library;
     private readonly IStoreSessionService _session;
     private readonly IStoreAchievementsService _achievements;
+    // The tile is about 183 wide; twice that keeps it sharp on a high-DPI screen.
+    private const int CapsuleDecodeWidth = 480;
+
     private readonly StoreImageCache _images;
     private readonly IProgressSink _sink;
     private readonly CancellationTokenSource _lifetime = new();
@@ -788,7 +791,7 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
             {
                 while (_logoQueue.Reader.TryRead(out var info) == true)
                 {
-                    var logo = await _images.LoadAsync(Id, info.ImageUrl, token);
+                    var logo = await _images.LoadAsync(Id, info.ImageUrl, token, CapsuleDecodeWidth);
                     if (logo != null)
                     {
                         info.Logo = logo;

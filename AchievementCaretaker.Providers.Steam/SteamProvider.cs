@@ -39,7 +39,7 @@ namespace AchievementCaretaker.Providers.Steam;
 /// stats it read when it started.
 /// </para>
 /// </remarks>
-public sealed class SteamProvider : IStatsStoreProvider, IDisposable, IAsyncDisposable
+public sealed class SteamProvider : IStatsStoreProvider, ILibraryScanProvider, IDisposable, IAsyncDisposable
 {
     public const string ProviderId = "steam";
 
@@ -84,7 +84,83 @@ public sealed class SteamProvider : IStatsStoreProvider, IDisposable, IAsyncDisp
     }
 
     public Task<IReadOnlyList<StoreGame>> GetLibraryAsync(CancellationToken cancellationToken = default) =>
-        throw new NotSupportedException("Steam's library is read from Steam's own cache files.");
+        throw new NotSupportedException("Steam does not list an account's games: use ScanLibraryAsync with the published list.");
+
+    /// <summary>The library's session: app id 0, which is not a game but how Steam is asked about the whole account.</summary>
+    private const string LibraryKey = "0";
+
+    public async Task<LibraryScan> ScanLibraryAsync(
+        IReadOnlyCollection<LibraryCandidate> candidates,
+        IProgress<LibraryScanProgress> progress,
+        CancellationToken cancellationToken = default)
+    {
+        ScanLibraryRequest request = new();
+        request.Candidates.AddRange(candidates.Select(c => new Candidate
+        {
+            Id = uint.Parse(c.Id, CultureInfo.InvariantCulture),
+            Type = c.Type ?? "",
+        }));
+
+        // A scan always starts a helper of its own: a kept one may belong to a Steam that has
+        // since quit, and a scan is long enough that starting one is not the cost.
+        return await WithWorkerAsync(LibraryKey, async (channel, token) =>
+        {
+            using var call = channel.Client.ScanLibrary(request, channel.Headers, cancellationToken: token);
+            await foreach (var scanEvent in call.ResponseStream.ReadAllAsync(token))
+            {
+                if (scanEvent.EventCase == ScanLibraryEvent.EventOneofCase.Progress)
+                {
+                    progress?.Report(new LibraryScanProgress(scanEvent.Progress.Examined, scanEvent.Progress.Total));
+                }
+                else if (scanEvent.EventCase == ScanLibraryEvent.EventOneofCase.Result)
+                {
+                    return new LibraryScan(
+                        scanEvent.Result.Account.ToString(CultureInfo.InvariantCulture),
+                        scanEvent.Result.Games.Select(ToGame).ToList(),
+                        scanEvent.Result.Complete);
+                }
+            }
+            throw new ProviderException("steam_error", "The Steam helper ended the scan without a result.");
+        }, cancellationToken, fresh: true);
+    }
+
+    public async Task<string> GetAccountAsync(CancellationToken cancellationToken = default)
+    {
+        return await WithWorkerAsync(LibraryKey, async (channel, token) =>
+        {
+            var reply = await channel.Client.GetAccountAsync(new GetAccountRequest(), channel.Headers, cancellationToken: token);
+            return reply.Account.ToString(CultureInfo.InvariantCulture);
+        }, cancellationToken, fresh: true);
+    }
+
+    public async Task<StoreGame> FindOwnedAsync(LibraryCandidate candidate, CancellationToken cancellationToken = default)
+    {
+        FindOwnedRequest request = new()
+        {
+            Candidate = new Candidate { Id = uint.Parse(candidate.Id, CultureInfo.InvariantCulture), Type = candidate.Type ?? "" },
+        };
+
+        return await WithWorkerAsync(LibraryKey, async (channel, token) =>
+        {
+            var reply = await channel.Client.FindOwnedAsync(request, channel.Headers, cancellationToken: token);
+            return reply.Owned == true ? ToGame(reply.Game) : null;
+        }, cancellationToken, fresh: true);
+    }
+
+    private static StoreGame ToGame(OwnedGame g) => new(
+        ProviderId,
+        g.Id.ToString(CultureInfo.InvariantCulture),
+        g.Id.ToString(CultureInfo.InvariantCulture),
+        string.IsNullOrEmpty(g.Name) ? null : g.Name,
+        string.IsNullOrEmpty(g.ImageUrl) ? null : g.ImageUrl,
+        string.IsNullOrEmpty(g.Type) ? "normal" : g.Type,
+        g.HasReleaseUnix ? DateTimeOffset.FromUnixTimeSeconds(g.ReleaseUnix) : null,
+        g.HasRatingPercent ? g.RatingPercent : null,
+        g.HasRatingScore ? g.RatingScore : null,
+        g.HasPlaytimeMinutes ? g.PlaytimeMinutes : null,
+        g.HasLastPlayedUnix ? DateTimeOffset.FromUnixTimeSeconds(g.LastPlayedUnix) : null,
+        g.HasAchievementsTotal ? g.AchievementsTotal : null,
+        g.HasAchievementsEarned ? g.AchievementsEarned : null);
 
     public async Task<IReadOnlyList<StoreAchievement>> GetAchievementsAsync(
         string gameKey, string locale = "en", CancellationToken cancellationToken = default)
