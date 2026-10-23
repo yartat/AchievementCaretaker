@@ -77,17 +77,6 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
 
     private readonly Dictionary<string, StoreGameInfo> _games = new();
 
-    // Logos: one consumer, like the Steam window's queue, counted so the bar has a
-    // denominator. UI thread only.
-    private readonly Channel<StoreGameInfo> _logoQueue =
-        Channel.CreateUnbounded<StoreGameInfo>(new() { SingleReader = false });
-
-    /// <summary>How many images are read, decoded or downloaded at once.</summary>
-    private const int LogoWorkers = 8;
-    private readonly HashSet<string> _logosAttempted = new();
-    private int _logosQueued;
-    private int _logosCompleted;
-
     private CancellationTokenSource _progressRun;
 
     public ObservableCollection<StoreGameInfo> FilteredGames { get; } = new();
@@ -158,9 +147,8 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
 
         LoadFromCache();
 
-        Task[] logoWorkers = Enumerable.Range(0, LogoWorkers).Select(index => RunLogoWorkerAsync()).ToArray();
         Task initialLoad = RefreshLibraryAsync();
-        GC.KeepAlive((logoWorkers, initialLoad));
+        GC.KeepAlive(initialLoad);
     }
 
     #region Sign-in
@@ -515,7 +503,7 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
                 if (info.ImageUrl != game.ImageUrl)
                 {
                     info.ImageUrl = game.ImageUrl;
-                    info.Logo = null;
+                    info.LogoLoader = null;
                 }
                 continue;
             }
@@ -750,74 +738,8 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
 
         foreach (var info in FilteredGames)
         {
-            EnqueueLogo(info);
-        }
-    }
-
-    #endregion
-
-    #region Logos
-
-    private void EnqueueLogo(StoreGameInfo info)
-    {
-        if (info.Logo != null || string.IsNullOrEmpty(info.ImageUrl) == true)
-        {
-            return;
-        }
-        if (_logosAttempted.Add(info.Id + "|" + info.ImageUrl) == false)
-        {
-            return;
-        }
-
-        if (_logosQueued == 0)
-        {
-            _sink.Begin("Loading game icons...");
-        }
-        _logosQueued++;
-        _logoQueue.Writer.TryWrite(info);
-    }
-
-    /// <summary>
-    /// One of <see cref="LogoWorkers"/> consumers. They all resume on the UI thread after
-    /// each await, so the counters are only touched from it. Every way of finishing an
-    /// item (cached, downloaded, failed) advances the bar by one.
-    /// </summary>
-    private async Task RunLogoWorkerAsync()
-    {
-        var token = _lifetime.Token;
-        try
-        {
-            while (await _logoQueue.Reader.WaitToReadAsync(token))
-            {
-                while (_logoQueue.Reader.TryRead(out var info) == true)
-                {
-                    var logo = await _images.LoadAsync(Id, info.ImageUrl, token, CapsuleDecodeWidth);
-                    if (logo != null)
-                    {
-                        info.Logo = logo;
-                    }
-
-                    // Drained when everything queued has been finished. Not
-                    // Reader.Count: a single-reader channel cannot count, and asking
-                    // throws, which silently ended this worker after one image.
-                    _logosCompleted++;
-                    if (_logosCompleted == _logosQueued)
-                    {
-                        _sink.End();
-                        _logosQueued = 0;
-                        _logosCompleted = 0;
-                        continue;
-                    }
-                    _sink.Report(
-                        $"Loading game icons, {_logosCompleted:N0} of {_logosQueued:N0}...",
-                        _logosCompleted,
-                        _logosQueued);
-                }
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // The window is closing.
+            // Read when the tile comes into view, not here.
+            info.LogoLoader ??= token => _images.LoadAsync(Id, info.ImageUrl, token, CapsuleDecodeWidth);
         }
     }
 
@@ -961,7 +883,6 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
     public void Shutdown()
     {
         _lifetime.Cancel();
-        _logoQueue.Writer.TryComplete();
         // The provider belongs to the container, which disposes it.
     }
 }

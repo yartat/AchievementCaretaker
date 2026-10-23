@@ -26,6 +26,13 @@ Achievement Manager 8.0.
   are checked against Steam's limits before anything is sent), and **Reset all statistics…**, which
   still asks three times. Achievements and statistics are committed together. Protected
   achievements and statistics are shown, tinted, and cannot be changed.
+- **Capsule art is loaded when its tile comes into view and dropped when it leaves.** The library
+  held every decoded capsule for the life of the window; with an Epic and a GOG library that was over
+  9 GB (the stores' art is up to 4267 px wide). It is now decoded no wider than 480 px and only for
+  tiles on or near the screen, and the application stays at about 0.3 to 0.4 GB however far you scroll (it peaked near 0.9 GB while scrolling a store list before the images were read as streams). Capsules are also
+  downloaded only when first scrolled to, and the status bar no longer shows icon progress. The tile
+  views also create controls only for the tiles on or near the screen (about 125 MB less), and a
+  selected tile is shown with the accent colour as before.
 - **The Steam library is read by the helper too.** The library window no longer holds a connection
   to Steam of its own: the helper checks the published list of games against your account and
   reports the ones you own with their names, art, reviews, release dates, playtime and achievement

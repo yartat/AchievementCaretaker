@@ -29,6 +29,8 @@
  */
 
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Globalization;
 using AchievementCaretaker.Providers.Steam;
 using Avalonia.Media.Imaging;
@@ -46,11 +48,12 @@ internal sealed partial class GameInfo : ObservableObject
     public string ImageUrl { get; set; }
 
     /// <summary>
-    /// Filled in asynchronously by the logo downloader; the view binds to
-    /// it directly, so the assignment must happen on the UI thread.
+    /// Reads the capsule when the tile comes into view (<c>LazyImage</c>). The bitmap is not kept
+    /// here: it belongs to the control showing it, so a library does not hold every capsule decoded.
+    /// Set again when the image address changes, which is what makes the tile ask again.
     /// </summary>
     [ObservableProperty]
-    private Bitmap _logo;
+    private Func<CancellationToken, Task<Bitmap>> _logoLoader;
 
     public string Name
     {

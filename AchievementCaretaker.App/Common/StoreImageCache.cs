@@ -39,6 +39,15 @@ internal sealed class StoreImageCache
 {
     public const string FolderName = "store";
 
+    /// <summary>
+    /// How many images are read and decoded at once. Scrolling a library fast asks for dozens, and
+    /// each decode of a 4000-pixel capsule allocates tens of megabytes before it is scaled down:
+    /// unbounded, that was a 500 MB spike on top of the 300 MB the window needs.
+    /// </summary>
+    private const int DecodeConcurrency = 3;
+
+    private readonly SemaphoreSlim _decodeGate = new(DecodeConcurrency);
+
     private readonly IHttpClientFactory _http;
 
     // Read each time: IconCache.MoveTo changes it when the user relocates the cache.
@@ -56,8 +65,12 @@ internal sealed class StoreImageCache
         return Path.Combine(_icons.Path, FolderName, provider, hash + ".img");
     }
 
-    /// <summary>Returns null when the image is not cached.</summary>
-    public byte[] TryRead(string provider, string url)
+    /// <summary>
+    /// Opens the cached file, or returns null when the image is not cached. A stream and not the
+    /// bytes: a store's capsule is megabytes, so reading hundreds into arrays fills the large object
+    /// heap with garbage the collector takes its time over (562 MB of it after scrolling one list).
+    /// </summary>
+    private Stream TryOpen(string provider, string url)
     {
         if (string.IsNullOrEmpty(url) == true)
         {
@@ -66,7 +79,9 @@ internal sealed class StoreImageCache
         try
         {
             var file = FileFor(provider, url);
-            return File.Exists(file) == true ? File.ReadAllBytes(file) : null;
+            return File.Exists(file) == true
+                ? new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.SequentialScan)
+                : null;
         }
         catch (Exception)
         {
@@ -96,7 +111,7 @@ internal sealed class StoreImageCache
             return null;
         }
 
-        var cached = await Task.Run(() => Decode(TryRead(provider, url), decodeWidth), cancellationToken);
+        var cached = await DecodeGatedAsync(() => TryOpen(provider, url), decodeWidth, cancellationToken);
         if (cached != null)
         {
             return cached;
@@ -105,7 +120,7 @@ internal sealed class StoreImageCache
         try
         {
             var data = await _http.CreateClient().GetByteArrayAsync(new Uri(url), cancellationToken);
-            var bitmap = await Task.Run(() => Decode(data, decodeWidth), cancellationToken);
+            var bitmap = await DecodeGatedAsync(() => new MemoryStream(data, false), decodeWidth, cancellationToken);
             if (bitmap != null)
             {
                 await Task.Run(() => Write(provider, url, data), cancellationToken);
@@ -122,16 +137,34 @@ internal sealed class StoreImageCache
         }
     }
 
-    /// <summary>Null for no data, and for data that is not an image: a truncated file means a re-download.</summary>
-    private static Bitmap Decode(byte[] data, int? decodeWidth)
+    /// <summary>
+    /// Reads and decodes off the calling thread, at most <see cref="DecodeConcurrency"/> at a time. A
+    /// caller that is cancelled while it waits for its turn (a tile that scrolled out of view) never
+    /// reads or decodes anything.
+    /// </summary>
+    private async Task<Bitmap> DecodeGatedAsync(Func<Stream> open, int? decodeWidth, CancellationToken cancellationToken)
     {
-        if (data == null)
+        await _decodeGate.WaitAsync(cancellationToken);
+        try
+        {
+            return await Task.Run(() => Decode(open(), decodeWidth), cancellationToken);
+        }
+        finally
+        {
+            _decodeGate.Release();
+        }
+    }
+
+    /// <summary>Null for no stream, and for data that is not an image: a truncated file means a re-download. Disposes the stream.</summary>
+    private static Bitmap Decode(Stream source, int? decodeWidth)
+    {
+        if (source == null)
         {
             return null;
         }
         try
         {
-            using MemoryStream stream = new(data, false);
+            using var stream = source;
             // Avalonia's Bitmap copies the decoded pixels, so the stream can go.
             return decodeWidth is int width ? Bitmap.DecodeToWidth(stream, width) : new Bitmap(stream);
         }

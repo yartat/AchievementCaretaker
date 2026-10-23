@@ -67,6 +67,18 @@
       <Setter Property="Foreground" Value="{DynamicResource SamSecondaryTextBrush}" />
     </Style>
 
+    <Style Selector="ContentControl.tile">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="CornerRadius" Value="5" />
+      <Setter Property="VerticalContentAlignment" Value="Top" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="Padding" Value="0,4,0,0" />
+    </Style>
+
+    <Style Selector="ContentControl.tile.selected">
+      <Setter Property="Background" Value="{DynamicResource SystemControlHighlightListAccentLowBrush}" />
+    </Style>
+
     <Style Selector="ListBox.plain">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />
@@ -577,22 +589,16 @@
            right. In a Panel both views stretch to the full width. -->
       <Panel>
         <!-- Tile view -->
-        <ListBox Name="_gameTileBox"
-                 Classes="plain"
-                 Margin="0,0,0,8"
-                 Padding="14,0"
-                 IsVisible="{Binding ShowSteamTiles}"
-                 ItemsSource="{Binding FilteredGames}"
-                 SelectedItem="{Binding SelectedGame}"
-                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                 DoubleTapped="OnGameDoubleTapped"
-                 KeyDown="OnGameListKeyDown">
-          <ListBox.ItemsPanel>
-            <ItemsPanelTemplate>
-              <WrapPanel Orientation="Horizontal" />
-            </ItemsPanelTemplate>
-          </ListBox.ItemsPanel>
-          <ListBox.ItemTemplate>
+        <views:TileGrid Name="_gameTileBox"
+                    Margin="0,0,0,8"
+                    Padding="14,0"
+                    TileWidth="211" TileHeight="158"
+                    IsVisible="{Binding ShowSteamTiles}"
+                    ItemsSource="{Binding FilteredGames}"
+                    SelectedItem="{Binding SelectedGame}"
+                    DoubleTapped="OnGameDoubleTapped"
+                    KeyDown="OnGameListKeyDown">
+          <views:TileGrid.ItemTemplate>
             <DataTemplate x:DataType="local:GameInfo">
               <StackPanel Width="183" Margin="2" Spacing="7">
                 <Panel>
@@ -600,7 +606,7 @@
                           Background="{DynamicResource SamPlaceholderBrush}"
                           CornerRadius="5"
                           ClipToBounds="True">
-                    <Image Source="{Binding Logo}" Stretch="UniformToFill" />
+                    <views:LazyImage Loader="{Binding LogoLoader}" Stretch="UniformToFill" />
                   </Border>
                   <!-- A perfect game is worth calling out; it is the thing the
                        whole view is organised around. -->
@@ -651,8 +657,8 @@
                 </DockPanel>
               </StackPanel>
             </DataTemplate>
-          </ListBox.ItemTemplate>
-        </ListBox>
+          </views:TileGrid.ItemTemplate>
+        </views:TileGrid>
 
         <!-- Content view -->
         <DockPanel IsVisible="{Binding ShowSteamContent}">
@@ -729,7 +735,7 @@
                           Background="{DynamicResource SamPlaceholderBrush}"
                           CornerRadius="2"
                           ClipToBounds="True">
-                    <Image Source="{Binding Logo}" Stretch="UniformToFill" />
+                    <views:LazyImage Loader="{Binding LogoLoader}" Stretch="UniformToFill" />
                   </Border>
                   <TextBlock Grid.Column="1"
                              Text="{Binding Name}"

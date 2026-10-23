@@ -79,21 +79,14 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
     private uint _steamAccount;
 
     private readonly Dictionary<uint, GameInfo> _games = new();
-    private readonly HashSet<string> _logosAttempted = new();
-    private readonly ConcurrentQueue<GameInfo> _logoQueue = new();
-
-    // How many have been queued and finished since the queue last drained,
-    // so the bar has a denominator. UI thread only: EnqueueLogo is called
-    // from it, and the worker's continuations return to it.
-    private int _logosQueued;
-    private int _logosCompleted;
-    private readonly SemaphoreSlim _logoSignal = new(0);
 
     /// <summary>
-    /// How many capsules are read, decoded or downloaded at once. A warm start is hundreds
-    /// of small files, and one at a time is nowhere near what a disk or a connection can do.
+    /// How many capsules are downloaded at once. Capsules are read when their tile comes into view
+    /// (<c>LazyImage</c>), and a fast scroll asks for dozens.
     /// </summary>
-    private const int LogoWorkers = 8;
+    private const int LogoDownloads = 8;
+
+    private readonly SemaphoreSlim _logoDownloads = new(LogoDownloads);
 
     public ObservableCollection<GameInfo> FilteredGames { get; } = new();
 
@@ -577,12 +570,6 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
         // Steam happens afterwards, in the background.
         LoadFromCache();
 
-        // Discards are spelled out here because `using static
-        // InvariantShorthand` puts a method named `_` in scope.
-        Task[] logoWorkers = Enumerable.Range(0, LogoWorkers).Select(index => RunLogoWorkerAsync()).ToArray();
-        Task icons = HydrateCachedIconsAsync();
-        GC.KeepAlive((logoWorkers, icons));
-
         CreateStoreLibraries();
 
         // Last, and without waiting: Steam may not be running. The window is
@@ -659,9 +646,6 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
         LoadFromCache();
         RefreshCollectionCounts();
         RefreshGames();
-
-        Task decode = HydrateCachedIconsAsync();
-        GC.KeepAlive(decode);
     }
 
     /// <summary>
@@ -814,69 +798,6 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
     }
 
     /// <summary>
-    /// Decodes capsules already on disk, off the UI thread, so a warm start
-    /// shows art without touching the network.
-    /// </summary>
-    private async Task HydrateCachedIconsAsync()
-    {
-        var games = _games.Values.Where(g => g.Logo == null).ToList();
-        if (games.Count == 0)
-        {
-            return;
-        }
-
-        var icons = _iconCache;
-        var total = games.Count;
-        var step = ProgressStep(total);
-        IProgress<int> decode = new Progress<int>(
-            done => ReportProgress($"Loading cached icons, {done:N0} of {total:N0}...", done, total));
-        BeginProgress("Loading cached icons...");
-        ReportProgress($"Loading cached icons, 0 of {total:N0}...", 0, total);
-
-        // One task per capsule. The read and the decode run on the thread pool, which is
-        // what bounds how many go at once; everything after the await resumes on the UI
-        // thread, so each capsule goes on screen as soon as it is ready and the counter
-        // needs no locking.
-        var finished = 0;
-        var loadTasks = games.Select(async info =>
-        {
-            var bitmap = await Task.Run(() =>
-            {
-                var bytes = icons.TryRead(info.Id);
-                if (bytes == null)
-                {
-                    return null;
-                }
-                try
-                {
-                    using MemoryStream stream = new(bytes, false);
-                    return new Bitmap(stream);
-                }
-                catch (Exception)
-                {
-                    // A truncated cache file just means a re-download.
-                    return null;
-                }
-            });
-
-            // Not if the network got there first: it has the newer capsule.
-            if (bitmap != null)
-            {
-                info.Logo ??= bitmap;
-            }
-
-            finished++;
-            if (finished % step == 0)
-            {
-                decode.Report(finished);
-            }
-        }).ToList();
-        await Task.WhenAll(loadTasks);
-
-        EndProgress();
-    }
-
-    /// <summary>
     /// Checks the library against Steam: adds what it finds, and removes what it no
     /// longer lists.
     /// </summary>
@@ -967,7 +888,12 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
                 continue;
             }
 
-            info.ImageUrl = game.ImageUrl ?? info.ImageUrl;
+            if (game.ImageUrl != null && game.ImageUrl != info.ImageUrl)
+            {
+                // A new address: the tile asks again, from RefreshGames below.
+                info.ImageUrl = game.ImageUrl;
+                info.LogoLoader = null;
+            }
             info.ReleaseDate = game.ReleaseDate?.LocalDateTime;
             info.SteamRatingPercent = game.RatingPercent;
             info.SteamRatingScore = game.RatingScore;
@@ -1048,7 +974,7 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
 
         foreach (var info in FilteredGames)
         {
-            EnqueueLogo(info);
+            info.LogoLoader ??= token => LoadLogoAsync(info, token);
         }
     }
 
@@ -1081,12 +1007,6 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
         {
             ErrorRaised?.Invoke("You don't own that game.");
             return;
-        }
-
-        while (_logoQueue.TryDequeue(out var discarded) == true)
-        {
-            // Clear the queue; only one app is about to be shown.
-            _logosAttempted.Remove(discarded.ImageUrl);
         }
 
         AddGameText = "";
@@ -1125,122 +1045,70 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
 
     #region Logos
 
-    private void EnqueueLogo(GameInfo info)
-    {
-        if (info.Logo != null)
-        {
-            return;
-        }
-
-        var imageUrl = info.ImageUrl;
-        if (string.IsNullOrEmpty(imageUrl) == true)
-        {
-            return;
-        }
-
-        if (_logosAttempted.Add(imageUrl) == false)
-        {
-            return;
-        }
-
-        if (_logosQueued == 0)
-        {
-            BeginProgress("Loading game icons...");
-        }
-
-        _logoQueue.Enqueue(info);
-        _logosQueued++;
-        _logoSignal.Release();
-    }
-
     /// <summary>
-    /// One of <see cref="LogoWorkers"/> consumers of the queue. They all resume on the UI
-    /// thread after each await, so the counters below are only ever touched from it.
+    /// The capsule, from the disk cache if it is there and from the network if not (and then kept).
+    /// Runs when the tile comes into view; null when there is none.
     /// </summary>
-    private async Task RunLogoWorkerAsync()
+    private async Task<Bitmap> LoadLogoAsync(GameInfo info, CancellationToken token)
     {
-        while (true)
-        {
-            await _logoSignal.WaitAsync();
-
-            if (_logoQueue.TryDequeue(out var info) == false)
-            {
-                continue;
-            }
-
-            await LoadLogoAsync(info);
-
-            // Counted here rather than inside LoadLogoAsync so that every
-            // way of finishing an item -- already loaded, read from disk,
-            // downloaded, or failed -- advances the bar by exactly one.
-            _logosCompleted++;
-            if (_logosCompleted == _logosQueued)
-            {
-                EndProgress();
-                _logosQueued = 0;
-                _logosCompleted = 0;
-                continue;
-            }
-
-            ReportProgress(
-                $"Loading game icons, {_logosCompleted:N0} of {_logosQueued:N0}...",
-                _logosCompleted,
-                _logosQueued);
-        }
-    }
-
-    private async Task LoadLogoAsync(GameInfo info)
-    {
-        if (info.Logo != null)
-        {
-            // Hydrated from the disk cache while this was queued.
-            return;
-        }
-
-        // Disk before network: a warm cache means no request at all.
         var icons = _iconCache;
         var appId = info.Id;
-        // Read and decoded off the UI thread: decoding a few hundred capsules there
-        // one after another is what made a warm start slow.
-        var cachedLogo = await Task.Run(() =>
+
+        // Read and decoded off the UI thread: decoding a screenful there is what made scrolling stall.
+        var cached = await Task.Run(() => Decode(icons.TryRead(appId)), token);
+        if (cached != null)
         {
-            var bytes = icons.TryRead(appId);
-            if (bytes == null)
-            {
-                return null;
-            }
-            try
-            {
-                using MemoryStream stream = new(bytes, false);
-                return new Bitmap(stream);
-            }
-            catch (Exception)
-            {
-                // Fall through and re-download a corrupt cache entry.
-                return null;
-            }
-        });
-        if (cachedLogo != null)
-        {
-            info.Logo = cachedLogo;
-            return;
+            return cached;
         }
 
+        var url = info.ImageUrl;
+        if (string.IsNullOrEmpty(url) == true)
+        {
+            return null;
+        }
+
+        await _logoDownloads.WaitAsync(token);
         try
         {
-            var data = await _http.CreateClient().GetByteArrayAsync(new Uri(info.ImageUrl));
-            // Avalonia's Bitmap copies the decoded pixels, so unlike
-            // System.Drawing it does not need the stream kept alive.
-            info.Logo = await Task.Run(() =>
+            var data = await _http.CreateClient().GetByteArrayAsync(new Uri(url), token);
+            var bitmap = await Task.Run(() => Decode(data), token);
+            if (bitmap != null)
             {
-                using MemoryStream stream = new(data, false);
-                return new Bitmap(stream);
-            });
-            await Task.Run(() => icons.Write(appId, data));
+                await Task.Run(() => icons.Write(appId, data), token);
+            }
+            return bitmap;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception)
         {
             // A missing capsule image is not worth surfacing.
+            return null;
+        }
+        finally
+        {
+            _logoDownloads.Release();
+        }
+    }
+
+    /// <summary>Null for no data, and for data that is not an image: a truncated cache file means a re-download.</summary>
+    private static Bitmap Decode(byte[] data)
+    {
+        if (data == null)
+        {
+            return null;
+        }
+        try
+        {
+            using MemoryStream stream = new(data, false);
+            // Avalonia's Bitmap copies the decoded pixels, so the stream can go.
+            return new Bitmap(stream);
+        }
+        catch (Exception)
+        {
+            return null;
         }
     }
 

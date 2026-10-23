@@ -272,9 +272,12 @@ wrapped in `Task.Run`: it makes two Steam calls per app ID across the whole publ
 list, so it cannot run on the UI thread. **Steam client calls therefore do happen off the UI
 thread there** — preserved deliberately from the original, not an invitation to add more.
 
-Capsule art is read, decoded and downloaded by eight workers, off the UI thread, and the disk
-cache is decoded in parallel at start so a warm library shows its art almost at once. The
-achievements window loads its icons with four workers.
+Capsule art is not held by the view models: each tile loads its own when it comes into view and
+lets it go when it leaves (`LazyImage`), reading the disk cache first and downloading only what is
+missing. The stores' art is decoded no wider than 480 px. The tile views build controls only for the
+tiles on or near the screen (`TileGrid`, an `ItemsRepeater` with a uniform grid layout), which took about
+125 MB of control objects off a library of 1,400 games. The achievements window loads its icons
+with four workers.
 
 ## Epic and GOG
 

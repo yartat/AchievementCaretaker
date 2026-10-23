@@ -846,7 +846,7 @@ Startup order matters and is deliberate:
 
 1. `LoadFromCache()` runs **synchronously** in the constructor. It is pure database reads,
    so the window is painted with games before any network or Steam work starts.
-2. `HydrateCachedIconsAsync()` decodes the on-disk capsules on a background thread.
+2. Capsules are not decoded at start: each tile reads its own when it comes into view (`LazyImage`).
 3. `RefreshLibraryAsync()` re-downloads the published list, re-checks ownership, refreshes
    stats, and then `SaveCacheAsync()` writes it back.
 
@@ -941,17 +941,31 @@ SAM's WinForms build ran it on a `BackgroundWorker` for exactly the same reason.
 means **Steam client calls do happen off the UI thread there** — that is pre-existing
 behaviour, preserved deliberately, not an invitation to add more.
 
-Capsule loading uses a queue (`ConcurrentQueue` + `SemaphoreSlim` for Steam, a `Channel` for
-the stores) drained by **eight workers**, not one. The old one-at-a-time shape matched the
-WinForms `BackgroundWorker`, and it made a warm start slow: hundreds of small files, each
-read, **decoded on the UI thread** and shown one after another. Now the read and the decode
-(`new Bitmap`) both happen off the UI thread, `HydrateCachedIconsAsync` decodes the whole disk
-cache with `Parallel.ForEachAsync` and puts each capsule on screen as it finishes, and the
-workers' counters stay safe because every worker resumes on the UI thread after each await.
-The completion test is therefore `completed == queued`, not "the queue is empty", which is
-true while other workers are still busy. Measured against a 626-game library: 624 capsules
-decoded and shown within the first 900 ms of the window. The achievements window loads its icons with four workers through `StoreImageCache`, which keeps
-them under `<icon cache>/store/<provider>/` by a hash of the URL.
+Capsule art belongs to the control that shows it. `Views/LazyImage` (an `Image`) is given a
+`Loader` (`GameInfo.LogoLoader`, `StoreGameInfo.LogoLoader`) and asks it once the control is within
+300 px of the scroll viewport (`EffectiveViewportChanged`); when it leaves, the bitmap is dropped
+for the garbage collector and an unfinished load is cancelled. The view models keep **no**
+`Bitmap`, only `ImageUrl` and the loader; a changed address sets the loader to null and
+`RefreshGames` gives it a new one, which is what makes a tile ask again. A loader reads the disk
+cache first (read and decode on the pool, never the UI thread), then downloads, writes the file
+and decodes; Steam's downloads are bounded by `_logoDownloads` (8). The stores' capsules are
+decoded no wider than 480 px (`StoreImageCache.LoadAsync(decodeWidth)`): Epic's art is up to
+4267 px wide, and 902 of them decoded in full were 8.6 GB. Measured on the same library: 9.4 GB
+before the width limit, 1.2 GB with it, 0.4 to 0.75 GB with lazy loading (it varies with the
+window size and the run), flat while scrolling the Epic list. Scrolling every list to the end with the
+mouse wheel (Steam, Epic and GOG in turn) peaked at 877 MB and settled at 720 MB until the store
+images were read **as streams** (`StoreImageCache` no longer calls `File.ReadAllBytes`) and decoded
+at most **three at a time** with the wait cancellable (`_decodeGate`), after which it peaks at 407 MB
+and settles at 390 MB. The cause was the large object heap: 562 MB of it after one such session, of
+which 67 MB was live, because every multi-megabyte capsule read into an array is LOH garbage that the
+collector reclaims only in a gen-2 collection, and `dotnet-gcdump` on the running application
+(not a guess) is what showed it. Jumping with End does not reproduce this, because it skips the
+tiles in between: test by scrolling. A `Bitmap` is a few hundred bytes of
+managed object over megabytes of native pixels the garbage collector cannot see, so `LazyImage`
+**disposes** the bitmap when it lets go of it: without that, switching to Epic cost +430 MB, with
+it +85 MB. There is no "Loading game icons" progress any more, and nothing is downloaded for a tile that is never scrolled to. The
+achievements window still loads its icons with four workers through `StoreImageCache`, which
+keeps them under `<icon cache>/store/<provider>/` by a hash of the URL.
 
 ## Dependency injection
 
@@ -1094,13 +1108,23 @@ A clean build is **0 warnings, 0 errors** on both `AnyCPU` and `x86`. Keep it th
   This bends invariant #2 and predates every migration here. It does not crash — the
   interface comes back non-null and `GetAppId()` returns — so it has been left alone, but
   it is still worth confirming as intentional.
-- **The logo queue is eager.** SAM's WinForms build only downloaded capsule art for items
-  whose `ListViewItem.Bounds` intersected the visible list, using WinForms' virtual mode.
-  The Avalonia `ListBox` uses a `WrapPanel`, which does not virtualize, so every filtered
-  game's logo is queued instead. That is bounded by games *owned*, not by the full
-  published list, so it is a few hundred at worst — but it is more network traffic than
-  before. Moving to `ItemsRepeater` + `UniformGridLayout` would restore virtualization and
-  visible-only loading, at the cost of hand-rolled selection handling.
+- **The tile views are virtualized by `Views/TileGrid`**, an `ItemsRepeater` with a
+  `UniformGridLayout` (package `Avalonia.Controls.ItemsRepeater` 12.0.0; Avalonia 12.1.2's core
+  has none) inside a `ScrollViewer` subclass. It needs every tile the same size, so the owner sets
+  `TileWidth`/`TileHeight` (211 x 158: the 183-wide template plus the room a `ListBoxItem` used to
+  give) and a tile with a hidden meter keeps its slot. Four things about it are traps:
+  - **It does what a `ListBox` did, by hand.** A press selects (`SelectedItem`, two-way), the tile
+    gets the plain class `selected` (a pseudo-class cannot be set from outside the control), and
+    arrows, Home, End and Page move the selection. Enter and double tap stay with the owner's
+    `KeyDown`/`DoubleTapped`. Scrolling to the selection is **arithmetic** (row x `TileHeight`):
+    `BringIntoView` on a tile that has not been arranged does nothing.
+  - **A subclass of `ScrollViewer` has no template unless it says `StyleKeyOverride =>
+    typeof(ScrollViewer)`.** Without it the control looks fine, but has an extent and viewport of
+    zero, no scroll bar and does not scroll.
+  - **The repeater reuses elements and only changes their `DataContext`.** `TileGrid` therefore sets
+    each tile's `Content` from the `DataContext` in `ElementPrepared`; setting it once at creation
+    showed the wrong games in the right places after a scroll.
+  - The content (row) views are `ListBox`es over the default `VirtualizingStackPanel`, as before.
 - **`ResetAllStats` has never been run against Steam**, because it destroys data. Exercise it by hand on a throwaway title before trusting a release.
 - **The library toolbar wraps rather than clips.** It is a `WrapPanel`, not a
   `StackPanel`: when the view-mode control was added, a single fixed row ran off the right
