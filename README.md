@@ -5,7 +5,7 @@ It edits achievements and statistics in **Steam**, and shows the library and ach
 your **Epic Games** and **GOG** accounts. Epic is read-only; GOG achievements can be
 unlocked and locked. Steam needs the
 [Steam client](https://store.steampowered.com/about/), running and logged in, to refresh its
-library and to open the achievement editor; Epic Games and GOG need only a network connection
+library and to open a game's achievements; Epic Games and GOG need only a network connection
 and a sign-in. The library window opens without Steam, shows what it saved last time, and
 starts refreshing as soon as Steam is available. See [Using the sources](#using-the-sources).
 
@@ -23,16 +23,16 @@ The Windows installers are not code-signed. Windows SmartScreen may warn when yo
 
 ## How it works
 
-There is one executable, `AchievementCaretaker.exe`, and it has two faces:
+There is one executable, `AchievementCaretaker.exe`. Start it and you get **the library**: every
+game on your account, with how far through its achievements you are. The toolbar's view button
+switches between **Tiles** and **Content**. Picking a game opens its **achievements window**: the
+achievements to tick, and for Steam the game's statistics too.
 
-| Start it… | and you get |
-|---|---|
-| with no arguments | **the library** — every game on your account, with how far through its achievements you are. The toolbar's view button switches between **Tiles** and **Content**. |
-| with an app ID | **the editor** — the achievement and statistics editor for that one game. |
-
-Picking a game in the library starts a second copy of the executable for it. That is not an
-oversight: Steam's `ISteamUserStats` interface is scoped to the single app ID a process was
-initialised with, so one process genuinely cannot serve both windows.
+For Steam games, Caretaker starts a small hidden copy of itself for the game you opened. That is
+not an oversight: Steam's `ISteamUserStats` interface is scoped to the single app ID a process was
+initialised with, so one process cannot serve two games. You will see no window for it, and it
+closes when you do. Older versions opened a separate editor window by giving the executable an
+app ID; that still starts the library and the app ID is ignored.
 
 ## Downloads
 
@@ -50,7 +50,7 @@ ratings in `~/.sac` alone.
 ## Requirements
 
 - The [Steam client](https://store.steampowered.com/about/), running and logged in — for the
-  Steam library and the achievement editor; the Epic Games and GOG sources do not need it
+  Steam library and the Steam achievements; the Epic Games and GOG sources do not need it
 
 ### Linux
 
@@ -118,8 +118,8 @@ Search, the Tiles / Content switch and sorting work the same way in all of them.
 
 ### Steam
 
-Steam is the only source that can change anything: the achievement editor unlocks and
-re-locks achievements and edits statistics. Everything else on this tab is read from Steam
+Steam is the only source that can edit statistics, and, with GOG, change achievements:
+the Steam achievements window unlocks and re-locks them and edits the game's statistics. Everything else on this tab is read from Steam
 and from the caches Steam keeps on disk.
 
 **Starting without Steam is fine.** If Steam is not installed, not running, or running with no
@@ -127,12 +127,12 @@ account logged in, the library still opens. It shows the games saved last time, 
 capsule art, under a **No active Steam** banner that says why. In the background Caretaker
 tries to reach Steam every few seconds; the moment it can, the banner goes and the library
 refreshes by itself. While Steam is missing, Refresh is off, and typing an app ID or opening
-the editor tells you Steam is needed instead of failing.
+opening a game tells you Steam is needed instead of failing.
 
 **Steam going away is noticed.** If you quit Steam while Caretaker is open, the banner comes
-back, the games stay on screen, and Caretaker starts looking for Steam again. An editor window
-that was open for that Steam locks itself rather than let you tick achievements it can no
-longer send; reopen it once Steam is back.
+back, the games stay on screen, and Caretaker starts looking for Steam again. An achievements
+window that is already open will fail to send changes while Steam is gone; reopen the game once
+Steam is back.
 
 **A refresh that was cut short never deletes games.** Checking ownership asks Steam about
 every published app ID, and once Steam stops answering, every remaining game looks "not owned".
@@ -142,8 +142,8 @@ the same Steam. If Steam closed half-way, you keep every game you had and the mi
 checked again next time. A game whose name could not be read keeps its old name, and a failed
 download of the published game list changes nothing.
 
-Picking a game starts the editor for it. Achievements are cached the first time you open a
-game, so the list appears as soon as the window does.
+Picking a game opens its achievements window. The list is read from Steam when the window opens
+(about a second), and again when you press Reload.
 
 ### Epic Games and GOG
 

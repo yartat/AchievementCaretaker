@@ -5,7 +5,7 @@
 # See LICENSE in the repository root.
 #
 # Builds the winget manifests for a published release: three files under
-# manifests/y/YaroslavVTatarenko/AchievementCaretaker/<version>/, ready for a pull
+# manifests/y/yartat/AchievementCaretaker/<version>/, ready for a pull
 # request to microsoft/winget-pkgs. The installers are the NSIS setup.exe files from
 # the release; winget downloads them and checks them by SHA-256.
 #
@@ -48,7 +48,7 @@ sha64="$(sha256sum "$work/x64.exe" | cut -d' ' -f1)"
 echo "  x86 $sha32"
 echo "  x64 $sha64"
 
-dir="$out/manifests/y/YaroslavVTatarenko/AchievementCaretaker/$version"
+dir="$out/manifests/y/yartat/AchievementCaretaker/$version"
 mkdir -p "$dir"
 
 # Strips the template's own comment lines, fills in the fields, and puts the schema
@@ -66,9 +66,9 @@ render() {
     } > "$3"
 }
 
-render version "$here/version.yaml.in" "$dir/YaroslavVTatarenko.AchievementCaretaker.yaml"
-render defaultLocale "$here/defaultLocale.yaml.in" "$dir/YaroslavVTatarenko.AchievementCaretaker.locale.en-US.yaml"
-render installer "$here/installer.yaml.in" "$dir/YaroslavVTatarenko.AchievementCaretaker.installer.yaml"
+render version "$here/version.yaml.in" "$dir/yartat.AchievementCaretaker.yaml"
+render defaultLocale "$here/defaultLocale.yaml.in" "$dir/yartat.AchievementCaretaker.locale.en-US.yaml"
+render installer "$here/installer.yaml.in" "$dir/yartat.AchievementCaretaker.installer.yaml"
 
 if grep -q '@[A-Z0-9]*@' "$dir"/*.yaml; then
     echo "a template field was not filled in" >&2

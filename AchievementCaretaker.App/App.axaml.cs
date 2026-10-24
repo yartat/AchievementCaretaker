@@ -34,118 +34,83 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using AchievementCaretaker.App.Common;
+using AchievementCaretaker.App.Services;
 using AchievementCaretaker.App.ViewModels;
 using AchievementCaretaker.App.Views;
+using AchievementCaretaker.Services;
+using Microsoft.Extensions.DependencyInjection;
 
-namespace AchievementCaretaker.App
+namespace AchievementCaretaker.App;
+
+public partial class App : Application
 {
-    public partial class App : Application
+    /// <summary>
+    /// The root of the dependency graph. Validated when built, so a singleton that
+    /// reaches for something scoped fails at start rather than on first use.
+    /// </summary>
+    private ServiceProvider _services;
+
+    public override void Initialize()
     {
-        private SteamApi.Client _SteamClient;
+        AvaloniaXamlLoader.Load(this);
+    }
 
-        public override void Initialize()
+    public override void OnFrameworkInitializationCompleted()
+    {
+        RequestedThemeVariant = AppThemes.ToVariant(AppSettings.Load().Theme);
+
+        _services = new ServiceCollection()
+            .AddCaretaker()
+            .BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
+
+        // The library database is prepared once, here, before any window asks for it.
+        _services.MigrateLibraryDatabase();
+
+        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            AvaloniaXamlLoader.Load(this);
+            desktop.MainWindow = CreateMainWindow(desktop.Args);
+            desktop.ShutdownRequested += OnShutdownRequested;
+        }
+        base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>
+    /// Chooses the window: the library, or an error window when the command line or the place
+    /// it is run from is wrong. Avalonia has no equivalent of a message box shown before the
+    /// application loop starts, so the error is a window of its own.
+    /// </summary>
+    /// <remarks>
+    /// The library does not do the Steam handshake here. It has other sources than Steam, so it
+    /// opens at once and its <see cref="SteamConnector"/> looks for Steam in the background.
+    /// A game's achievements open in a window of their own, served by a helper process (see
+    /// <c>SteamProvider</c>); an application id on the command line, which used to open the
+    /// editor for that game, is accepted and ignored.
+    /// </remarks>
+    private Window CreateMainWindow(string[] args)
+    {
+        if (Program.IsRunningFromSteamDirectory() == true)
+        {
+            return MessageWindow.CreateError("This tool declines to being run from the Steam directory.");
         }
 
-        public override void OnFrameworkInitializationCompleted()
+        if (Program.TryParseAppId(args, out _) == false)
         {
-            // Both windows run in their own process, so each one reads the
-            // stored theme for itself. A change made in Settings reaches an
-            // editor window that is already open only when it is relaunched.
-            this.RequestedThemeVariant = AppThemes.ToVariant(AppSettings.Load().Theme);
-
-            if (this.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
-            {
-                desktop.MainWindow = this.CreateMainWindow(desktop.Args);
-                desktop.ShutdownRequested += this.OnShutdownRequested;
-            }
-            base.OnFrameworkInitializationCompleted();
+            return MessageWindow.CreateError(
+                "Could not parse application ID from command line argument.");
         }
 
-        /// <summary>
-        /// Chooses the window: the library when there is no application id on the
-        /// command line, the achievement editor when there is, and an error window
-        /// when the command line or the place it is run from is wrong.
-        /// Avalonia has no equivalent of a message box shown before the
-        /// application loop starts, so the error is a window of its own.
-        /// </summary>
-        /// <remarks>
-        /// The library does not do the Steam handshake here. It has other sources
-        /// than Steam, so it opens at once and its <see cref="SteamConnector"/> looks
-        /// for Steam in the background. The editor is one game's Steam session and
-        /// cannot do anything without one, so it still does the handshake up front
-        /// and shows the error if it fails.
-        /// </remarks>
-        private Window CreateMainWindow(string[] args)
-        {
-            if (Program.IsRunningFromSteamDirectory() == true)
-            {
-                return MessageWindow.CreateError("This tool declines to being run from the Steam directory.");
-            }
+        // One scope for the library window: its view model comes out of it, and it
+        // goes when the window closes.
+        var scope = _services.CreateScope();
+        GamePickerWindow library = new() { DataContext = scope.ServiceProvider.GetRequiredService<GamePickerViewModel>() };
+        library.Closed += (_, _) => scope.Dispose();
+        return library;
+    }
 
-            if (Program.TryParseAppId(args, out var appId) == false)
-            {
-                return MessageWindow.CreateError(
-                    "Could not parse application ID from command line argument.");
-            }
-
-            // Application id 0 is not a game; it is how the library window asks
-            // Steam for an ownership-wide session, once there is a Steam to ask.
-            if (appId == 0)
-            {
-                return new GamePickerWindow() { DataContext = new GamePickerViewModel(new SteamConnector()) };
-            }
-
-            if (SteamApi.SteamPlatform.IsArchitectureSupported == false)
-            {
-                return MessageWindow.CreateError(SteamApi.SteamPlatform.DescribeUnsupportedArchitecture());
-            }
-
-            SteamApi.Client client = new();
-            try
-            {
-                client.Initialize(appId);
-            }
-            catch (SteamApi.ClientInitializeException e)
-            {
-                client.Dispose();
-                return MessageWindow.CreateError(DescribeInitializeFailure(e, appId));
-            }
-            catch (DllNotFoundException)
-            {
-                client.Dispose();
-                return MessageWindow.CreateError("You've caused an exceptional error!");
-            }
-
-            this._SteamClient = client;
-            return new ManagerWindow() { DataContext = new ManagerViewModel(appId, client) };
-        }
-
-        private static string DescribeInitializeFailure(SteamApi.ClientInitializeException e, long appId)
-        {
-            const string Prefix = "Steam is not running. Please start Steam then run this tool again.";
-
-            // Family Share only locks a specific game, so the hint is only
-            // worth showing when one was asked for.
-            if (appId != 0 && e.Failure == SteamApi.ClientInitializeFailure.ConnectToGlobalUser)
-            {
-                return
-                    Prefix + "\n\n" +
-                    "If you have the game through Family Share, the game may be locked due to\n" +
-                    "the Family Share account actively playing a game.\n\n" +
-                    "(" + e.Message + ")";
-            }
-
-            return string.IsNullOrEmpty(e.Message) == false
-                ? Prefix + "\n\n(" + e.Message + ")"
-                : Prefix;
-        }
-
-        private void OnShutdownRequested(object sender, ShutdownRequestedEventArgs e)
-        {
-            this._SteamClient?.Dispose();
-            this._SteamClient = null;
-        }
+    private void OnShutdownRequested(object sender, ShutdownRequestedEventArgs e)
+    {
+        // Disposes the store providers, which the container owns.
+        _services?.Dispose();
+        _services = null;
     }
 }

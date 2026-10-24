@@ -9,6 +9,9 @@
 
 $ErrorActionPreference = 'Continue'
 
+# The shim that Install-BinFile created.
+Uninstall-BinFile -Name 'achievement-caretaker'
+
 $startMenu = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs'
 $shortcut  = Join-Path $startMenu 'Achievement Caretaker.lnk'
 if (Test-Path -LiteralPath $shortcut) {

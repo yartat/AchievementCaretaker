@@ -13,6 +13,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using AchievementCaretaker.Providers;
 using AchievementCaretaker.Providers.Epic;
+using AchievementCaretaker.Providers.Gog;
+using Microsoft.Extensions.DependencyInjection;
 
 // Read-only probe of the store providers. Nothing here writes to an account;
 // the only files it writes are the sessions, in ~/.sac/<provider>.json.
@@ -21,7 +23,12 @@ using AchievementCaretaker.Providers.Epic;
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 
 var home = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".sac");
-var providers = StoreProviders.CreateAll(home);
+// The same registrations as the application, without the application.
+using var services = new ServiceCollection()
+    .AddEpicProvider(home)
+    .AddGogProvider(home)
+    .BuildServiceProvider();
+var providers = services.GetServices<IStoreProvider>().ToArray();
 
 var provider = args.Length > 0 ? providers.FirstOrDefault(p => p.Id == args[0]) : null;
 var command = args.Length > 1 ? args[1] : "help";
@@ -103,13 +110,6 @@ catch (ProviderException e)
 {
     Console.Error.WriteLine($"{provider?.DisplayName ?? "Provider"}: {e.Message} ({e.ErrorCode})");
     return 1;
-}
-finally
-{
-    foreach (var p in providers)
-    {
-        p.Dispose();
-    }
 }
 
 static void Help(System.Collections.Generic.IReadOnlyList<IStoreProvider> providers)

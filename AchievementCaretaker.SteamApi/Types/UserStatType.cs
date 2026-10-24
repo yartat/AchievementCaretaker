@@ -28,16 +28,15 @@
  *    distribution.
  */
 
-namespace AchievementCaretaker.SteamApi.Types
+namespace AchievementCaretaker.SteamApi.Types;
+
+public enum UserStatType
 {
-    public enum UserStatType
-    {
-        Invalid = 0,
-        Integer = 1,
-        Int = Integer,
-        Float = 2,
-        AverageRate = 3,
-        Achievements = 4,
-        GroupAchievements = 5,
-    }
+    Invalid = 0,
+    Integer = 1,
+    Int = Integer,
+    Float = 2,
+    AverageRate = 3,
+    Achievements = 4,
+    GroupAchievements = 5,
 }

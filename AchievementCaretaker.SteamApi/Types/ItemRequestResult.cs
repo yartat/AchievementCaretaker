@@ -28,18 +28,17 @@
  *    distribution.
  */
 
-namespace AchievementCaretaker.SteamApi.Types
+namespace AchievementCaretaker.SteamApi.Types;
+
+public enum ItemRequestResult : int
 {
-    public enum ItemRequestResult : int
-    {
-        InvalidValue = -1,
-        OK = 0,
-        Denied = 1,
-        ServerError = 2,
-        Timeout = 3,
-        Invalid = 4,
-        NoMatch = 5,
-        UnknownError = 6,
-        NotLoggedOn = 7,
-    }
+    InvalidValue = -1,
+    OK = 0,
+    Denied = 1,
+    ServerError = 2,
+    Timeout = 3,
+    Invalid = 4,
+    NoMatch = 5,
+    UnknownError = 6,
+    NotLoggedOn = 7,
 }

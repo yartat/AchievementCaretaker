@@ -30,23 +30,22 @@
 
 using AchievementCaretaker.App.Common;
 
-namespace AchievementCaretaker.App.ViewModels
+namespace AchievementCaretaker.App.ViewModels;
+
+/// <summary>
+/// One entry in the Settings theme list. The enum alone would bind, but its
+/// member names are not what the user should read, and a compiled binding
+/// cannot call a formatting method for them.
+/// </summary>
+internal sealed class ThemeOption
 {
-    /// <summary>
-    /// One entry in the Settings theme list. The enum alone would bind, but its
-    /// member names are not what the user should read, and a compiled binding
-    /// cannot call a formatting method for them.
-    /// </summary>
-    internal sealed class ThemeOption
+    public ThemeOption(AppTheme value)
     {
-        public ThemeOption(AppTheme value)
-        {
-            this.Value = value;
-            this.Name = AppThemes.GetDisplayName(value);
-        }
-
-        public AppTheme Value { get; }
-
-        public string Name { get; }
+        Value = value;
+        Name = AppThemes.GetDisplayName(value);
     }
+
+    public AppTheme Value { get; }
+
+    public string Name { get; }
 }

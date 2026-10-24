@@ -1,0 +1,156 @@
+syntax = "proto3";
+
+option csharp_namespace = "AchievementCaretaker.Providers.Steam.Protocol";
+
+package caretaker.steam;
+
+// What the Steam helper process offers the application. One helper serves one app id:
+// ISteamUserStats is scoped to the app id a process was initialised with.
+service SteamWorker {
+  rpc GetAchievements (GetAchievementsRequest) returns (GetAchievementsReply);
+  rpc GetStats (GetStatsRequest) returns (GetStatsReply);
+  // Sets the listed achievements and statistics and stores them in one go; nothing is
+  // stored if any is refused.
+  rpc Commit (CommitRequest) returns (CommitReply);
+  // Resets every statistic, and the achievements too if asked.
+  rpc Reset (ResetRequest) returns (ResetReply);
+  // The library helper (app id 0): which of the candidates the account owns, with what Steam
+  // knows about each. Progress is streamed; the last event is the result.
+  rpc ScanLibrary (ScanLibraryRequest) returns (stream ScanLibraryEvent);
+  rpc FindOwned (FindOwnedRequest) returns (FindOwnedReply);
+  // Which account Steam is logged in as; also how the application finds out Steam is there.
+  rpc GetAccount (GetAccountRequest) returns (GetAccountReply);
+  // Asks the helper to exit once the reply is sent.
+  rpc Shutdown (ShutdownRequest) returns (ShutdownReply);
+}
+
+message Achievement {
+  string id = 1;
+  string display_name = 2;
+  string description = 3;
+  string icon_url = 4;
+  bool hidden = 5;
+  bool unlocked = 6;
+  // Absent when Steam did not say, which is not the same as the epoch.
+  optional int64 unlock_time_unix = 7;
+  optional int32 xp = 8;
+  optional double rarity_percent = 9;
+  optional double progress = 10;
+  // Steam's permission bits forbid changing it.
+  bool is_protected = 11;
+}
+
+message GetAchievementsRequest {}
+
+message GetAchievementsReply {
+  repeated Achievement achievements = 1;
+}
+
+enum StatKind {
+  INTEGER = 0;
+  FLOAT = 1;
+}
+
+message Stat {
+  string id = 1;
+  string display_name = 2;
+  StatKind kind = 3;
+  double value = 4;
+  double min = 5;
+  double max = 6;
+  double max_change = 7;
+  bool increment_only = 8;
+  double default_value = 9;
+  bool is_protected = 10;
+}
+
+message GetStatsRequest {}
+
+message GetStatsReply {
+  repeated Stat stats = 1;
+}
+
+message AchievementChange {
+  string id = 1;
+  bool unlocked = 2;
+}
+
+message StatChange {
+  string id = 1;
+  double value = 2;
+}
+
+message CommitRequest {
+  repeated AchievementChange achievements = 1;
+  repeated StatChange stats = 2;
+}
+
+message CommitReply {}
+
+message ResetRequest {
+  bool include_achievements = 1;
+}
+
+message ResetReply {}
+
+message Candidate {
+  uint32 id = 1;
+  string type = 2;
+}
+
+message ScanLibraryRequest {
+  repeated Candidate candidates = 1;
+}
+
+message OwnedGame {
+  uint32 id = 1;
+  string type = 2;
+  string name = 3;
+  string image_url = 4;
+  optional int64 release_unix = 5;
+  optional int32 rating_percent = 6;
+  optional int32 rating_score = 7;
+  optional int32 playtime_minutes = 8;
+  optional int64 last_played_unix = 9;
+  optional int32 achievements_total = 10;
+  optional int32 achievements_earned = 11;
+}
+
+message ScanProgress {
+  int32 examined = 1;
+  int32 total = 2;
+}
+
+message ScanResult {
+  // The 32-bit account id Steam's files are named by.
+  uint32 account = 1;
+  repeated OwnedGame games = 2;
+  bool complete = 3;
+}
+
+message ScanLibraryEvent {
+  oneof event {
+    ScanProgress progress = 1;
+    ScanResult result = 2;
+  }
+}
+
+message FindOwnedRequest {
+  Candidate candidate = 1;
+}
+
+message FindOwnedReply {
+  bool owned = 1;
+  OwnedGame game = 2;
+}
+
+message GetAccountRequest {}
+
+message GetAccountReply {
+  // The 32-bit account id Steam's files are named by.
+  uint32 account = 1;
+}
+
+message ShutdownRequest {}
+
+message ShutdownReply {}

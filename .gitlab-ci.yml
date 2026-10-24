@@ -68,9 +68,9 @@ workflow:
 # release keyword below interpolate it - a shell export would not survive.
 #
 # On a tag this also fails the pipeline when the tag and the repository disagree
-# about the version. The version sits in both projects and in two window-title
-# literals that are not generated from the assembly version, so overriding it
-# from the tag would leave the titles saying something else.
+# about the version. The version sits in the projects and in a window-title
+# literal that is not generated from the assembly version, so overriding it
+# from the tag would leave the title saying something else.
 version:
   stage: prepare
   script:

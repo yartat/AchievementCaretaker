@@ -30,10 +30,9 @@
 
 using System;
 
-namespace AchievementCaretaker.SteamApi
+namespace AchievementCaretaker.SteamApi;
+
+public interface INativeWrapper
 {
-    public interface INativeWrapper
-    {
-        void SetupFunctions(IntPtr objectAddress);
-    }
+    void SetupFunctions(IntPtr objectAddress);
 }

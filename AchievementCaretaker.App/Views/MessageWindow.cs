@@ -33,90 +33,89 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 
-namespace AchievementCaretaker.App.Views
+namespace AchievementCaretaker.App.Views;
+
+/// <summary>
+/// Minimal stand-in for the WinForms MessageBox, which Avalonia has no
+/// equivalent of.
+/// </summary>
+internal sealed class MessageWindow : Window
 {
-    /// <summary>
-    /// Minimal stand-in for the WinForms MessageBox, which Avalonia has no
-    /// equivalent of.
-    /// </summary>
-    internal sealed class MessageWindow : Window
+    private MessageWindow(string title, string message, bool confirm)
     {
-        private MessageWindow(string title, string message, bool confirm)
-        {
-            this.Title = title;
-            this.SizeToContent = SizeToContent.WidthAndHeight;
-            this.CanResize = false;
-            this.WindowStartupLocation = WindowStartupLocation.CenterOwner;
-            // This window doubles as the main window when the Steam handshake
-            // fails, so it has to be reachable from the taskbar.
-            this.ShowInTaskbar = true;
+        Title = title;
+        SizeToContent = SizeToContent.WidthAndHeight;
+        CanResize = false;
+        WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        // This window doubles as the main window when the Steam handshake
+        // fails, so it has to be reachable from the taskbar.
+        ShowInTaskbar = true;
 
-            StackPanel buttons = new()
+        StackPanel buttons = new()
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            HorizontalAlignment = HorizontalAlignment.Right,
+        };
+
+        if (confirm == true)
+        {
+            Button yes = new() { Content = "Yes", MinWidth = 88, IsDefault = true };
+            Button no = new() { Content = "No", MinWidth = 88, IsCancel = true };
+            yes.Click += (_, _) => Close(true);
+            no.Click += (_, _) => Close(false);
+            buttons.Children.Add(yes);
+            buttons.Children.Add(no);
+        }
+        else
+        {
+            Button ok = new() { Content = "OK", MinWidth = 88, IsDefault = true, IsCancel = true };
+            ok.Click += (_, _) => Close(false);
+            buttons.Children.Add(ok);
+        }
+
+        Content = new StackPanel()
+        {
+            Margin = new(20),
+            Spacing = 16,
+            MaxWidth = 520,
+            Children =
             {
-                Orientation = Orientation.Horizontal,
-                Spacing = 8,
-                HorizontalAlignment = HorizontalAlignment.Right,
-            };
+                new TextBlock() { Text = message, TextWrapping = TextWrapping.Wrap },
+                buttons,
+            },
+        };
+    }
 
-            if (confirm == true)
-            {
-                Button yes = new() { Content = "Yes", MinWidth = 88, IsDefault = true };
-                Button no = new() { Content = "No", MinWidth = 88, IsCancel = true };
-                yes.Click += (_, _) => this.Close(true);
-                no.Click += (_, _) => this.Close(false);
-                buttons.Children.Add(yes);
-                buttons.Children.Add(no);
-            }
-            else
-            {
-                Button ok = new() { Content = "OK", MinWidth = 88, IsDefault = true, IsCancel = true };
-                ok.Click += (_, _) => this.Close(false);
-                buttons.Children.Add(ok);
-            }
+    public static MessageWindow CreateError(string message)
+    {
+        return new("Error", message, false);
+    }
 
-            this.Content = new StackPanel()
-            {
-                Margin = new(20),
-                Spacing = 16,
-                MaxWidth = 520,
-                Children =
-                {
-                    new TextBlock() { Text = message, TextWrapping = TextWrapping.Wrap },
-                    buttons,
-                },
-            };
-        }
+    public static Task ShowErrorAsync(Window owner, string message)
+    {
+        return ShowAsync(owner, "Error", message);
+    }
 
-        public static MessageWindow CreateError(string message)
-        {
-            return new("Error", message, false);
-        }
+    public static Task ShowInfoAsync(Window owner, string message)
+    {
+        return ShowAsync(owner, "Information", message);
+    }
 
-        public static Task ShowErrorAsync(Window owner, string message)
-        {
-            return ShowAsync(owner, "Error", message);
-        }
+    /// <summary>
+    /// A dialog needs an owner to be shown at all, so a caller without a
+    /// window gets a completed task rather than an exception.
+    /// </summary>
+    private static Task ShowAsync(Window owner, string title, string message)
+    {
+        MessageWindow window = new(title, message, false);
+        return owner == null
+            ? Task.CompletedTask
+            : window.ShowDialog(owner);
+    }
 
-        public static Task ShowInfoAsync(Window owner, string message)
-        {
-            return ShowAsync(owner, "Information", message);
-        }
-
-        /// <summary>
-        /// A dialog needs an owner to be shown at all, so a caller without a
-        /// window gets a completed task rather than an exception.
-        /// </summary>
-        private static Task ShowAsync(Window owner, string title, string message)
-        {
-            MessageWindow window = new(title, message, false);
-            return owner == null
-                ? Task.CompletedTask
-                : window.ShowDialog(owner);
-        }
-
-        public static Task<bool> ShowConfirmAsync(Window owner, string title, string message)
-        {
-            return new MessageWindow(title, message, true).ShowDialog<bool>(owner);
-        }
+    public static Task<bool> ShowConfirmAsync(Window owner, string title, string message)
+    {
+        return new MessageWindow(title, message, true).ShowDialog<bool>(owner);
     }
 }

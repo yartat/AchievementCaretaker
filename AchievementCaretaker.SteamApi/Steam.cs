@@ -32,134 +32,133 @@ using System;
 using System.IO;
 using System.Runtime.InteropServices;
 
-namespace AchievementCaretaker.SteamApi
+namespace AchievementCaretaker.SteamApi;
+
+public static class Steam
 {
-    public static class Steam
+    private static Delegate GetExportDelegate<TDelegate>(IntPtr module, string name)
     {
-        private static Delegate GetExportDelegate<TDelegate>(IntPtr module, string name)
+        return NativeLibrary.TryGetExport(module, name, out var address) == false
+            ? null
+            : Marshal.GetDelegateForFunctionPointer(address, typeof(TDelegate));
+    }
+
+    private static TDelegate GetExportFunction<TDelegate>(IntPtr module, string name)
+        where TDelegate : class
+    {
+        return (TDelegate)((object)GetExportDelegate<TDelegate>(module, name));
+    }
+
+    private static IntPtr _handle = IntPtr.Zero;
+
+    public static string GetInstallPath()
+    {
+        return SteamPlatform.GetInstallPath();
+    }
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+    private delegate IntPtr NativeCreateInterface(string version, IntPtr returnCode);
+
+    private static NativeCreateInterface _callCreateInterface;
+
+    public static TClass CreateInterface<TClass>(string version)
+        where TClass : INativeWrapper, new()
+    {
+        IntPtr address = _callCreateInterface(version, IntPtr.Zero);
+
+        if (address == IntPtr.Zero)
         {
-            return NativeLibrary.TryGetExport(module, name, out var address) == false
-                ? null
-                : Marshal.GetDelegateForFunctionPointer(address, typeof(TDelegate));
+            return default;
         }
 
-        private static TDelegate GetExportFunction<TDelegate>(IntPtr module, string name)
-            where TDelegate : class
+        TClass instance = new();
+        instance.SetupFunctions(address);
+        return instance;
+    }
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    private delegate bool NativeSteamGetCallback(int pipe, out Types.CallbackMessage message, out int call);
+
+    private static NativeSteamGetCallback _callSteamBGetCallback;
+
+    public static bool GetCallback(int pipe, out Types.CallbackMessage message, out int call)
+    {
+        return _callSteamBGetCallback(pipe, out message, out call);
+    }
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    private delegate bool NativeSteamFreeLastCallback(int pipe);
+
+    private static NativeSteamFreeLastCallback _callSteamFreeLastCallback;
+
+    public static bool FreeLastCallback(int pipe)
+    {
+        return _callSteamFreeLastCallback(pipe);
+    }
+
+    public static bool Load()
+    {
+        if (_handle != IntPtr.Zero)
         {
-            return (TDelegate)((object)GetExportDelegate<TDelegate>(module, name));
-        }
-
-        private static IntPtr _Handle = IntPtr.Zero;
-
-        public static string GetInstallPath()
-        {
-            return SteamPlatform.GetInstallPath();
-        }
-
-        [UnmanagedFunctionPointer(CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
-        private delegate IntPtr NativeCreateInterface(string version, IntPtr returnCode);
-
-        private static NativeCreateInterface _CallCreateInterface;
-
-        public static TClass CreateInterface<TClass>(string version)
-            where TClass : INativeWrapper, new()
-        {
-            IntPtr address = _CallCreateInterface(version, IntPtr.Zero);
-
-            if (address == IntPtr.Zero)
-            {
-                return default;
-            }
-
-            TClass instance = new();
-            instance.SetupFunctions(address);
-            return instance;
-        }
-
-        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        [return: MarshalAs(UnmanagedType.I1)]
-        private delegate bool NativeSteamGetCallback(int pipe, out Types.CallbackMessage message, out int call);
-
-        private static NativeSteamGetCallback _CallSteamBGetCallback;
-
-        public static bool GetCallback(int pipe, out Types.CallbackMessage message, out int call)
-        {
-            return _CallSteamBGetCallback(pipe, out message, out call);
-        }
-
-        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        [return: MarshalAs(UnmanagedType.I1)]
-        private delegate bool NativeSteamFreeLastCallback(int pipe);
-
-        private static NativeSteamFreeLastCallback _CallSteamFreeLastCallback;
-
-        public static bool FreeLastCallback(int pipe)
-        {
-            return _CallSteamFreeLastCallback(pipe);
-        }
-
-        public static bool Load()
-        {
-            if (_Handle != IntPtr.Zero)
-            {
-                return true;
-            }
-
-            // A native library can only be loaded by a process of the same
-            // architecture, and Valve ships no ARM build of the Steam client.
-            if (SteamPlatform.IsArchitectureSupported == false)
-            {
-                return false;
-            }
-
-            string installPath = GetInstallPath();
-            if (installPath == null)
-            {
-                return false;
-            }
-
-            IntPtr module = IntPtr.Zero;
-            foreach (var candidate in SteamPlatform.GetClientLibraryCandidates(installPath))
-            {
-                if (File.Exists(candidate) == false)
-                {
-                    continue;
-                }
-                // NativeLibrary maps to LoadLibraryEx / dlopen as appropriate,
-                // and resolves the library's own dependencies relative to it,
-                // which is what the old SetDllDirectory dance was for.
-                if (NativeLibrary.TryLoad(candidate, out module) == true)
-                {
-                    break;
-                }
-                module = IntPtr.Zero;
-            }
-
-            if (module == IntPtr.Zero)
-            {
-                return false;
-            }
-
-            _CallCreateInterface = GetExportFunction<NativeCreateInterface>(module, "CreateInterface");
-            if (_CallCreateInterface == null)
-            {
-                return false;
-            }
-
-            _CallSteamBGetCallback = GetExportFunction<NativeSteamGetCallback>(module, "Steam_BGetCallback");
-            if (_CallSteamBGetCallback == null)
-            {
-                return false;
-            }
-
-            _CallSteamFreeLastCallback = GetExportFunction<NativeSteamFreeLastCallback>(module, "Steam_FreeLastCallback");
-            if (_CallSteamFreeLastCallback == null)
-            {
-                return false;
-            }
-
-            _Handle = module;
             return true;
         }
+
+        // A native library can only be loaded by a process of the same
+        // architecture, and Valve ships no ARM build of the Steam client.
+        if (SteamPlatform.IsArchitectureSupported == false)
+        {
+            return false;
+        }
+
+        string installPath = GetInstallPath();
+        if (installPath == null)
+        {
+            return false;
+        }
+
+        IntPtr module = IntPtr.Zero;
+        foreach (var candidate in SteamPlatform.GetClientLibraryCandidates(installPath))
+        {
+            if (File.Exists(candidate) == false)
+            {
+                continue;
+            }
+            // NativeLibrary maps to LoadLibraryEx / dlopen as appropriate,
+            // and resolves the library's own dependencies relative to it,
+            // which is what the old SetDllDirectory dance was for.
+            if (NativeLibrary.TryLoad(candidate, out module) == true)
+            {
+                break;
+            }
+            module = IntPtr.Zero;
+        }
+
+        if (module == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        _callCreateInterface = GetExportFunction<NativeCreateInterface>(module, "CreateInterface");
+        if (_callCreateInterface == null)
+        {
+            return false;
+        }
+
+        _callSteamBGetCallback = GetExportFunction<NativeSteamGetCallback>(module, "Steam_BGetCallback");
+        if (_callSteamBGetCallback == null)
+        {
+            return false;
+        }
+
+        _callSteamFreeLastCallback = GetExportFunction<NativeSteamFreeLastCallback>(module, "Steam_FreeLastCallback");
+        if (_callSteamFreeLastCallback == null)
+        {
+            return false;
+        }
+
+        _handle = module;
+        return true;
     }
 }

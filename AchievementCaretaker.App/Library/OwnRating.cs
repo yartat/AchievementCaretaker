@@ -28,44 +28,43 @@
  *    distribution.
  */
 
-namespace AchievementCaretaker.App.Library
+namespace AchievementCaretaker.App.Library;
+
+/// <summary>
+/// The user's own like/dislike for a game.
+/// </summary>
+/// <remarks>
+/// This is <em>this application's own</em> rating, stored locally — it is not Steam's
+/// review recommendation. Steam keeps that server-side and exposes it only
+/// through the Web API, which needs an API key this application does not have and does
+/// not ask for. Nothing here is sent to Steam.
+/// </remarks>
+internal enum OwnRating
 {
-    /// <summary>
-    /// The user's own like/dislike for a game.
-    /// </summary>
-    /// <remarks>
-    /// This is <em>this application's own</em> rating, stored locally — it is not Steam's
-    /// review recommendation. Steam keeps that server-side and exposes it only
-    /// through the Web API, which needs an API key this application does not have and does
-    /// not ask for. Nothing here is sent to Steam.
-    /// </remarks>
-    internal enum OwnRating
-    {
-        None = 0,
-        Like = 1,
-        Dislike = 2,
-    }
+    None = 0,
+    Like = 1,
+    Dislike = 2,
+}
 
-    internal enum GameSortField
-    {
-        Name = 0,
-        ReleaseDate = 1,
-        LastPlayed = 2,
-        SteamRating = 3,
-        OwnRating = 4,
-        Completion = 5,
-    }
+internal enum GameSortField
+{
+    Name = 0,
+    ReleaseDate = 1,
+    LastPlayed = 2,
+    SteamRating = 3,
+    OwnRating = 4,
+    Completion = 5,
+}
 
-    /// <summary>
-    /// The Library rail's mutually exclusive collections. Distinct from the
-    /// Show games/demos/mods/junk toggles, which are inclusive and combine.
-    /// </summary>
-    internal enum GameCollection
-    {
-        All = 0,
-        RecentlyPlayed = 1,
-        WithAchievements = 2,
-        Perfect = 3,
-        Liked = 4,
-    }
+/// <summary>
+/// The Library rail's mutually exclusive collections. Distinct from the
+/// Show games/demos/mods/junk toggles, which are inclusive and combine.
+/// </summary>
+internal enum GameCollection
+{
+    All = 0,
+    RecentlyPlayed = 1,
+    WithAchievements = 2,
+    Perfect = 3,
+    Liked = 4,
 }

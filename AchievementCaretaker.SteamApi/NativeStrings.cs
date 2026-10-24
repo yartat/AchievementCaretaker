@@ -33,117 +33,116 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
 
-namespace AchievementCaretaker.SteamApi
+namespace AchievementCaretaker.SteamApi;
+
+internal class NativeStrings
 {
-    internal class NativeStrings
+    public sealed class StringHandle : SafeHandleZeroOrMinusOneIsInvalid
     {
-        public sealed class StringHandle : SafeHandleZeroOrMinusOneIsInvalid
+        internal StringHandle(IntPtr preexistingHandle, bool ownsHandle)
+            : base(ownsHandle)
         {
-            internal StringHandle(IntPtr preexistingHandle, bool ownsHandle)
-                : base(ownsHandle)
-            {
-                this.SetHandle(preexistingHandle);
-            }
-
-            public IntPtr Handle
-            {
-                get { return this.handle; }
-            }
-
-            protected override bool ReleaseHandle()
-            {
-                if (handle != IntPtr.Zero)
-                {
-                    Marshal.FreeHGlobal(handle);
-                    handle = IntPtr.Zero;
-                    return true;
-                }
-
-                return false;
-            }
+            SetHandle(preexistingHandle);
         }
 
-        public static unsafe StringHandle StringToStringHandle(string value)
+        public IntPtr Handle
         {
-            if (value == null)
-            {
-                return new StringHandle(IntPtr.Zero, true);
-            }
-
-            var bytes = Encoding.UTF8.GetBytes(value);
-            var length = bytes.Length;
-
-            var p = Marshal.AllocHGlobal(length + 1);
-            Marshal.Copy(bytes, 0, p, bytes.Length);
-            ((byte*)p)[length] = 0;
-            return new StringHandle(p, true);
+            get { return handle; }
         }
 
-        public static unsafe string PointerToString(sbyte* bytes)
+        protected override bool ReleaseHandle()
         {
-            if (bytes == null)
+            if (handle != IntPtr.Zero)
             {
-                return null;
+                Marshal.FreeHGlobal(handle);
+                handle = IntPtr.Zero;
+                return true;
             }
 
-            int running = 0;
-
-            var b = bytes;
-            if (*b == 0)
-            {
-                return string.Empty;
-            }
-
-            while ((*b++) != 0)
-            {
-                running++;
-            }
-
-            return new string(bytes, 0, running, Encoding.UTF8);
+            return false;
         }
+    }
 
-        public static unsafe string PointerToString(byte* bytes)
+    public static unsafe StringHandle StringToStringHandle(string value)
+    {
+        if (value == null)
         {
-            return PointerToString((sbyte*)bytes);
+            return new StringHandle(IntPtr.Zero, true);
         }
 
-        public static unsafe string PointerToString(IntPtr nativeData)
+        var bytes = Encoding.UTF8.GetBytes(value);
+        var length = bytes.Length;
+
+        var p = Marshal.AllocHGlobal(length + 1);
+        Marshal.Copy(bytes, 0, p, bytes.Length);
+        ((byte*)p)[length] = 0;
+        return new StringHandle(p, true);
+    }
+
+    public static unsafe string PointerToString(sbyte* bytes)
+    {
+        if (bytes == null)
         {
-            return PointerToString((sbyte*)nativeData.ToPointer());
+            return null;
         }
 
-        public static unsafe string PointerToString(sbyte* bytes, int length)
+        int running = 0;
+
+        var b = bytes;
+        if (*b == 0)
         {
-            if (bytes == null)
-            {
-                return null;
-            }
-
-            int running = 0;
-
-            var b = bytes;
-            if (length == 0 || *b == 0)
-            {
-                return string.Empty;
-            }
-
-            while ((*b++) != 0 &&
-                   running < length)
-            {
-                running++;
-            }
-
-            return new string(bytes, 0, running, Encoding.UTF8);
+            return string.Empty;
         }
 
-        public static unsafe string PointerToString(byte* bytes, int length)
+        while ((*b++) != 0)
         {
-            return PointerToString((sbyte*)bytes, length);
+            running++;
         }
 
-        public static unsafe string PointerToString(IntPtr nativeData, int length)
+        return new string(bytes, 0, running, Encoding.UTF8);
+    }
+
+    public static unsafe string PointerToString(byte* bytes)
+    {
+        return PointerToString((sbyte*)bytes);
+    }
+
+    public static unsafe string PointerToString(IntPtr nativeData)
+    {
+        return PointerToString((sbyte*)nativeData.ToPointer());
+    }
+
+    public static unsafe string PointerToString(sbyte* bytes, int length)
+    {
+        if (bytes == null)
         {
-            return PointerToString((sbyte*)nativeData.ToPointer(), length);
+            return null;
         }
+
+        int running = 0;
+
+        var b = bytes;
+        if (length == 0 || *b == 0)
+        {
+            return string.Empty;
+        }
+
+        while ((*b++) != 0 &&
+               running < length)
+        {
+            running++;
+        }
+
+        return new string(bytes, 0, running, Encoding.UTF8);
+    }
+
+    public static unsafe string PointerToString(byte* bytes, int length)
+    {
+        return PointerToString((sbyte*)bytes, length);
+    }
+
+    public static unsafe string PointerToString(IntPtr nativeData, int length)
+    {
+        return PointerToString((sbyte*)nativeData.ToPointer(), length);
     }
 }
