@@ -48,7 +48,7 @@ namespace AchievementCaretaker.Providers.Gog;
 /// in a message.
 /// </para>
 /// </remarks>
-public sealed class GogProvider : IWritableStoreProvider
+public sealed class GogProvider : IWritableStoreProvider, IStoreAccount
 {
     private const string AuthHost = "https://auth.gog.com";
     private const string EmbedHost = "https://embed.gog.com";

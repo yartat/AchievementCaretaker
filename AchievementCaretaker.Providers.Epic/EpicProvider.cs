@@ -42,7 +42,7 @@ namespace AchievementCaretaker.Providers.Epic;
 /// through the game's own EOS credentials and is deliberately out of scope.
 /// </para>
 /// </remarks>
-public sealed class EpicProvider : IStoreProvider
+public sealed class EpicProvider : IStoreProvider, IStoreAccount
 {
     private const string OAuthHost = "https://account-public-service-prod03.ol.epicgames.com";
     private const string LibraryHost = "https://library-service.live.use1a.on.epicgames.com";

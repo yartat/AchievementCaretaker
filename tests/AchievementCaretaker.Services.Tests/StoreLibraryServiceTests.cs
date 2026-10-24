@@ -20,7 +20,8 @@ namespace AchievementCaretaker.Services.Tests;
 
 public sealed class StoreLibraryServiceTests : IDisposable
 {
-    private sealed class FakeProvider : IStoreProvider
+    // One object in both roles, as the real stores are.
+    private sealed class FakeProvider : IStoreProvider, IStoreAccount
     {
         public string AccountIdValue { get; set; } = "acct";
         public Func<string, IReadOnlyList<StoreAchievement>> Achievements { get; set; }
@@ -132,7 +133,7 @@ public sealed class StoreLibraryServiceTests : IDisposable
         Dictionary<string, (int, int)> seen = new();
 
         var run = await _service.LoadProgressAsync(
-            provider, games, (id, earned, total) => seen[id] = (earned, total), _ => { },
+            provider, provider, games, (id, earned, total) => seen[id] = (earned, total), _ => { },
             TestContext.Current.CancellationToken);
 
         Assert.Equal(2, run.Done);
@@ -152,7 +153,7 @@ public sealed class StoreLibraryServiceTests : IDisposable
         };
 
         var run = await _service.LoadProgressAsync(
-            provider, new[] { ("1", "ok"), ("2", "bad") }, null, null, TestContext.Current.CancellationToken);
+            provider, provider, new[] { ("1", "ok"), ("2", "bad") }, null, null, TestContext.Current.CancellationToken);
 
         Assert.Equal(2, run.Done);
         Assert.Equal(1, run.Failed);
@@ -168,7 +169,7 @@ public sealed class StoreLibraryServiceTests : IDisposable
         };
         var games = Enumerable.Range(0, 20).Select(i => (i.ToString(), "k" + i)).ToList();
 
-        var run = await _service.LoadProgressAsync(provider, games, null, null, TestContext.Current.CancellationToken);
+        var run = await _service.LoadProgressAsync(provider, provider, games, null, null, TestContext.Current.CancellationToken);
 
         Assert.True(run.SessionExpired);
         Assert.False(run.Cancelled);
@@ -183,7 +184,7 @@ public sealed class StoreLibraryServiceTests : IDisposable
         cts.Cancel();
 
         var run = await _service.LoadProgressAsync(
-            provider, new[] { ("1", "k1") }, null, null, cts.Token);
+            provider, provider, new[] { ("1", "k1") }, null, null, cts.Token);
 
         Assert.True(run.Cancelled);
         Assert.Equal(0, run.Done);

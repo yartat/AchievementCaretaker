@@ -62,27 +62,6 @@ public sealed class SteamProvider : IStatsStoreProvider, ILibraryScanProvider, I
 
     public string DisplayName => "Steam";
 
-    public string SignInUrl => "";
-
-    public string SignInHint => "";
-
-    public SignInResultKind GetSignInResultKind(Uri address) => SignInResultKind.None;
-
-    public bool IsSignedIn => true;
-
-    public string AccountName => null;
-
-    public string AccountId => null;
-
-    public Task SignInAsync(string pasted, CancellationToken cancellationToken = default) =>
-        throw new NotSupportedException("Steam uses the account that is logged in to the Steam client.");
-
-    public Task EnsureSignedInAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
-
-    public void SignOut()
-    {
-    }
-
     public Task<IReadOnlyList<StoreGame>> GetLibraryAsync(CancellationToken cancellationToken = default) =>
         throw new NotSupportedException("Steam does not list an account's games: use ScanLibraryAsync with the published list.");
 

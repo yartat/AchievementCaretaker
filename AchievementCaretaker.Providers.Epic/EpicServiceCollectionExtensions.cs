@@ -18,18 +18,21 @@ namespace AchievementCaretaker.Providers.Epic;
 public static class EpicServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers the Epic provider as an <see cref="IStoreProvider"/>, with the named
-    /// <c>HttpClient</c> it asks the factory for.
+    /// Registers the Epic provider, with the named <c>HttpClient</c> it asks the factory for,
+    /// as an <see cref="IStoreProvider"/> and as an <see cref="IStoreAccount"/>: two roles of
+    /// the one object, so the account signed in is the one the provider reads for.
     /// </summary>
     /// <param name="homeDirectory">Where the session file lives: <c>epic.json</c> in it.</param>
     public static IServiceCollection AddEpicProvider(this IServiceCollection services, string homeDirectory)
     {
         services.AddSessionStore();
         services.AddHttpClient(EpicProvider.HttpClientName, EpicProvider.ConfigureHttpClient);
-        services.AddSingleton<IStoreProvider>(sp => new EpicProvider(
+        services.AddSingleton(sp => new EpicProvider(
             sp.GetRequiredService<IHttpClientFactory>(),
             sp.GetRequiredService<ISessionStore>(),
             Path.Combine(homeDirectory, "epic.json")));
+        services.AddSingleton<IStoreProvider>(sp => sp.GetRequiredService<EpicProvider>());
+        services.AddSingleton<IStoreAccount>(sp => sp.GetRequiredService<EpicProvider>());
         return services;
     }
 }

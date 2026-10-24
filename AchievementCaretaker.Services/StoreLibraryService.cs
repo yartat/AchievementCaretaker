@@ -31,18 +31,18 @@ public sealed class StoreLibraryService : IStoreLibraryService
         _cache = cache;
     }
 
-    public IReadOnlyList<CachedStoreGame> LoadCached(IStoreProvider provider)
+    public IReadOnlyList<CachedStoreGame> LoadCached(IStoreAccount account)
     {
         // Nobody signed in, nobody's library to show.
-        var account = provider.AccountId;
-        if (account == null)
+        var accountId = account.AccountId;
+        if (accountId == null)
         {
             return Array.Empty<CachedStoreGame>();
         }
 
         try
         {
-            return _cache.LoadStoreGames(provider.Id, account);
+            return _cache.LoadStoreGames(account.Id, accountId);
         }
         catch (Exception)
         {
@@ -75,17 +75,17 @@ public sealed class StoreLibraryService : IStoreLibraryService
         }
     }
 
-    public async Task<string> SaveLibraryAsync(IStoreProvider provider, IReadOnlyCollection<CachedStoreGame> games)
+    public async Task<string> SaveLibraryAsync(IStoreAccount account, IReadOnlyCollection<CachedStoreGame> games)
     {
-        var account = provider.AccountId;
-        if (account == null)
+        var accountId = account.AccountId;
+        if (accountId == null)
         {
             return null;
         }
 
         try
         {
-            await Task.Run(() => _cache.SyncStoreGames(provider.Id, account, games));
+            await Task.Run(() => _cache.SyncStoreGames(account.Id, accountId, games));
             return null;
         }
         catch (Exception e)
@@ -94,17 +94,17 @@ public sealed class StoreLibraryService : IStoreLibraryService
         }
     }
 
-    public void SaveProgress(IStoreProvider provider, IReadOnlyCollection<(string Id, int Earned, int Total)> results)
+    public void SaveProgress(IStoreAccount account, IReadOnlyCollection<(string Id, int Earned, int Total)> results)
     {
-        var account = provider.AccountId;
-        if (account == null || results.Count == 0)
+        var accountId = account.AccountId;
+        if (accountId == null || results.Count == 0)
         {
             return;
         }
 
         try
         {
-            _cache.SaveStoreProgress(provider.Id, account, results);
+            _cache.SaveStoreProgress(account.Id, accountId, results);
         }
         catch (Exception)
         {
@@ -114,6 +114,7 @@ public sealed class StoreLibraryService : IStoreLibraryService
 
     public async Task<StoreProgressRun> LoadProgressAsync(
         IStoreProvider provider,
+        IStoreAccount account,
         IReadOnlyCollection<(string Id, string Key)> games,
         Action<string, int, int> gameRead,
         Action<int> stepped,
@@ -180,7 +181,7 @@ public sealed class StoreLibraryService : IStoreLibraryService
                 }
                 if (batch != null)
                 {
-                    SaveProgress(provider, batch);
+                    SaveProgress(account, batch);
                 }
             }
         }
@@ -197,7 +198,7 @@ public sealed class StoreLibraryService : IStoreLibraryService
                 rest = pending.ToList();
                 pending.Clear();
             }
-            SaveProgress(provider, rest);
+            SaveProgress(account, rest);
         }
 
         return new StoreProgressRun(done, failed, expired, token.IsCancellationRequested && expired == false);

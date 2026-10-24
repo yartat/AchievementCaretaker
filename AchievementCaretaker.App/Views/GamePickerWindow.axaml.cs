@@ -102,9 +102,9 @@ public partial class GamePickerWindow : Window
         window.Show(this);
     }
 
-    private System.Threading.Tasks.Task<BrowserSignInResult> OnBrowserSignInRequested(AchievementCaretaker.Providers.IStoreProvider provider)
+    private System.Threading.Tasks.Task<BrowserSignInResult> OnBrowserSignInRequested(AchievementCaretaker.Providers.IStoreAccount account)
     {
-        return StoreSignInWindow.RunAsync(this, provider);
+        return StoreSignInWindow.RunAsync(this, account);
     }
 
     private System.Threading.Tasks.Task<bool> OnConfirmRequested(string title, string message)

@@ -17,16 +17,16 @@ namespace AchievementCaretaker.Services;
 public sealed class StoreSessionService : IStoreSessionService
 {
     public async Task<StoreSignInResult> SignInAsync(
-        IStoreProvider provider, string pasted, CancellationToken cancellationToken)
+        IStoreAccount account, string pasted, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(pasted) == true)
         {
-            return new StoreSignInResult(false, $"Paste {provider.SignInHint} first.");
+            return new StoreSignInResult(false, $"Paste {account.SignInHint} first.");
         }
 
         try
         {
-            await provider.SignInAsync(pasted, cancellationToken);
+            await account.SignInAsync(pasted, cancellationToken);
             return new StoreSignInResult(true, null);
         }
         catch (OperationCanceledException)
@@ -39,25 +39,25 @@ public sealed class StoreSessionService : IStoreSessionService
         }
         catch (Exception e)
         {
-            return new StoreSignInResult(false, $"Could not reach {provider.DisplayName}: {e.Message}");
+            return new StoreSignInResult(false, $"Could not reach {account.DisplayName}: {e.Message}");
         }
     }
 
-    public void SignOut(IStoreProvider provider) => provider.SignOut();
+    public void SignOut(IStoreAccount account) => account.SignOut();
 
-    public StoreConfirmation ConfirmSignOut(IStoreProvider provider) => new(
+    public StoreConfirmation ConfirmSignOut(IStoreAccount account) => new(
         "Sign out",
-        $"Sign out of {provider.DisplayName}{(provider.AccountName == null ? "" : " as " + provider.AccountName)}? " +
+        $"Sign out of {account.DisplayName}{(account.AccountName == null ? "" : " as " + account.AccountName)}? " +
         "Its games and achievement counts stay saved on this computer and come back when you sign in again. " +
-        $"Nothing changes on {provider.DisplayName}.");
+        $"Nothing changes on {account.DisplayName}.");
 
-    public StoreConfirmation ConfirmSwitchAccount(IStoreProvider provider) => new(
+    public StoreConfirmation ConfirmSwitchAccount(IStoreAccount account) => new(
         "Switch account",
-        $"Sign in to a different {provider.DisplayName} account? Its games and achievements replace " +
-        $"{provider.AccountName ?? "the current account"}'s on screen once you have signed in. " +
+        $"Sign in to a different {account.DisplayName} account? Its games and achievements replace " +
+        $"{account.AccountName ?? "the current account"}'s on screen once you have signed in. " +
         "What is saved for each account stays on this computer, and the current account stays signed in " +
         "until the new sign-in succeeds.");
 
-    public string SessionExpiredMessage(IStoreProvider provider) =>
-        $"Your {provider.DisplayName} session has expired. Sign in again.";
+    public string SessionExpiredMessage(IStoreAccount account) =>
+        $"Your {account.DisplayName} session has expired. Sign in again.";
 }

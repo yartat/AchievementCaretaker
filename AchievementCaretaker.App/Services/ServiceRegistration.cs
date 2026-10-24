@@ -32,9 +32,10 @@ namespace AchievementCaretaker.App.Services;
 /// view model from it and disposes it when the window closes.
 /// </para>
 /// <para>
-/// Adding a store means registering its provider here as an <see cref="IStoreProvider"/>
-/// and nothing else: everything that lists the stores asks for
-/// <c>IEnumerable&lt;IStoreProvider&gt;</c>.
+/// Adding a store means registering its provider here, both as an <see cref="IStoreProvider"/>
+/// and as an <see cref="IStoreAccount"/> (two roles of one singleton), and nothing else:
+/// everything that lists the stores asks for <c>IEnumerable&lt;IStoreProvider&gt;</c> and
+/// <c>IEnumerable&lt;IStoreAccount&gt;</c>.
 /// </para>
 /// </remarks>
 internal static class ServiceRegistration

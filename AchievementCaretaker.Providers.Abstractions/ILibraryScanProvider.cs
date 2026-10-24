@@ -31,7 +31,7 @@ public interface ILibraryScanProvider : IStoreProvider
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// The account the store's client is logged in as (as <see cref="IStoreProvider.AccountId"/> would say
+    /// The account the store's client is logged in as (as <see cref="IStoreAccount.AccountId"/> would say
     /// it), which is also the answer to "is the store there?": it throws <see cref="ProviderException"/>,
     /// whose message says why, when the store is not installed, not running, or has nobody logged in.
     /// </summary>

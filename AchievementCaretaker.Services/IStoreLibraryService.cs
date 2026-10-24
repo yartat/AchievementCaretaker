@@ -27,7 +27,7 @@ namespace AchievementCaretaker.Services;
 public interface IStoreLibraryService
 {
     /// <summary>The account's saved games, empty when nobody is signed in or the cache cannot be read.</summary>
-    IReadOnlyList<CachedStoreGame> LoadCached(IStoreProvider provider);
+    IReadOnlyList<CachedStoreGame> LoadCached(IStoreAccount account);
 
     /// <summary>
     /// Re-reads the owned list. Never throws for a store failure; cancellation throws.
@@ -38,20 +38,23 @@ public interface IStoreLibraryService
     /// Saves the owned list under the signed-in account, keeping the counts of games that
     /// are still owned. Returns null, or a sentence saying why it could not.
     /// </summary>
-    Task<string> SaveLibraryAsync(IStoreProvider provider, IReadOnlyCollection<CachedStoreGame> games);
+    Task<string> SaveLibraryAsync(IStoreAccount account, IReadOnlyCollection<CachedStoreGame> games);
 
     /// <summary>Saves counts read for the signed-in account. A cache that cannot be written costs only a reload.</summary>
-    void SaveProgress(IStoreProvider provider, IReadOnlyCollection<(string Id, int Earned, int Total)> results);
+    void SaveProgress(IStoreAccount account, IReadOnlyCollection<(string Id, int Earned, int Total)> results);
 
     /// <summary>
     /// Reads the achievements of each game, a few at a time, and saves the counts as it
     /// goes, so a cancelled run keeps what it has.
     /// </summary>
+    /// <param name="provider">Where the achievements are read from.</param>
+    /// <param name="account">The account the counts are saved under; the one the provider reads for.</param>
     /// <param name="games">Game id and key.</param>
     /// <param name="gameRead">Told each game's id, earned and total.</param>
     /// <param name="stepped">Told how many games are finished (read or failed) so far.</param>
     Task<StoreProgressRun> LoadProgressAsync(
         IStoreProvider provider,
+        IStoreAccount account,
         IReadOnlyCollection<(string Id, string Key)> games,
         Action<string, int, int> gameRead,
         Action<int> stepped,

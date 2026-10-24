@@ -245,15 +245,6 @@ public sealed class StatsServiceTests
     {
         public string Id => "plain";
         public string DisplayName => "Plain";
-        public string SignInUrl => "";
-        public string SignInHint => "";
-        public SignInResultKind GetSignInResultKind(Uri address) => SignInResultKind.None;
-        public bool IsSignedIn => true;
-        public string AccountName => null;
-        public string AccountId => null;
-        public Task SignInAsync(string pasted, CancellationToken cancellationToken = default) => Task.CompletedTask;
-        public Task EnsureSignedInAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
-        public void SignOut() { }
         public Task<IReadOnlyList<StoreGame>> GetLibraryAsync(CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
         public Task<IReadOnlyList<StoreAchievement>> GetAchievementsAsync(

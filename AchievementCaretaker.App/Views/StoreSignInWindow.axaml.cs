@@ -31,22 +31,22 @@ public partial class StoreSignInWindow : Window
     /// </summary>
     private static readonly TimeSpan _startTimeout = TimeSpan.FromSeconds(8);
 
-    private readonly IStoreProvider _provider;
+    private readonly IStoreAccount _account;
     private bool _browserStarted;
     private bool _finished;
 
-    /// <summary>Only for the XAML loader; the window needs a provider.</summary>
+    /// <summary>Only for the XAML loader; the window needs an account.</summary>
     public StoreSignInWindow()
     {
         InitializeComponent();
     }
 
-    internal StoreSignInWindow(IStoreProvider provider)
+    internal StoreSignInWindow(IStoreAccount account)
     {
-        _provider = provider;
+        _account = account;
         InitializeComponent();
 
-        Title = $"Sign in to {provider.DisplayName}";
+        Title = $"Sign in to {account.DisplayName}";
         Note.Text = "Caretaker never sees your password. Closing this window signs nothing in.";
 
         Browser.EnvironmentRequested += OnEnvironmentRequested;
@@ -61,11 +61,11 @@ public partial class StoreSignInWindow : Window
 
     /// <summary>
     /// Shows the sign-in page and returns what the page ended on, ready for
-    /// <see cref="IStoreProvider.SignInAsync"/>.
+    /// <see cref="IStoreAccount.SignInAsync"/>.
     /// </summary>
-    internal static async System.Threading.Tasks.Task<BrowserSignInResult> RunAsync(Window owner, IStoreProvider provider)
+    internal static async System.Threading.Tasks.Task<BrowserSignInResult> RunAsync(Window owner, IStoreAccount account)
     {
-        StoreSignInWindow window = new(provider);
+        StoreSignInWindow window = new(account);
         var pasted = await window.ShowDialog<string>(owner);
         return new(pasted, window.BrowserUnavailable);
     }
@@ -90,7 +90,7 @@ public partial class StoreSignInWindow : Window
 
     private void OnOpened(object sender, EventArgs e)
     {
-        Browser.Source = new Uri(_provider.SignInUrl);
+        Browser.Source = new Uri(_account.SignInUrl);
 
         DispatcherTimer.RunOnce(() =>
         {
@@ -103,7 +103,7 @@ public partial class StoreSignInWindow : Window
 
     private void OnNavigationStarted(object sender, WebViewNavigationStartingEventArgs e)
     {
-        if (_provider.GetSignInResultKind(e.Request) == SignInResultKind.Address)
+        if (_account.GetSignInResultKind(e.Request) == SignInResultKind.Address)
         {
             // The redirect target is not a page worth loading: the address is the answer.
             e.Cancel = true;
@@ -119,7 +119,7 @@ public partial class StoreSignInWindow : Window
             return;
         }
 
-        switch (_provider.GetSignInResultKind(e.Request))
+        switch (_account.GetSignInResultKind(e.Request))
         {
             case SignInResultKind.Address:
                 Finish(e.Request.ToString());

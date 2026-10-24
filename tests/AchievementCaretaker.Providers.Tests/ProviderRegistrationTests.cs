@@ -50,12 +50,23 @@ public sealed class ProviderRegistrationTests : IDisposable
     private IStoreProvider Provider(string id) =>
         _services.GetServices<IStoreProvider>().Single(p => p.Id == id);
 
+    private IStoreAccount Account(string id) =>
+        _services.GetServices<IStoreAccount>().Single(a => a.Id == id);
+
     [Fact]
     public void Both_providers_are_registered_as_IStoreProvider()
     {
         var ids = _services.GetServices<IStoreProvider>().Select(p => p.Id).OrderBy(id => id);
 
         Assert.Equal(new[] { "epic", "gog" }, ids);
+    }
+
+    [Theory]
+    [InlineData("epic")]
+    [InlineData("gog")]
+    public void Each_store_is_one_object_in_its_two_roles(string id)
+    {
+        Assert.Same(Provider(id), Account(id));
     }
 
     [Fact]
@@ -65,13 +76,13 @@ public sealed class ProviderRegistrationTests : IDisposable
     }
 
     [Fact]
-    public void A_provider_with_no_session_file_is_signed_out()
+    public void An_account_with_no_session_file_is_signed_out()
     {
-        foreach (var provider in _services.GetServices<IStoreProvider>())
+        foreach (var account in _services.GetServices<IStoreAccount>())
         {
-            Assert.False(provider.IsSignedIn);
-            Assert.Null(provider.AccountId);
-            Assert.Null(provider.AccountName);
+            Assert.False(account.IsSignedIn);
+            Assert.Null(account.AccountId);
+            Assert.Null(account.AccountName);
         }
     }
 
@@ -103,15 +114,15 @@ public sealed class ProviderRegistrationTests : IDisposable
     [InlineData("epic", "https://example.com/id/api/redirect", SignInResultKind.None)]
     public void The_sign_in_page_says_when_it_has_finished(string id, string address, SignInResultKind expected)
     {
-        Assert.Equal(expected, Provider(id).GetSignInResultKind(new Uri(address)));
+        Assert.Equal(expected, Account(id).GetSignInResultKind(new Uri(address)));
     }
 
     [Fact]
     public async Task Signing_in_with_nonsense_is_refused_without_a_request()
     {
-        var provider = Provider("gog");
+        var account = Account("gog");
 
-        var error = await Assert.ThrowsAsync<ProviderException>(() => provider.SignInAsync("not a code", TestContext.Current.CancellationToken));
+        var error = await Assert.ThrowsAsync<ProviderException>(() => account.SignInAsync("not a code", TestContext.Current.CancellationToken));
 
         Assert.Equal("invalid_code", error.ErrorCode);
     }

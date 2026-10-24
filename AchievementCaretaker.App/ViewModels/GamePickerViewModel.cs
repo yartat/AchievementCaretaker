@@ -536,7 +536,7 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
     /// </summary>
     public event Action<string> ErrorRaised;
 
-    public GamePickerViewModel(SteamConnector steam, ISteamLibraryService steamLibrary, IEnumerable<IStoreProvider> storeProviders, IGameRepository cache,
+    public GamePickerViewModel(SteamConnector steam, ISteamLibraryService steamLibrary, IEnumerable<IStoreProvider> storeProviders, IEnumerable<IStoreAccount> storeAccounts, IGameRepository cache,
         IDatabaseRelocator relocator,
         IStoreAchievementsService storeAchievements, IStoreLibraryService storeLibrary,
         IStoreSessionService storeSession,
@@ -546,6 +546,7 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
         _steam = steam;
         _steamLibrary = steamLibrary;
         _storeProviders = storeProviders;
+        _storeAccounts = storeAccounts;
         _cache = cache;
         _relocator = relocator;
         _storeAchievements = storeAchievements;

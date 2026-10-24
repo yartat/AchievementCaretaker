@@ -21,18 +21,21 @@ namespace AchievementCaretaker.Providers.Gog;
 public static class GogServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers the GOG provider as an <see cref="IStoreProvider"/>, with the named
-    /// <c>HttpClient</c> it asks the factory for.
+    /// Registers the GOG provider, with the named <c>HttpClient</c> it asks the factory for,
+    /// as an <see cref="IStoreProvider"/> and as an <see cref="IStoreAccount"/>: two roles of
+    /// the one object, so the account signed in is the one the provider reads for.
     /// </summary>
     /// <param name="homeDirectory">Where the session file lives: <c>gog.json</c> in it.</param>
     public static IServiceCollection AddGogProvider(this IServiceCollection services, string homeDirectory)
     {
         services.AddSessionStore();
         services.AddHttpClient(GogProvider.HttpClientName, GogProvider.ConfigureHttpClient);
-        services.AddSingleton<IStoreProvider>(sp => new GogProvider(
+        services.AddSingleton(sp => new GogProvider(
             sp.GetRequiredService<IHttpClientFactory>(),
             sp.GetRequiredService<ISessionStore>(),
             Path.Combine(homeDirectory, "gog.json")));
+        services.AddSingleton<IStoreProvider>(sp => sp.GetRequiredService<GogProvider>());
+        services.AddSingleton<IStoreAccount>(sp => sp.GetRequiredService<GogProvider>());
         return services;
     }
 }

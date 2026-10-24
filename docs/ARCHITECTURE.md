@@ -16,7 +16,7 @@ greater length plus the rules a contributor or coding agent must not break.
 | Project | Output | Role |
 |---|---|---|
 | `AchievementCaretaker.SteamApi` | class library | All native interop with Steam. No package references of any kind, and no UI dependency. |
-| `AchievementCaretaker.Providers.Abstractions` | class library | `IStoreProvider`, `IWritableStoreProvider` and the models. Interfaces only; no packages. |
+| `AchievementCaretaker.Providers.Abstractions` | class library | `IStoreProvider` (a store's library and achievements), `IStoreAccount` (signing in and out), `IWritableStoreProvider` and the models. Interfaces only; no packages. |
 | `AchievementCaretaker.Providers.Shared` | class library | What the providers share: the session file (DPAPI) and JSON helpers. |
 | `AchievementCaretaker.Providers.Epic` | class library | The Epic Games provider over HTTPS, read-only. |
 | `AchievementCaretaker.Providers.Gog` | class library | The GOG provider over HTTPS; it can also unlock and lock. |
@@ -79,7 +79,7 @@ AchievementCaretaker.Services/
   LibraryDatabaseExtensions.cs   the library database
   StoreLibraryService.cs, StoreAchievementsService.cs, StoreSessionService.cs   and their interfaces
 AchievementCaretaker.Providers.Abstractions/
-  IStoreProvider.cs, IWritableStoreProvider.cs, IStatsStoreProvider.cs, ProviderException.cs, Models/
+  IStore.cs, IStoreProvider.cs, IStoreAccount.cs, IWritableStoreProvider.cs, IStatsStoreProvider.cs, ProviderException.cs, Models/
 AchievementCaretaker.Providers.Shared/
   DpapiSessionStore.cs, PlainSessionStore.cs   how a refresh token is kept on disk, per OS
   JsonHelpers.cs

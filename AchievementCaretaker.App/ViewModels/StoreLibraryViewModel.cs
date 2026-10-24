@@ -65,6 +65,7 @@ internal interface IProgressSink
 internal sealed partial class StoreLibraryViewModel : ObservableObject
 {
     private readonly IStoreProvider _provider;
+    private readonly IStoreAccount _account;
     private readonly IStoreLibraryService _library;
     private readonly IStoreSessionService _session;
     private readonly IStoreAchievementsService _achievements;
@@ -95,7 +96,7 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
     /// Raised to sign in with the store's own page in a browser inside the
     /// application; the window owns the window. Returns what the page ended on.
     /// </summary>
-    public event Func<IStoreProvider, Task<BrowserSignInResult>> BrowserSignInRequested;
+    public event Func<IStoreAccount, Task<BrowserSignInResult>> BrowserSignInRequested;
 
     /// <summary>Raised before something the user may not want; the window asks.</summary>
     public event Func<string, string, Task<bool>> ConfirmRequested;
@@ -130,16 +131,27 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
     [ObservableProperty]
     private string _statusText = "";
 
+    /// <param name="provider">What the store has: its library and achievements.</param>
+    /// <param name="account">Who is signed in to it. The same store as <paramref name="provider"/>.</param>
     public StoreLibraryViewModel(
         IStoreProvider provider,
+        IStoreAccount account,
         IStoreLibraryService library,
         IStoreSessionService session,
         IStoreAchievementsService achievements,
         StoreImageCache images,
         IProgressSink sink)
     {
+        if (provider.Id != account.Id)
+        {
+            throw new ArgumentException(
+                $"The provider is '{provider.Id}' but the account is '{account.Id}': they must be the same store.",
+                nameof(account));
+        }
+
         _achievements = achievements;
         _provider = provider;
+        _account = account;
         _library = library;
         _session = session;
         _images = images;
@@ -157,23 +169,23 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
 
     public string SignInIntro => $"Sign in with your {DisplayName} account. The sign-in page opens in a window of Caretaker.";
 
-    /// <summary>What <see cref="PastedCode"/> is for, from the provider.</summary>
-    public string SignInPrompt => $"Sign in with your {DisplayName} account in the browser, then paste {_provider.SignInHint}.";
+    /// <summary>What <see cref="PastedCode"/> is for, from the account.</summary>
+    public string SignInPrompt => $"Sign in with your {DisplayName} account in the browser, then paste {_account.SignInHint}.";
 
-    public bool IsSignedIn => _provider.IsSignedIn;
+    public bool IsSignedIn => _account.IsSignedIn;
 
-    public bool IsSignedOut => _provider.IsSignedIn == false;
+    public bool IsSignedOut => _account.IsSignedIn == false;
 
     /// <summary>The rail's account line: who is signed in, or the way to sign in.</summary>
     public string RailAccountText =>
         IsSignedIn == true
-            ? _provider.AccountName ?? "Signed in"
+            ? _account.AccountName ?? "Signed in"
             : "Sign in";
 
     public string AccountText =>
-        _provider.AccountName == null
+        _account.AccountName == null
             ? $"Signed in to {DisplayName}"
-            : $"{DisplayName} · {_provider.AccountName}";
+            : $"{DisplayName} · {_account.AccountName}";
 
     [ObservableProperty]
     private string _pastedCode = "";
@@ -216,11 +228,11 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
     {
         try
         {
-            Process.Start(new ProcessStartInfo(_provider.SignInUrl) { UseShellExecute = true });
+            Process.Start(new ProcessStartInfo(_account.SignInUrl) { UseShellExecute = true });
         }
         catch (Exception)
         {
-            ErrorText = "Could not open the browser. Open this address yourself:\n" + _provider.SignInUrl;
+            ErrorText = "Could not open the browser. Open this address yourself:\n" + _account.SignInUrl;
         }
     }
 
@@ -249,7 +261,7 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
         {
             return;
         }
-        var switching = _session.ConfirmSwitchAccount(_provider);
+        var switching = _session.ConfirmSwitchAccount(_account);
         if (await ConfirmAsync(switching.Title, switching.Message) == false)
         {
             return;
@@ -265,7 +277,7 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
         }
 
         ErrorText = "";
-        var result = await BrowserSignInRequested(_provider);
+        var result = await BrowserSignInRequested(_account);
         if (result.Pasted != null)
         {
             await CompleteSignInAsync(result.Pasted);
@@ -279,7 +291,7 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
                 return;
             }
             OpenSignInPage();
-            ErrorText = $"The built-in browser could not start, so your own browser was opened. Paste {_provider.SignInHint} below.";
+            ErrorText = $"The built-in browser could not start, so your own browser was opened. Paste {_account.SignInHint} below.";
         }
     }
 
@@ -299,7 +311,7 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
         var signedIn = false;
         try
         {
-            var result = await _session.SignInAsync(_provider, pasted, _lifetime.Token);
+            var result = await _session.SignInAsync(_account, pasted, _lifetime.Token);
             if (result.SignedIn == false)
             {
                 ErrorText = result.Error;
@@ -340,7 +352,7 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
     [RelayCommand]
     private async Task SignOutAsync()
     {
-        var signingOut = _session.ConfirmSignOut(_provider);
+        var signingOut = _session.ConfirmSignOut(_account);
         if (await ConfirmAsync(signingOut.Title, signingOut.Message) == false)
         {
             return;
@@ -354,7 +366,7 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
     private void OnSessionExpired()
     {
         ForgetAccount();
-        ErrorText = _session.SessionExpiredMessage(_provider);
+        ErrorText = _session.SessionExpiredMessage(_account);
         StatusText = "Signed out.";
     }
 
@@ -367,7 +379,7 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
     private void ForgetAccount()
     {
         CancelProgress();
-        _session.SignOut(_provider);
+        _session.SignOut(_account);
         ClearLibrary();
     }
 
@@ -391,7 +403,7 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
 
     private void LoadFromCache()
     {
-        foreach (var row in _library.LoadCached(_provider))
+        foreach (var row in _library.LoadCached(_account))
         {
             StoreGameInfo info = new(Id, row.Id, row.Key)
             {
@@ -531,7 +543,7 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
             ImageUrl = info.ImageUrl,
         }).ToList();
 
-        var failure = await _library.SaveLibraryAsync(_provider, rows);
+        var failure = await _library.SaveLibraryAsync(_account, rows);
         if (failure != null)
         {
             ErrorRaised?.Invoke(failure);
@@ -780,7 +792,7 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
     {
         // Fire and forget on purpose: the numbers are already on screen, and a cache
         // that cannot be written costs only a reload next time.
-        _ = Task.Run(() => _library.SaveProgress(_provider, results));
+        _ = Task.Run(() => _library.SaveProgress(_account, results));
     }
 
     private bool _isLoadingProgress;
@@ -833,6 +845,7 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
         {
             result = await _library.LoadProgressAsync(
                 _provider,
+                _account,
                 games.Select(g => (g.Id, g.Key)).ToList(),
                 (id, earned, count) =>
                 {

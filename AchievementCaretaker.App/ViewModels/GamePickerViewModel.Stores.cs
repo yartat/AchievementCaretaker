@@ -8,6 +8,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Threading.Tasks;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -110,7 +111,7 @@ internal sealed partial class GamePickerViewModel : IProgressSink
     public event Action<StoreAchievementsViewModel> StoreAchievementsRequested;
 
     /// <summary>Raised to sign in to a store in a browser inside the application.</summary>
-    public event Func<IStoreProvider, Task<BrowserSignInResult>> BrowserSignInRequested;
+    public event Func<IStoreAccount, Task<BrowserSignInResult>> BrowserSignInRequested;
 
     /// <summary>Raised before a sign-out; the window asks the user.</summary>
     public event Func<string, string, Task<bool>> ConfirmRequested;
@@ -129,6 +130,9 @@ internal sealed partial class GamePickerViewModel : IProgressSink
 
     /// <summary>The stores to offer, from the container. Their lifetime is the container's, not this view model's.</summary>
     private readonly IEnumerable<IStoreProvider> _storeProviders;
+
+    /// <summary>Who is signed in to each of <see cref="_storeProviders"/>: the same objects, in their other role, found by <see cref="IStore.Id"/>.</summary>
+    private readonly IEnumerable<IStoreAccount> _storeAccounts;
 
     private StoreImageCache _storeImages;
 
@@ -164,12 +168,19 @@ internal sealed partial class GamePickerViewModel : IProgressSink
         StoreImageCache images = new(_iconCache, _http);
         _storeImages = images;
 
+        var accounts = _storeAccounts.ToDictionary(account => account.Id);
         List<StoreLibraryViewModel> stores = new();
         foreach (var provider in _storeProviders)
         {
+            if (accounts.TryGetValue(provider.Id, out var account) == false)
+            {
+                throw new InvalidOperationException(
+                    $"The store '{provider.Id}' is registered as an IStoreProvider but not as an IStoreAccount.");
+            }
+
             // The database can be replaced by a cache move, so hand over how to
             // reach it rather than the instance.
-            StoreLibraryViewModel store = new(provider, _storeLibrary, _storeSession, _storeAchievements, images, this)
+            StoreLibraryViewModel store = new(provider, account, _storeLibrary, _storeSession, _storeAchievements, images, this)
             {
                 IsContentView = IsContentView,
             };

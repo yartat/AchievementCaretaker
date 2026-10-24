@@ -49,7 +49,7 @@ what would be committed, but do not run `git commit`, `git tag` or `git push` un
 |---|---|---|
 | `AchievementCaretaker.SteamApi` | `AchievementCaretaker.SteamApi.dll` (class library) | All native interop. Loads `steamclient.dll`, resolves vtables, marshals calls, pumps callbacks. Also owns the Valve KeyValues parsers (`KeyValue` binary, `TextKeyValue` text). |
 | `AchievementCaretaker.App` | `bin/AchievementCaretaker.exe` (WinExe) | The whole application: the library window, the achievements window (for every source, Steam included) and, started with `--steam-worker <appid>`, the hidden Steam helper, in one binary. |
-| `AchievementCaretaker.Providers.Abstractions` | class library | `IStoreProvider`, `IWritableStoreProvider`, `IStatsStoreProvider` (statistics and reset; only Steam), `ISessionStore` and the models (`StoreGame`, `StoreAchievement` with its `Protected` flag, `StoreStat`, `ProviderException`, `SignInResultKind`). Interfaces and models only: no packages, no code that runs. |
+| `AchievementCaretaker.Providers.Abstractions` | class library | `IStoreProvider` (a store's library and achievements), `IStoreAccount` (signing in and out, and who is signed in), `IStore` (the id and name both share), `IWritableStoreProvider`, `IStatsStoreProvider` (statistics and reset; only Steam), `ISessionStore` and the models (`StoreGame`, `StoreAchievement` with its `Protected` flag, `StoreStat`, `ProviderException`, `SignInResultKind`). Interfaces and models only: no packages, no code that runs. |
 | `AchievementCaretaker.Providers.Shared` | class library | What the store providers share: the session stores (`DpapiSessionStore`, `PlainSessionStore`), the `AddSessionStore` registration and `JsonHelpers`, public, with the packages they need. |
 | `AchievementCaretaker.Services` | class library | The logic behind the windows, with no UI and no Avalonia: the library database (`IGameRepository`/`GameRepository`, over a scoped `IDbConnection`, read and written with Dapper; `IDatabaseMigrator`, `IDatabaseRelocator`, `AddLibraryDatabase`) and the store services (`IStoreLibraryService`, `IStoreAchievementsService`, `IStoreSessionService`). |
 | `AchievementCaretaker.Providers.Steam` | class library | Steam as an `IStatsStoreProvider` (`SteamProvider`; achievements, statistics, a single commit for both, reset): every call starts a hidden helper for one app id and talks to it over gRPC on 127.0.0.1 with TLS (a certificate made per launch, pinned by thumbprint) and a per-launch token, both handed over on the helper's standard input. Holds the `.proto`, the handshake, the process launcher and `LibraryStats` (Steam's on-disk caches). The achievements window uses it for Steam games, and the library window for the Steam library (`ILibraryScanProvider`). |
@@ -118,7 +118,8 @@ The rules:
   with, so a changed address or a dropped connection is not noticed. The client's timeout and
   `User-Agent` are configured with the name, in the provider's own
   `Add<Store>Provider` extension (`EpicServiceCollectionExtensions`, `GogServiceCollectionExtensions`),
-  which is also what registers the provider as an `IStoreProvider`. A provider owns nothing that
+  which is also what registers the provider, as an `IStoreProvider` and as an `IStoreAccount`
+  (see **Adding a store**). A provider owns nothing that
   needs disposing, so `IStoreProvider` is not `IDisposable`. The two provider assemblies
   reference `Microsoft.Extensions.Http` for this; `Abstractions` and `Shared` do not.
 - **A session file holds a refresh token**, a credential for the whole store account:
@@ -140,7 +141,7 @@ The rules:
   browser inside the application (`StoreSignInWindow`, the official `Avalonia.Controls.WebView`
   package: WebView2, WebKitGTK or WPE, WKWebView) so nothing has to be copied back: the window
   only watches the addresses the page moves through, and the provider says which one ends the
-  sign-in (`IStoreProvider.GetSignInResultKind`: GOG's redirect carries `code=` in the address,
+  sign-in (`IStoreAccount.GetSignInResultKind`: GOG's redirect carries `code=` in the address,
   Epic's redirect page carries the code in its text, read with `InvokeScript`). That browser runs
   in private mode where the platform has one (`EnvironmentRequested`), so closing it keeps
   nothing and a second account can sign in without being logged straight back into the first.
@@ -159,10 +160,23 @@ The rules:
   deletes saved data**, see the next item.
 - **Unknown is null, not zero.** `StoreAchievement.XP`, `Progress` and `RarityPercent` are
   nullable because a store may not have them: GOG has no XP and no progress.
-- **Adding a store** means implementing `IStoreProvider` and registering it in
+- **A store has two roles, and they are two interfaces.** `IStoreProvider` is what the store
+  has (`GetLibraryAsync`, `GetAchievementsAsync`); `IStoreAccount` is who is signed in to it
+  (`SignInAsync`, `SignOut`, `EnsureSignedInAsync`, `IsSignedIn`, `AccountId`, `AccountName` and
+  what the sign-in page needs). Both extend `IStore` (`Id`, `DisplayName`). Code asks for the
+  role it uses and no more: the sign-in window and `IStoreSessionService` take an `IStoreAccount`,
+  the achievements service and window an `IStoreProvider`. What needs both says so
+  (`StoreLibraryViewModel` takes the two; `IStoreLibraryService.LoadProgressAsync` takes the
+  provider to read from and the account to save under). Epic and GOG are one object in both roles,
+  and the container hands out that one instance under both interfaces; a provider's calls throw
+  `login_required` when the session is gone, they do not sign in. Steam is an `IStoreProvider`
+  only: it has no sign-in of its own.
+- **Adding a store** means implementing `IStoreProvider` and `IStoreAccount` and registering it in
   `ServiceRegistration.AddCaretaker` (with the `Add<Store>Provider` extension that goes with it)
-  as an `IStoreProvider`. Everything that lists the stores asks the container for
-  `IEnumerable<IStoreProvider>`, so nothing else has to change to see it.
+  as both, the same instance. Everything that lists the stores asks the container for
+  `IEnumerable<IStoreProvider>` and `IEnumerable<IStoreAccount>` and pairs them by `Id`
+  (`GamePickerViewModel.CreateStoreLibraries` throws if a store has only one of the two), so
+  nothing else has to change to see it.
 
 How the library window shows them. One source is on screen at a time, chosen in the rail's
 SOURCE section; Steam is the default and is `SelectedStoreLibrary == null`, not an entry.
@@ -209,7 +223,7 @@ SOURCE section; Steam is the default and is `SelectedStoreLibrary == null`, not 
   never starts one. Do not add more triggers without the same thought for that cost.
 - **Every library is saved under its account**, so signing out or switching deletes nothing
   and coming back to an account finds its games and progress as they were. `store_games` is
-  keyed `(provider, account, id)`, from `IStoreProvider.AccountId` (GOG's user id, Epic's
+  keyed `(provider, account, id)`, from `IStoreAccount.AccountId` (GOG's user id, Epic's
   account id; null when signed out, and then there is no library to show). Steam's `games`
   is keyed `(account, id)` by the 32-bit Steam account id, and `meta` remembers the account
   last shown, so a start without Steam shows that account's library. When Steam comes back

@@ -23,15 +23,15 @@ public interface IStoreSessionService
     /// Signs in with what the store's page ended on, or what the user pasted. A problem
     /// comes back as <see cref="StoreSignInResult.Error"/>; cancellation throws.
     /// </summary>
-    Task<StoreSignInResult> SignInAsync(IStoreProvider provider, string pasted, CancellationToken cancellationToken);
+    Task<StoreSignInResult> SignInAsync(IStoreAccount account, string pasted, CancellationToken cancellationToken);
 
     /// <summary>Drops the session. Nothing saved for the account is touched.</summary>
-    void SignOut(IStoreProvider provider);
+    void SignOut(IStoreAccount account);
 
-    StoreConfirmation ConfirmSignOut(IStoreProvider provider);
+    StoreConfirmation ConfirmSignOut(IStoreAccount account);
 
-    StoreConfirmation ConfirmSwitchAccount(IStoreProvider provider);
+    StoreConfirmation ConfirmSwitchAccount(IStoreAccount account);
 
     /// <summary>What to say when a request finds the session no longer valid.</summary>
-    string SessionExpiredMessage(IStoreProvider provider);
+    string SessionExpiredMessage(IStoreAccount account);
 }

@@ -29,8 +29,10 @@ using var services = new ServiceCollection()
     .AddGogProvider(home)
     .BuildServiceProvider();
 var providers = services.GetServices<IStoreProvider>().ToArray();
+var accounts = services.GetServices<IStoreAccount>().ToArray();
 
 var provider = args.Length > 0 ? providers.FirstOrDefault(p => p.Id == args[0]) : null;
+var account = provider == null ? null : accounts.Single(a => a.Id == provider.Id);
 var command = args.Length > 1 ? args[1] : "help";
 
 try
@@ -44,17 +46,17 @@ try
     switch (command)
     {
         case "login":
-            await LoginAsync(provider);
+            await LoginAsync(account);
             break;
 
         case "logout":
-            provider.SignOut();
-            Console.WriteLine($"Signed out of {provider.DisplayName}; session file removed.");
+            account.SignOut();
+            Console.WriteLine($"Signed out of {account.DisplayName}; session file removed.");
             break;
 
         case "whoami":
-            await provider.EnsureSignedInAsync();
-            Console.WriteLine($"Signed in to {provider.DisplayName} as {provider.AccountName ?? "(name unknown)"}.");
+            await account.EnsureSignedInAsync();
+            Console.WriteLine($"Signed in to {account.DisplayName} as {account.AccountName ?? "(name unknown)"}.");
             break;
 
         case "installed" when provider.Id == "epic":
@@ -128,15 +130,15 @@ static void Help(System.Collections.Generic.IReadOnlyList<IStoreProvider> provid
         """);
 }
 
-static async Task LoginAsync(IStoreProvider provider)
+static async Task LoginAsync(IStoreAccount account)
 {
-    Console.WriteLine($"Opening the {provider.DisplayName} sign-in page. After signing in, paste {provider.SignInHint}:");
+    Console.WriteLine($"Opening the {account.DisplayName} sign-in page. After signing in, paste {account.SignInHint}:");
     Console.WriteLine();
-    Console.WriteLine(provider.SignInUrl);
+    Console.WriteLine(account.SignInUrl);
     Console.WriteLine();
     try
     {
-        Process.Start(new ProcessStartInfo(provider.SignInUrl) { UseShellExecute = true });
+        Process.Start(new ProcessStartInfo(account.SignInUrl) { UseShellExecute = true });
     }
     catch (Exception)
     {
@@ -144,6 +146,6 @@ static async Task LoginAsync(IStoreProvider provider)
     }
 
     Console.Write("> ");
-    await provider.SignInAsync(Console.ReadLine());
-    Console.WriteLine($"Signed in to {provider.DisplayName} as {provider.AccountName ?? "(name unknown)"}.");
+    await account.SignInAsync(Console.ReadLine());
+    Console.WriteLine($"Signed in to {account.DisplayName} as {account.AccountName ?? "(name unknown)"}.");
 }

@@ -6,7 +6,6 @@
  */
 
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using AchievementCaretaker.Providers;
@@ -17,7 +16,7 @@ namespace AchievementCaretaker.Services.Tests;
 
 public sealed class StoreSessionServiceTests
 {
-    private sealed class FakeProvider : IStoreProvider
+    private sealed class FakeProvider : IStoreAccount
     {
         public Exception SignInError { get; set; }
         public string Pasted { get; private set; }
@@ -45,11 +44,6 @@ public sealed class StoreSessionServiceTests
 
         public Task EnsureSignedInAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
         public void SignOut() => SignedOut = true;
-        public Task<IReadOnlyList<StoreGame>> GetLibraryAsync(CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-        public Task<IReadOnlyList<StoreAchievement>> GetAchievementsAsync(
-            string gameKey, string locale = "en", CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
     }
 
     private readonly StoreSessionService _service = new();
