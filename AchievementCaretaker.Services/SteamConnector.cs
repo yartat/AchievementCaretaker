@@ -38,6 +38,7 @@ namespace AchievementCaretaker.Services;
 /// </remarks>
 public sealed class SteamConnector : IDisposable
 {
+    /// <summary>How long to wait between tries when nothing else is asked for.</summary>
     public static readonly TimeSpan DefaultInterval = TimeSpan.FromSeconds(3);
 
     private readonly ISteamLibraryService _library;
@@ -48,14 +49,18 @@ public sealed class SteamConnector : IDisposable
     /// <summary>The 32-bit account id Steam is logged in as, or null until Steam has been reached.</summary>
     public uint? Account { get; private set; }
 
+    /// <summary>Whether Steam has been reached and is still the one that was.</summary>
     public bool IsConnected => Account != null;
 
     /// <summary>Why Steam is not there, or null once it is.</summary>
-    public string Reason { get; private set; } = "Looking for Steam...";
+    public string? Reason { get; private set; } = "Looking for Steam...";
 
     /// <summary>Raised on the UI thread when <see cref="Reason"/> changes or Steam is reached or lost.</summary>
-    public event Action Changed;
+    public event Action? Changed;
 
+    /// <summary>Makes the connector; nothing is asked until <see cref="Start"/>.</summary>
+    /// <param name="library">Asked who is logged in, which is how Steam being there is learned.</param>
+    /// <param name="environment">Asked first whether Steam is installed and running.</param>
     /// <param name="interval">How long to wait between tries. Only a test has a reason to pass one.</param>
     public SteamConnector(ISteamLibraryService library, ISteamEnvironment environment, TimeSpan? interval = null)
     {
@@ -64,6 +69,7 @@ public sealed class SteamConnector : IDisposable
         _interval = interval ?? DefaultInterval;
     }
 
+    /// <summary>Starts looking for Steam. Call it on the UI thread: see the class remarks.</summary>
     public void Start()
     {
         // The loop reports its own end; nothing waits on it.
@@ -126,7 +132,7 @@ public sealed class SteamConnector : IDisposable
         }
     }
 
-    private async Task<((uint Account, int? ProcessId)? Found, string Reason, bool CanRetry)> TryAsync(CancellationToken token)
+    private async Task<((uint Account, int? ProcessId)? Found, string? Reason, bool CanRetry)> TryAsync(CancellationToken token)
     {
         var unsupported = _environment.UnsupportedReason;
         if (unsupported != null)
@@ -156,6 +162,7 @@ public sealed class SteamConnector : IDisposable
         }
     }
 
+    /// <summary>Stops looking.</summary>
     public void Dispose()
     {
         _stop.Cancel();

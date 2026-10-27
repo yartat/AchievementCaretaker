@@ -28,7 +28,7 @@ internal sealed partial class StoreAchievementItem : ObservableObject
 
     /// <summary>Filled in by the icon loader, on the UI thread.</summary>
     [ObservableProperty]
-    private Bitmap _icon;
+    private Bitmap? _icon;
 
     public StoreAchievementItem(StoreAchievement source)
     {
@@ -41,7 +41,7 @@ internal sealed partial class StoreAchievementItem : ObservableObject
     /// <summary>Empty rather than null, so the row's second line collapses on it.</summary>
     public string Description => Source.Description ?? "";
 
-    public string IconUrl => Source.IconUrl;
+    public string? IconUrl => Source.IconUrl;
 
     /// <summary>What the store reported; <see cref="IsAchieved"/> is what is on screen.</summary>
     public bool OriginalValue => Source.Unlocked;

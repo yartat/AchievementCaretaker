@@ -31,9 +31,9 @@ public interface ISteamLibraryService
     /// <summary>Checks the candidates against the account. Only a <see cref="LibraryScan.Complete"/> scan says anything about what is not owned.</summary>
     Task<LibraryScan> ScanAsync(
         IReadOnlyCollection<LibraryCandidate> candidates,
-        IProgress<LibraryScanProgress> progress,
+        IProgress<LibraryScanProgress>? progress,
         CancellationToken cancellationToken = default);
 
     /// <summary>One app as an owned game, or null when the account does not own it.</summary>
-    Task<StoreGame> FindOwnedAsync(uint id, CancellationToken cancellationToken = default);
+    Task<StoreGame?> FindOwnedAsync(uint id, CancellationToken cancellationToken = default);
 }

@@ -95,7 +95,7 @@ public sealed class StatsServiceTests
 {
     private sealed class FakeStatsProvider : IStatsStoreProvider
     {
-        public Exception Failure { get; set; }
+        public Exception? Failure { get; set; }
         public List<KeyValuePair<string, double>> StatsSent { get; } = new();
         public List<KeyValuePair<string, bool>> AchievementsSent { get; } = new();
         public bool? ResetAchievements { get; private set; }
@@ -106,8 +106,8 @@ public sealed class StatsServiceTests
         public string SignInHint => "";
         public SignInResultKind GetSignInResultKind(Uri address) => SignInResultKind.None;
         public bool IsSignedIn => true;
-        public string AccountName => null;
-        public string AccountId => null;
+        public string? AccountName => null;
+        public string? AccountId => null;
         public Task SignInAsync(string pasted, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task EnsureSignedInAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
         public void SignOut() { }

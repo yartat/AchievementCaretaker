@@ -34,24 +34,26 @@ public interface IStoreAccount : IStore
     /// application can finish the sign-in without the user pasting anything. Each
     /// store ends its sign-in differently, so each says how.
     /// </summary>
-    SignInResultKind GetSignInResultKind(Uri address);
+    SignInResultKind GetSignInResultKind(Uri? address);
 
     /// <summary>True when a saved session exists that can still be refreshed.</summary>
     bool IsSignedIn { get; }
 
     /// <summary>The signed-in account's name, or null.</summary>
-    string AccountName { get; }
+    string? AccountName { get; }
 
     /// <summary>
     /// A stable id for the signed-in account, or null when nobody is. What a library
     /// and its progress are saved under, so each account keeps its own.
     /// </summary>
-    string AccountId { get; }
+    string? AccountId { get; }
 
     /// <summary>
     /// Completes sign-in from what the user pasted: the bare code, or the whole
     /// page or address the store ended on.
     /// </summary>
+    /// <param name="pasted">The text the user copied from the browser after signing in.</param>
+    /// <param name="cancellationToken">The token to cancel the sign-in.</param>
     Task SignInAsync(string pasted, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -59,7 +61,9 @@ public interface IStoreAccount : IStore
     /// Throws <see cref="ProviderException"/> with <c>login_required</c> when
     /// the user has to sign in again.
     /// </summary>
+    /// <param name="cancellationToken">The token to cancel the refresh.</param>
     Task EnsureSignedInAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>Signs out, deleting the saved session.</summary>
     void SignOut();
 }

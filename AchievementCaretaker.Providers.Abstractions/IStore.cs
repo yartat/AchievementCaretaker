@@ -17,5 +17,6 @@ public interface IStore
     /// <summary>Stable lower-case id: names the session file and the command line.</summary>
     string Id { get; }
 
+    /// <summary>Human-readable name: what to show in a menu.</summary>
     string DisplayName { get; }
 }

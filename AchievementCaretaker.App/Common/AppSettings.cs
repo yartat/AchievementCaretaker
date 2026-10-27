@@ -45,8 +45,8 @@ namespace AchievementCaretaker.App.Common;
 /// </remarks>
 internal sealed class AppSettings
 {
-    public string DatabasePath { get; set; }
-    public string IconCachePath { get; set; }
+    public string DatabasePath { get; set; } = "";
+    public string IconCachePath { get; set; } = "";
 
     /// <summary>
     /// Serialized by name rather than by number so the settings file stays
@@ -159,7 +159,7 @@ internal sealed class AppSettings
     {
         EnsureMigrated();
 
-        AppSettings settings = null;
+        AppSettings? settings = null;
         try
         {
             if (File.Exists(SettingsPath) == true)

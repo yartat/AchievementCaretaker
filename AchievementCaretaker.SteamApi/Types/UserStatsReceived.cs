@@ -32,10 +32,16 @@ using System.Runtime.InteropServices;
 
 namespace AchievementCaretaker.SteamApi.Types;
 
+/// <summary>The data of the <c>UserStatsReceived</c> callback, laid out as Steam sends it.</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct UserStatsReceived
 {
+    /// <summary>The app the statistics are for.</summary>
     public ulong GameId;
+
+    /// <summary>Steam's result code: 1 is success.</summary>
     public int Result;
+
+    /// <summary>The 64-bit SteamID of the user the statistics are for.</summary>
     public ulong SteamIdUser;
 }

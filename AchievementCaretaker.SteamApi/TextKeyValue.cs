@@ -46,23 +46,21 @@ namespace AchievementCaretaker.SteamApi;
 /// expression will match inside string values and inside the unrelated
 /// second <c>apps</c> section further down the file.
 /// </remarks>
-public sealed class TextKeyValue
+public sealed class TextKeyValue(string? value, Dictionary<string, TextKeyValue>? children)
 {
-    private readonly Dictionary<string, TextKeyValue> _children;
+    private readonly Dictionary<string, TextKeyValue>? _children = children;
 
-    public string Value { get; }
+    /// <summary>Value of this key, or null if this is a parent node.</summary>
+    public string? Value { get; } = value;
 
-    private TextKeyValue(string value, Dictionary<string, TextKeyValue> children)
-    {
-        Value = value;
-        _children = children;
-    }
-
+    /// <summary>Child nodes, or null if this is a leaf node.</summary>
     public static readonly TextKeyValue Invalid = new(null, null);
 
+    /// <summary>True if this is a valid node, false if it is the <see cref="Invalid"/> sentinel.</summary>
     public bool Valid => this != Invalid;
 
     /// <summary>Child lookup; case-insensitive, as Valve's own reader is.</summary>
+    /// <param name="key">Name of the child node to look up.</param>
     public TextKeyValue this[string key]
     {
         get
@@ -76,17 +74,26 @@ public sealed class TextKeyValue
         }
     }
 
+    /// <summary>Enumerates the child nodes of this node.</summary>
     public IEnumerable<KeyValuePair<string, TextKeyValue>> Children =>
         _children ?? (IEnumerable<KeyValuePair<string, TextKeyValue>>)Array.Empty<KeyValuePair<string, TextKeyValue>>();
 
-    public int AsInteger(int defaultValue)
-    {
-        return Value != null &&
+    /// <summary>
+    /// Returns the value of this key value as an integer. If the key value is invalid, then the default value is returned. If the key value is valid but the value is null, then the default value is returned. Otherwise, the value is converted to an integer and returned.
+    /// </summary>
+    /// <param name="defaultValue">The default value to return if the key value is invalid or the value is null.</param>
+    /// <returns>Returns the value of this key value as an integer, or the default value if the key value is invalid or the value is null.</returns>
+    public int AsInteger(int defaultValue) =>
+        Value != null &&
                int.TryParse(Value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var value)
             ? value
             : defaultValue;
-    }
 
+    /// <summary>
+    /// Loads a <see cref="TextKeyValue"/> from the specified file. If the file does not exist, or if an error occurs while reading the file, then <see cref="Invalid"/> is returned.
+    /// </summary>
+    /// <param name="path">The path to the file to load.</param>
+    /// <returns>The loaded <see cref="TextKeyValue"/>, or <see cref="Invalid"/> if an error occurs.</returns>
     public static TextKeyValue LoadFromFile(string path)
     {
         try
@@ -99,6 +106,11 @@ public sealed class TextKeyValue
         }
     }
 
+    /// <summary>
+    /// Parses a <see cref="TextKeyValue"/> from the specified text. If an error occurs while parsing, then <see cref="Invalid"/> is returned.
+    /// </summary>
+    /// <param name="text">The text to parse.</param>
+    /// <returns>The parsed <see cref="TextKeyValue"/>, or <see cref="Invalid"/> if an error occurs.</returns>
     public static TextKeyValue Parse(string text)
     {
         int position = 0;
@@ -169,7 +181,7 @@ public sealed class TextKeyValue
         }
     }
 
-    private static string ReadToken(string text, ref int position)
+    private static string? ReadToken(string text, ref int position)
     {
         SkipWhitespaceAndComments(text, ref position);
         if (position >= text.Length)

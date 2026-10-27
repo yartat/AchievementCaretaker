@@ -12,8 +12,10 @@ using AchievementCaretaker.App.ViewModels;
 
 namespace AchievementCaretaker.App.Views;
 
+/// <summary>One store's games: its sign-in panel, or its tiles and rows.</summary>
 public partial class StoreLibraryView : UserControl
 {
+    /// <summary>Makes the view; its view model arrives as the data context.</summary>
     public StoreLibraryView()
     {
         InitializeComponent();

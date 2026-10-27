@@ -58,15 +58,20 @@ public sealed class GameRepository : IGameRepository
     private readonly IDbConnection _connection;
     private readonly DatabaseState _state;
 
+    /// <summary>Makes the repository over a connection; it is opened on first use.</summary>
+    /// <param name="connection">The scope's connection.</param>
+    /// <param name="state">Where the database is and whether it could be prepared.</param>
     public GameRepository(IDbConnection connection, DatabaseState state)
     {
         _connection = connection;
         _state = state;
     }
 
+    /// <inheritdoc />
     public bool IsAvailable => _state.IsAvailable;
 
-    public string Error => _state.Error;
+    /// <inheritdoc />
+    public string? Error => _state.Error;
 
     private void EnsureOpen()
     {
@@ -100,6 +105,7 @@ public sealed class GameRepository : IGameRepository
 
     #region Steam library
 
+    /// <inheritdoc />
     public uint GetLastSteamAccount() => Run(
         connection => uint.TryParse(
             connection.ExecuteScalar<string>("SELECT value FROM meta WHERE key = 'last_steam_account'"),
@@ -108,6 +114,7 @@ public sealed class GameRepository : IGameRepository
             out var account) ? account : 0u,
         0u);
 
+    /// <inheritdoc />
     public void SetLastSteamAccount(uint account) => Run(connection => connection.Execute(
         """
         INSERT INTO meta (key, value) VALUES ('last_steam_account', @value)
@@ -115,10 +122,12 @@ public sealed class GameRepository : IGameRepository
         """,
         new { value = account.ToString(CultureInfo.InvariantCulture) }));
 
+    /// <inheritdoc />
     public HashSet<uint> LoadAllGameIds() => Run(
         connection => connection.Query<long>("SELECT DISTINCT id FROM games").Select(id => (uint)id).ToHashSet(),
         new HashSet<uint>());
 
+    /// <inheritdoc />
     public IReadOnlyList<CachedGame> LoadAll(uint account) => Run(
         connection => (IReadOnlyList<CachedGame>)connection.Query<GameRow>(
             """
@@ -133,6 +142,7 @@ public sealed class GameRepository : IGameRepository
             new { account = (long)account }).Select(row => row.ToModel()).ToList(),
         Array.Empty<CachedGame>());
 
+    /// <inheritdoc />
     public void Sync(uint account, IReadOnlyCollection<CachedGame> games, bool removeMissing = true) =>
         Run(connection =>
         {
@@ -197,6 +207,7 @@ public sealed class GameRepository : IGameRepository
 
     #region Store libraries
 
+    /// <inheritdoc />
     public IReadOnlyList<CachedStoreGame> LoadStoreGames(string provider, string account) => Run(
         connection => (IReadOnlyList<CachedStoreGame>)connection.Query<StoreGameRow>(
             """
@@ -209,6 +220,7 @@ public sealed class GameRepository : IGameRepository
             new { provider, account }).Select(row => row.ToModel()).ToList(),
         Array.Empty<CachedStoreGame>());
 
+    /// <inheritdoc />
     public void SyncStoreGames(string provider, string account, IReadOnlyCollection<CachedStoreGame> games) =>
         Run(connection =>
         {
@@ -255,6 +267,7 @@ public sealed class GameRepository : IGameRepository
             transaction.Commit();
         });
 
+    /// <inheritdoc />
     public void SaveStoreProgress(string provider, string account, IEnumerable<(string Id, int Earned, int Total)> progress) =>
         Run(connection =>
         {
@@ -286,9 +299,9 @@ public sealed class GameRepository : IGameRepository
     private sealed class GameRow
     {
         public long Id { get; set; }
-        public string Type { get; set; }
-        public string Name { get; set; }
-        public string ImageUrl { get; set; }
+        public string? Type { get; set; }
+        public string? Name { get; set; }
+        public string? ImageUrl { get; set; }
         public long? ReleaseDate { get; set; }
         public long? RatingPercent { get; set; }
         public long? RatingScore { get; set; }
@@ -302,7 +315,7 @@ public sealed class GameRepository : IGameRepository
         {
             Id = (uint)Id,
             Type = Type ?? "normal",
-            Name = Name,
+            Name = Name ?? "",
             ImageUrl = ImageUrl,
             ReleaseDate = FromUnix(ReleaseDate),
             RatingPercent = (int?)RatingPercent,
@@ -317,10 +330,10 @@ public sealed class GameRepository : IGameRepository
 
     private sealed class StoreGameRow
     {
-        public string Id { get; set; }
-        public string GameKey { get; set; }
-        public string Name { get; set; }
-        public string ImageUrl { get; set; }
+        public string Id { get; set; } = "";
+        public string GameKey { get; set; } = "";
+        public string? Name { get; set; }
+        public string? ImageUrl { get; set; }
         public long AchievementsTotal { get; set; }
         public long AchievementsEarned { get; set; }
         public long HasProgress { get; set; }
@@ -329,7 +342,7 @@ public sealed class GameRepository : IGameRepository
         {
             Id = Id,
             Key = GameKey,
-            Name = Name,
+            Name = Name ?? "",
             ImageUrl = ImageUrl,
             AchievementsTotal = (int)AchievementsTotal,
             AchievementsEarned = (int)AchievementsEarned,

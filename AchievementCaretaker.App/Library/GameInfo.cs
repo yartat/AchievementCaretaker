@@ -29,6 +29,7 @@
  */
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Globalization;
@@ -41,11 +42,11 @@ namespace AchievementCaretaker.App.Library;
 
 internal sealed partial class GameInfo : ObservableObject
 {
-    private string _name;
+    private string _name = "";
 
     public uint Id { get; }
     public string Type { get; }
-    public string ImageUrl { get; set; }
+    public string? ImageUrl { get; set; }
 
     /// <summary>
     /// Reads the capsule when the tile comes into view (<c>LazyImage</c>). The bitmap is not kept
@@ -53,8 +54,10 @@ internal sealed partial class GameInfo : ObservableObject
     /// Set again when the image address changes, which is what makes the tile ask again.
     /// </summary>
     [ObservableProperty]
-    private Func<CancellationToken, Task<Bitmap>> _logoLoader;
+    private Func<CancellationToken, Task<Bitmap?>>? _logoLoader;
 
+    /// <summary>The name to show; null is replaced by <c>App &lt;id&gt;</c>.</summary>
+    [AllowNull]
     public string Name
     {
         get => _name;
@@ -138,7 +141,7 @@ internal sealed partial class GameInfo : ObservableObject
     }
 
     /// <summary>Steam's published mapping for its 1-9 review score band.</summary>
-    private static string DescribeScore(int? score) => score switch
+    private static string? DescribeScore(int? score) => score switch
     {
         9 => "Overwhelmingly Positive",
         8 => "Very Positive",

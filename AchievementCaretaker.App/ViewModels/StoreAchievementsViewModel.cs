@@ -55,7 +55,7 @@ internal sealed partial class StoreAchievementsViewModel : ProgressViewModel
     public ObservableCollection<StoreStatItem> Statistics { get; } = new();
 
     /// <summary>Raised before something that cannot be undone; the window asks. Title, message.</summary>
-    public event Func<string, string, Task<bool>> ConfirmRequested;
+    public event Func<string, string, Task<bool>>? ConfirmRequested;
 
     public string GameName => _game.Name;
 
@@ -104,7 +104,7 @@ internal sealed partial class StoreAchievementsViewModel : ProgressViewModel
     private string _errorText = "";
 
     [ObservableProperty]
-    private StoreAchievementItem _selectedAchievement;
+    private StoreAchievementItem? _selectedAchievement;
 
     private StoreAchievementsState _state = StoreAchievementsState.Loading;
     public StoreAchievementsState State
@@ -269,7 +269,7 @@ internal sealed partial class StoreAchievementsViewModel : ProgressViewModel
 
     public string CommitText => ChangedCount == 1 ? "Commit 1 change" : $"Commit {ChangedCount} changes";
 
-    private void OnItemChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
+    private void OnItemChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(StoreAchievementItem.IsAchieved) || e.PropertyName == nameof(StoreStatItem.IsModified))
         {
@@ -342,7 +342,7 @@ internal sealed partial class StoreAchievementsViewModel : ProgressViewModel
 
         SetCommitting(true);
         BeginProgress("Resetting...");
-        string failure;
+        string? failure;
         try
         {
             failure = await _service.ResetAsync(_provider, _game.Key, achievementsToo, _lifetime.Token);
@@ -389,7 +389,7 @@ internal sealed partial class StoreAchievementsViewModel : ProgressViewModel
         SetCommitting(true);
         BeginProgress("Sending changes...");
         StatusText = $"Sending {sent} change(s) to {_provider.DisplayName}...";
-        string failure;
+        string? failure;
         try
         {
             failure = await _service.CommitAsync(_provider, _game.Key, changes, statChanges, _lifetime.Token);
@@ -427,6 +427,10 @@ internal sealed partial class StoreAchievementsViewModel : ProgressViewModel
 
     #endregion
 
+    /// <param name="provider">Where the achievements are read from, and written to when it can.</param>
+    /// <param name="service">Reads, commits and resets, and words what went wrong.</param>
+    /// <param name="game">The game the window is for.</param>
+    /// <param name="images">Reads and keeps the achievements' icons.</param>
     /// <param name="progressLoaded">
     /// Told the earned and total counts once they are known, so the library's meter
     /// for this game can fill in without a separate trip to the store.

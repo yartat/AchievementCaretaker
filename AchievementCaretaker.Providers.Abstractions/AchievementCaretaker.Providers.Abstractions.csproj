@@ -1,27 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+
   <PropertyGroup>
     <AssemblyTitle>Achievement Caretaker Providers.Abstractions</AssemblyTitle>
-    <Company>Yaroslav V Tatarenko</Company>
-    <Authors>Yaroslav V Tatarenko</Authors>
     <Description>The store-provider interfaces and models, for Achievement Caretaker.</Description>
-    <Copyright>Copyright © 2026 Yaroslav V Tatarenko. GOG support based on GOG Achievements Manager by Timendum.</Copyright>
   </PropertyGroup>
-  <PropertyGroup>
-    <Version>2.1.1</Version>
-    <AssemblyVersion>2.1.1.0</AssemblyVersion>
-    <FileVersion>2.1.1.0</FileVersion>
-  </PropertyGroup>
-  <PropertyGroup>
-    <RepositoryUrl>https://github.com/yartat/AchievementCaretaker/</RepositoryUrl>
-    <RepositoryType>Git</RepositoryType>
-  </PropertyGroup>
-  <PropertyGroup>
-    <!-- Interfaces and models only: no code to run and no packages. -->
-    <TargetFramework>net10.0</TargetFramework>
-    <LangVersion>latest</LangVersion>
-    <Platforms>x86;AnyCPU</Platforms>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)'=='Release'">
-    <Optimize>True</Optimize>
-  </PropertyGroup>
+
 </Project>

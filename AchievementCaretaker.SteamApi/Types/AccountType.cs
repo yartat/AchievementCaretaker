@@ -30,16 +30,36 @@
 
 namespace AchievementCaretaker.SteamApi.Types;
 
+/// <summary>The kind of a Steam account, as Valve's <c>EAccountType</c> numbers them.</summary>
 public enum AccountType : int
 {
+    /// <summary>Not a valid account.</summary>
     Invalid = 0,
+
+    /// <summary>An ordinary person's account.</summary>
     Individual = 1,
+
+    /// <summary>A multiseat account, such as an internet cafe's.</summary>
     Multiset = 2,
+
+    /// <summary>A game server that logs in.</summary>
     GameServer = 3,
+
+    /// <summary>A game server that does not log in.</summary>
     AnonGameServer = 4,
+
+    /// <summary>An account that is not complete yet.</summary>
     Pending = 5,
+
+    /// <summary>A content server.</summary>
     ContentServer = 6,
+
+    /// <summary>A Steam group.</summary>
     Clan = 7,
+
+    /// <summary>A chat room.</summary>
     Chat = 8,
+
+    /// <summary>A peer-to-peer super seeder.</summary>
     P2PSuperSeeder = 9,
 }

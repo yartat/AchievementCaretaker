@@ -32,8 +32,11 @@ using System;
 
 namespace AchievementCaretaker.App;
 
+/// <summary>A short name for formatting an interpolated string with the invariant culture.</summary>
 public static class InvariantShorthand
 {
+    /// <summary>Formats an interpolated string, as <see cref="FormattableString.Invariant"/> does.</summary>
+    /// <param name="formattable">The interpolated string.</param>
     public static string _(FormattableString formattable)
     {
         return FormattableString.Invariant(formattable);

@@ -34,12 +34,14 @@ using AchievementCaretaker.SteamApi.Interfaces;
 
 namespace AchievementCaretaker.SteamApi.Wrappers;
 
+/// <summary>Steam's <c>ISteamUtils</c> interface, version 005: facts about the client and the app it is used as.</summary>
 public class SteamUtils005 : NativeWrapper<ISteamUtils005>
 {
     #region GetConnectedUniverse
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate int NativeGetConnectedUniverse(IntPtr self);
 
+    /// <summary>The Steam universe the client is connected to.</summary>
     public int GetConnectedUniverse()
     {
         return Call<int, NativeGetConnectedUniverse>(Functions.GetConnectedUniverse, ObjectAddress);
@@ -50,7 +52,9 @@ public class SteamUtils005 : NativeWrapper<ISteamUtils005>
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate IntPtr NativeGetIPCountry(IntPtr self);
 
-    public string GetIPCountry()
+    /// <summary>The two-letter country code Steam places the client's IP address in.</summary>
+    /// <returns>The code, or null when Steam does not say.</returns>
+    public string? GetIPCountry()
     {
         var result = Call<IntPtr, NativeGetIPCountry>(Functions.GetIPCountry, ObjectAddress);
         return NativeStrings.PointerToString(result);
@@ -62,6 +66,11 @@ public class SteamUtils005 : NativeWrapper<ISteamUtils005>
     [return: MarshalAs(UnmanagedType.I1)]
     private delegate bool NativeGetImageSize(IntPtr self, int index, out int width, out int height);
 
+    /// <summary>The size of an image Steam holds, such as an achievement icon.</summary>
+    /// <param name="index">The image handle.</param>
+    /// <param name="width">The width in pixels.</param>
+    /// <param name="height">The height in pixels.</param>
+    /// <returns>False when there is no such image.</returns>
     public bool GetImageSize(int index, out int width, out int height)
     {
         var call = GetFunction<NativeGetImageSize>(Functions.GetImageSize);
@@ -74,6 +83,10 @@ public class SteamUtils005 : NativeWrapper<ISteamUtils005>
     [return: MarshalAs(UnmanagedType.I1)]
     private delegate bool NativeGetImageRGBA(IntPtr self, int index, byte[] buffer, int length);
 
+    /// <summary>Copies an image Steam holds, as 8-bit RGBA, into a buffer.</summary>
+    /// <param name="index">The image handle.</param>
+    /// <param name="data">The buffer, as large as width times height times four.</param>
+    /// <returns>False when there is no such image or the buffer is too small.</returns>
     public bool GetImageRGBA(int index, byte[] data)
     {
         if (data == null)
@@ -89,6 +102,7 @@ public class SteamUtils005 : NativeWrapper<ISteamUtils005>
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate uint NativeGetAppId(IntPtr self);
 
+    /// <summary>The app id this process told Steam it is.</summary>
     public uint GetAppId()
     {
         return Call<uint, NativeGetAppId>(Functions.GetAppID, ObjectAddress);

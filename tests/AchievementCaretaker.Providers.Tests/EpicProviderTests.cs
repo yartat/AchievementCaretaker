@@ -118,11 +118,11 @@ public sealed class EpicProviderTests
         Assert.StartsWith("Basic ", request.Authorization);
         Assert.Equal(
             "34a02cf8f4414e29b15921876da36f9a:daafbccc737745039dffe53d94fc76cf",
-            Encoding.ASCII.GetString(Convert.FromBase64String(request.Authorization["Basic ".Length..])));
+            Encoding.ASCII.GetString(Convert.FromBase64String(request.Authorization!["Basic ".Length..])));
         Assert.Contains("grant_type=authorization_code", request.Body);
         Assert.Contains($"code={Code}", request.Body);
         Assert.True(_sessions.Has(Path));
-        Assert.Equal("REFRESH", _sessions.Load<EpicSession>(Path).RefreshToken);
+        Assert.Equal("REFRESH", _sessions.Load<EpicSession>(Path)!.RefreshToken);
     }
 
     [Fact]
@@ -223,8 +223,8 @@ public sealed class EpicProviderTests
         var request = _http.RequestsTo("oauth/token").Single();
         Assert.Contains("grant_type=refresh_token", request.Body);
         Assert.Contains("refresh_token=REFRESH", request.Body);
-        Assert.Equal("NEW-REFRESH", _sessions.Load<EpicSession>(Path).RefreshToken);
-        Assert.Equal("NEW", provider.Session.AccessToken);
+        Assert.Equal("NEW-REFRESH", _sessions.Load<EpicSession>(Path)!.RefreshToken);
+        Assert.Equal("NEW", provider.Session!.AccessToken);
     }
 
     [Fact]
@@ -269,14 +269,14 @@ public sealed class EpicProviderTests
     private static string Record(string ns, string item, string app = "app", string sandbox = "live") =>
         JsonSerializer.Serialize(new { @namespace = ns, catalogItemId = item, appName = app, sandboxName = sandbox });
 
-    private static string Page(string[] records, string next = null) =>
+    private static string Page(string[] records, string? next = null) =>
         JsonSerializer.Serialize(new
         {
             records = records.Select(r => JsonDocument.Parse(r).RootElement).ToArray(),
             responseMetadata = next == null ? null : new { nextCursor = next },
         });
 
-    private static string CatalogItem(string title, string image = null, bool dlc = false) =>
+    private static string CatalogItem(string title, string? image = null, bool dlc = false) =>
         JsonSerializer.Serialize(new
         {
             title,
@@ -430,7 +430,7 @@ public sealed class EpicProviderTests
             },
         });
 
-    private static string Player(params (string Name, bool Unlocked, double Progress, string Date)[] states) =>
+    private static string Player(params (string Name, bool Unlocked, double Progress, string? Date)[] states) =>
         JsonSerializer.Serialize(new
         {
             data = new
@@ -457,7 +457,7 @@ public sealed class EpicProviderTests
     /// <summary>Plays the GraphQL store: the answer depends on which of the two queries came.</summary>
     private FakeStore Graph(string definitions, string player) => _http.Route(
         "launcher.store.epicgames.com/graphql",
-        request => FakeStore.Reply(HttpStatusCode.OK, request.Body.Contains("productAchievementsRecordBySandbox") ? definitions : player));
+        request => FakeStore.Reply(HttpStatusCode.OK, request.Body!.Contains("productAchievementsRecordBySandbox") ? definitions : player));
 
     [Fact]
     public async Task Achievements_merge_the_definitions_with_the_players_state()
@@ -516,10 +516,10 @@ public sealed class EpicProviderTests
 
         var bodies = _http.RequestsTo("graphql").Select(r => r.Body).ToList();
         Assert.Equal(2, bodies.Count);
-        var definitions = bodies.Single(b => b.Contains("productAchievementsRecordBySandbox"));
+        var definitions = bodies.Single(b => b!.Contains("productAchievementsRecordBySandbox"));
         Assert.Contains("\"sandboxId\":\"my-sandbox\"", definitions);
         Assert.Contains("\"locale\":\"de\"", definitions);
-        var player = bodies.Single(b => b.Contains("playerAchievementGameRecordsBySandbox"));
+        var player = bodies.Single(b => b!.Contains("playerAchievementGameRecordsBySandbox"));
         Assert.Contains("\"epicAccountId\":\"acct-1\"", player);
         Assert.Contains("\"sandboxId\":\"my-sandbox\"", player);
     }

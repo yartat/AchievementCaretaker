@@ -11,12 +11,14 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace AchievementCaretaker.Providers;
 
+/// <summary>Registration of the <see cref="ISessionStore"/> that fits the operating system.</summary>
 public static class SessionStoreServiceCollectionExtensions
 {
     /// <summary>
     /// Registers the session store for this operating system. Safe to call from every
     /// provider's registration: the first one wins.
     /// </summary>
+    /// <param name="services">The container being built.</param>
     public static IServiceCollection AddSessionStore(this IServiceCollection services)
     {
         // The only place that asks which system this is. Everything after this works with

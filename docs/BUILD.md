@@ -121,7 +121,7 @@ changing how one is cut.
    directory for the portable archive. On Linux, `packaging/linux/build-deb.sh`.
 5. Ship the whole publish directory in the archive, not just the executable.
 6. Update [RELEASE-NOTES.md](RELEASE-NOTES.md) and the `Version` / `AssemblyVersion` /
-   `FileVersion` properties in both `.csproj` files. They are kept in step.
+   `FileVersion` properties in `Directory.Build.props`. They are kept in step.
 7. Update the version in the window-title literal, which is not generated from the
    assembly version: `Title=` in `Views/GamePickerWindow.axaml`.
 

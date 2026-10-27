@@ -41,6 +41,7 @@ namespace AchievementCaretaker.Providers.Steam;
 /// </remarks>
 public sealed class SteamProvider : IStatsStoreProvider, ILibraryScanProvider, IDisposable, IAsyncDisposable
 {
+    /// <summary>The id of this provider, and so of the games it lists.</summary>
     public const string ProviderId = "steam";
 
     /// <summary>How long a helper outlives its last call.</summary>
@@ -52,25 +53,32 @@ public sealed class SteamProvider : IStatsStoreProvider, ILibraryScanProvider, I
     private readonly Dictionary<long, Task<LiveWorker>> _live = new();
     private bool _disposed;
 
+    /// <summary>Makes the provider; no helper is started until a call needs one.</summary>
+    /// <param name="launcher">Starts the helper processes.</param>
+    /// <param name="idle">How long a helper outlives its last call; <see cref="DefaultIdle"/> when null.</param>
     public SteamProvider(ISteamWorkerLauncher launcher, TimeSpan? idle = null)
     {
         _launcher = launcher;
         _idle = idle ?? DefaultIdle;
     }
 
+    /// <inheritdoc />
     public string Id => ProviderId;
 
+    /// <inheritdoc />
     public string DisplayName => "Steam";
 
+    /// <inheritdoc />
     public Task<IReadOnlyList<StoreGame>> GetLibraryAsync(CancellationToken cancellationToken = default) =>
         throw new NotSupportedException("Steam does not list an account's games: use ScanLibraryAsync with the published list.");
 
     /// <summary>The library's session: app id 0, which is not a game but how Steam is asked about the whole account.</summary>
     private const string LibraryKey = "0";
 
+    /// <inheritdoc />
     public async Task<LibraryScan> ScanLibraryAsync(
         IReadOnlyCollection<LibraryCandidate> candidates,
-        IProgress<LibraryScanProgress> progress,
+        IProgress<LibraryScanProgress>? progress,
         CancellationToken cancellationToken = default)
     {
         ScanLibraryRequest request = new();
@@ -103,6 +111,7 @@ public sealed class SteamProvider : IStatsStoreProvider, ILibraryScanProvider, I
         }, cancellationToken, fresh: true);
     }
 
+    /// <inheritdoc />
     public async Task<string> GetAccountAsync(CancellationToken cancellationToken = default)
     {
         return await WithWorkerAsync(LibraryKey, async (channel, token) =>
@@ -112,7 +121,8 @@ public sealed class SteamProvider : IStatsStoreProvider, ILibraryScanProvider, I
         }, cancellationToken, fresh: true);
     }
 
-    public async Task<StoreGame> FindOwnedAsync(LibraryCandidate candidate, CancellationToken cancellationToken = default)
+    /// <inheritdoc />
+    public async Task<StoreGame?> FindOwnedAsync(LibraryCandidate candidate, CancellationToken cancellationToken = default)
     {
         FindOwnedRequest request = new()
         {
@@ -141,6 +151,7 @@ public sealed class SteamProvider : IStatsStoreProvider, ILibraryScanProvider, I
         g.HasAchievementsTotal ? g.AchievementsTotal : null,
         g.HasAchievementsEarned ? g.AchievementsEarned : null);
 
+    /// <inheritdoc />
     public async Task<IReadOnlyList<StoreAchievement>> GetAchievementsAsync(
         string gameKey, string locale = "en", CancellationToken cancellationToken = default)
     {
@@ -152,12 +163,14 @@ public sealed class SteamProvider : IStatsStoreProvider, ILibraryScanProvider, I
         }, cancellationToken, fresh: true);
     }
 
+    /// <inheritdoc />
     public Task SetAchievementsAsync(
         string gameKey,
         IReadOnlyCollection<KeyValuePair<string, bool>> changes,
         CancellationToken cancellationToken = default) =>
         CommitAsync(gameKey, changes, Array.Empty<KeyValuePair<string, double>>(), cancellationToken);
 
+    /// <inheritdoc />
     public async Task<IReadOnlyList<StoreStat>> GetStatsAsync(string gameKey, CancellationToken cancellationToken = default)
     {
         return await WithWorkerAsync(gameKey, async (channel, token) =>
@@ -177,6 +190,7 @@ public sealed class SteamProvider : IStatsStoreProvider, ILibraryScanProvider, I
         }, cancellationToken);
     }
 
+    /// <inheritdoc />
     public async Task CommitAsync(
         string gameKey,
         IReadOnlyCollection<KeyValuePair<string, bool>> achievements,
@@ -194,6 +208,7 @@ public sealed class SteamProvider : IStatsStoreProvider, ILibraryScanProvider, I
         }, cancellationToken);
     }
 
+    /// <inheritdoc />
     public async Task ResetAsync(string gameKey, bool includeAchievements, CancellationToken cancellationToken = default)
     {
         await WithWorkerAsync(gameKey, async (channel, token) =>
@@ -253,7 +268,7 @@ public sealed class SteamProvider : IStatsStoreProvider, ILibraryScanProvider, I
 
     private async Task<LiveWorker> GetLiveAsync(long appId, bool fresh, CancellationToken cancellationToken)
     {
-        Task<LiveWorker> stale = null;
+        Task<LiveWorker>? stale = null;
         Task<LiveWorker> result;
         lock (_gate)
         {
@@ -303,7 +318,7 @@ public sealed class SteamProvider : IStatsStoreProvider, ILibraryScanProvider, I
 
     private void Drop(long appId, LiveWorker live)
     {
-        Task<LiveWorker> removed = null;
+        Task<LiveWorker>? removed = null;
         lock (_gate)
         {
             if (_live.TryGetValue(appId, out var current) == true &&
@@ -332,6 +347,7 @@ public sealed class SteamProvider : IStatsStoreProvider, ILibraryScanProvider, I
         }
     }
 
+    /// <summary>Lets go of every helper still running.</summary>
     public async ValueTask DisposeAsync()
     {
         List<Task<LiveWorker>> all;
@@ -347,6 +363,7 @@ public sealed class SteamProvider : IStatsStoreProvider, ILibraryScanProvider, I
         }
     }
 
+    /// <summary>Lets go of every helper still running.</summary>
     public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
 
     /// <summary>A started helper with its connection, its idle timer and the gate that serialises calls to it.</summary>
@@ -354,7 +371,7 @@ public sealed class SteamProvider : IStatsStoreProvider, ILibraryScanProvider, I
     {
         private readonly ISteamWorker _worker;
         private readonly TimeSpan _idle;
-        private Timer _timer;
+        private Timer? _timer;
 
         public SteamWorkerChannel Channel { get; }
 

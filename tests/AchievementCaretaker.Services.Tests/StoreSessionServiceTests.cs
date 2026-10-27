@@ -18,18 +18,18 @@ public sealed class StoreSessionServiceTests
 {
     private sealed class FakeProvider : IStoreAccount
     {
-        public Exception SignInError { get; set; }
-        public string Pasted { get; private set; }
+        public Exception? SignInError { get; set; }
+        public string? Pasted { get; private set; }
         public bool SignedOut { get; private set; }
-        public string AccountNameValue { get; set; }
+        public string? AccountNameValue { get; set; }
 
         public string Id => "fake";
         public string DisplayName => "Fake";
         public string SignInUrl => "";
         public string SignInHint => "the code";
-        public SignInResultKind GetSignInResultKind(Uri address) => SignInResultKind.None;
+        public SignInResultKind GetSignInResultKind(Uri? address) => SignInResultKind.None;
         public bool IsSignedIn => true;
-        public string AccountName => AccountNameValue;
+        public string? AccountName => AccountNameValue;
         public string AccountId => "a";
 
         public Task SignInAsync(string pasted, CancellationToken cancellationToken = default)

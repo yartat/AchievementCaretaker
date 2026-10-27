@@ -87,11 +87,17 @@ public sealed class LibraryStats
         _playtime = playtime;
     }
 
-    public static LibraryStats Create(ulong steamId) =>
+    /// <summary>Reads the caches under Steam's install directory, wherever it is.</summary>
+    /// <param name="steamId">The 64-bit SteamID of the account the caches are for.</param>
+    /// <returns>The reader, or null when Steam's install directory cannot be found.</returns>
+    public static LibraryStats? Create(ulong steamId) =>
         Create(AchievementCaretaker.SteamApi.Steam.GetInstallPath(), steamId);
 
     /// <summary>Reads the caches under <paramref name="installPath"/> (Steam's install directory).</summary>
-    public static LibraryStats Create(string installPath, ulong steamId)
+    /// <param name="installPath">Steam's install directory.</param>
+    /// <param name="steamId">The 64-bit SteamID of the account the caches are for.</param>
+    /// <returns>The reader, or null when there is no install path.</returns>
+    public static LibraryStats? Create(string? installPath, ulong steamId)
     {
         if (string.IsNullOrEmpty(installPath) == true)
         {
@@ -150,6 +156,9 @@ public sealed class LibraryStats
         return result;
     }
 
+    /// <summary>What the caches say about one game.</summary>
+    /// <param name="appId">The app id.</param>
+    /// <returns>The playtime and achievement counts, or null when Steam has written nothing about the game.</returns>
     public GameStats? TryGet(uint appId)
     {
         var schema = LoadSchemaBits(appId, out var total);
@@ -168,7 +177,7 @@ public sealed class LibraryStats
     }
 
     /// <summary>stat block id -&gt; bitmask of achievement bits the schema defines.</summary>
-    private Dictionary<string, uint> LoadSchemaBits(uint appId, out int total)
+    private Dictionary<string, uint>? LoadSchemaBits(uint appId, out int total)
     {
         total = 0;
 

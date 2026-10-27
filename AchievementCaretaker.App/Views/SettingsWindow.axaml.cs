@@ -40,9 +40,10 @@ using AchievementCaretaker.App.ViewModels;
 
 namespace AchievementCaretaker.App.Views;
 
+/// <summary>The settings dialog: where the caches live, and the theme.</summary>
 public partial class SettingsWindow : Window
 {
-    private SettingsViewModel _viewModel;
+    private SettingsViewModel? _viewModel;
 
     /// <summary>
     /// What the application looked like when the dialog opened, so a
@@ -50,14 +51,16 @@ public partial class SettingsWindow : Window
     /// rather than from the settings file: the two can differ if a previous
     /// save failed to write.
     /// </summary>
-    private readonly ThemeVariant _originalTheme;
+    private readonly ThemeVariant? _originalTheme;
 
+    /// <summary>Makes the dialog; its view model arrives as the data context.</summary>
     public SettingsWindow()
     {
         _originalTheme = Application.Current?.RequestedThemeVariant;
         InitializeComponent();
     }
 
+    /// <inheritdoc />
     protected override void OnDataContextChanged(EventArgs e)
     {
         Detach();
@@ -73,6 +76,7 @@ public partial class SettingsWindow : Window
         base.OnDataContextChanged(e);
     }
 
+    /// <inheritdoc />
     protected override void OnClosed(EventArgs e)
     {
         Detach();
@@ -90,9 +94,9 @@ public partial class SettingsWindow : Window
         _viewModel.ThemePreviewRequested -= OnThemePreviewRequested;
     }
 
-    private async Task<string> OnFolderRequested(string title, string startIn)
+    private async Task<string?> OnFolderRequested(string title, string? startIn)
     {
-        IStorageFolder start = null;
+        IStorageFolder? start = null;
         try
         {
             if (string.IsNullOrWhiteSpace(startIn) == false && Directory.Exists(startIn) == true)

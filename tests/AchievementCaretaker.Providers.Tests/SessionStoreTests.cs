@@ -23,7 +23,7 @@ public sealed class SessionStoreTests : IDisposable
 {
     public sealed class Sample
     {
-        public string RefreshToken { get; set; }
+        public string RefreshToken { get; set; } = "";
     }
 
     private const string Token = "refresh-token-value";

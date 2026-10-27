@@ -30,6 +30,7 @@ public interface IWritableStoreProvider : IStoreProvider
     /// </summary>
     /// <param name="gameKey">The game's <see cref="StoreGame.Key"/>.</param>
     /// <param name="changes">Achievement id and the state it should have.</param>
+    /// <param name="cancellationToken">The token to cancel the operation.</param>
     Task SetAchievementsAsync(
         string gameKey,
         IReadOnlyCollection<KeyValuePair<string, bool>> changes,

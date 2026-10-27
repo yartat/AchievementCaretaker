@@ -30,8 +30,12 @@
 
 namespace AchievementCaretaker.SteamApi.Callbacks;
 
+/// <summary>Steam fetched new data about an app.</summary>
 public class AppDataChanged : Callback<Types.AppDataChanged>
 {
+    /// <inheritdoc />
     public override int Id => 1001;
+
+    /// <inheritdoc />
     public override bool IsServer => false;
 }

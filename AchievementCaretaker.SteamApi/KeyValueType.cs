@@ -30,15 +30,33 @@
 
 namespace AchievementCaretaker.SteamApi;
 
+/// <summary>The type byte that starts an entry in a binary Valve KeyValues file.</summary>
 public enum KeyValueType : byte
 {
+    /// <summary>A section: the entries that follow are its children, up to <see cref="End"/>.</summary>
     None = 0,
+
+    /// <summary>A null-terminated UTF-8 string.</summary>
     String = 1,
+
+    /// <summary>A 32-bit signed integer.</summary>
     Int32 = 2,
+
+    /// <summary>A 32-bit floating-point number.</summary>
     Float32 = 3,
+
+    /// <summary>A 32-bit pointer value.</summary>
     Pointer = 4,
+
+    /// <summary>A null-terminated UTF-16 string.</summary>
     WideString = 5,
+
+    /// <summary>A 32-bit color.</summary>
     Color = 6,
+
+    /// <summary>A 64-bit unsigned integer.</summary>
     UInt64 = 7,
+
+    /// <summary>The end of a section.</summary>
     End = 8,
 }

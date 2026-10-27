@@ -34,24 +34,30 @@ using System.Runtime.InteropServices;
 
 namespace AchievementCaretaker.SteamApi;
 
+/// <summary>
+/// Steam's own client library: loading it, and reaching the three entry points it exports.
+/// </summary>
 public static class Steam
 {
-    private static Delegate GetExportDelegate<TDelegate>(IntPtr module, string name)
+    private static Delegate? GetExportDelegate<TDelegate>(IntPtr module, string name)
     {
         return NativeLibrary.TryGetExport(module, name, out var address) == false
             ? null
             : Marshal.GetDelegateForFunctionPointer(address, typeof(TDelegate));
     }
 
-    private static TDelegate GetExportFunction<TDelegate>(IntPtr module, string name)
+    private static TDelegate? GetExportFunction<TDelegate>(IntPtr module, string name)
         where TDelegate : class
     {
-        return (TDelegate)((object)GetExportDelegate<TDelegate>(module, name));
+        return (TDelegate?)((object?)GetExportDelegate<TDelegate>(module, name));
     }
+
+    private static InvalidOperationException NotLoaded() => new("Steam.Load() has not succeeded.");
 
     private static IntPtr _handle = IntPtr.Zero;
 
-    public static string GetInstallPath()
+    /// <summary>The directory Steam is installed in, or null when it cannot be found.</summary>
+    public static string? GetInstallPath()
     {
         return SteamPlatform.GetInstallPath();
     }
@@ -59,12 +65,19 @@ public static class Steam
     [UnmanagedFunctionPointer(CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
     private delegate IntPtr NativeCreateInterface(string version, IntPtr returnCode);
 
-    private static NativeCreateInterface _callCreateInterface;
+    private static NativeCreateInterface? _callCreateInterface;
 
-    public static TClass CreateInterface<TClass>(string version)
-        where TClass : INativeWrapper, new()
+    /// <summary>
+    /// Asks Steam for one of its interfaces by version string, and wraps it. Requires a
+    /// successful <see cref="Load"/>.
+    /// </summary>
+    /// <typeparam name="TClass">The wrapper for the interface the version string names.</typeparam>
+    /// <param name="version">The interface version string, such as <c>SteamClient018</c>.</param>
+    /// <returns>The wrapper, or null when Steam does not know that version.</returns>
+    public static TClass? CreateInterface<TClass>(string version)
+        where TClass : class, INativeWrapper, new()
     {
-        IntPtr address = _callCreateInterface(version, IntPtr.Zero);
+        IntPtr address = (_callCreateInterface ?? throw NotLoaded())(version, IntPtr.Zero);
 
         if (address == IntPtr.Zero)
         {
@@ -80,24 +93,37 @@ public static class Steam
     [return: MarshalAs(UnmanagedType.I1)]
     private delegate bool NativeSteamGetCallback(int pipe, out Types.CallbackMessage message, out int call);
 
-    private static NativeSteamGetCallback _callSteamBGetCallback;
+    private static NativeSteamGetCallback? _callSteamBGetCallback;
 
+    /// <summary>Takes the next pending callback off the pipe, if there is one.</summary>
+    /// <param name="pipe">The Steam pipe the callbacks arrive on.</param>
+    /// <param name="message">The callback, valid until <see cref="FreeLastCallback"/>.</param>
+    /// <param name="call">The API call the callback answers, if it answers one.</param>
+    /// <returns>True when there was a callback.</returns>
     public static bool GetCallback(int pipe, out Types.CallbackMessage message, out int call)
     {
-        return _callSteamBGetCallback(pipe, out message, out call);
+        return (_callSteamBGetCallback ?? throw NotLoaded())(pipe, out message, out call);
     }
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     [return: MarshalAs(UnmanagedType.I1)]
     private delegate bool NativeSteamFreeLastCallback(int pipe);
 
-    private static NativeSteamFreeLastCallback _callSteamFreeLastCallback;
+    private static NativeSteamFreeLastCallback? _callSteamFreeLastCallback;
 
+    /// <summary>Releases the callback last returned by <see cref="GetCallback"/>.</summary>
+    /// <param name="pipe">The Steam pipe the callback arrived on.</param>
+    /// <returns>True when Steam accepted it.</returns>
     public static bool FreeLastCallback(int pipe)
     {
-        return _callSteamFreeLastCallback(pipe);
+        return (_callSteamFreeLastCallback ?? throw NotLoaded())(pipe);
     }
 
+    /// <summary>
+    /// Loads Steam's client library and binds its three exports. Does nothing, and succeeds, if
+    /// it has already been loaded.
+    /// </summary>
+    /// <returns>False when this process cannot load it (wrong architecture, Steam not installed, no such export).</returns>
     public static bool Load()
     {
         if (_handle != IntPtr.Zero)
@@ -112,7 +138,7 @@ public static class Steam
             return false;
         }
 
-        string installPath = GetInstallPath();
+        string? installPath = GetInstallPath();
         if (installPath == null)
         {
             return false;

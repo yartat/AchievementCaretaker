@@ -43,7 +43,7 @@ public sealed record StoreAchievement(
     string Id,
     string DisplayName,
     string Description,
-    string IconUrl,
+    string? IconUrl,
     bool Hidden,
     int? XP,
     double? RarityPercent,

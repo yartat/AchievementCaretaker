@@ -80,6 +80,10 @@ public static class SteamPlatform
     public static bool IsArchitectureSupported =>
         RuntimeInformation.ProcessArchitecture is Architecture.X86 or Architecture.X64;
 
+    /// <summary>
+    /// The explanation shown when this process is an architecture Steam has no client library for.
+    /// </summary>
+    /// <returns>A message that says what is wrong and which build to run instead.</returns>
     public static string DescribeUnsupportedArchitecture()
     {
         var arch = RuntimeInformation.ProcessArchitecture;
@@ -139,7 +143,7 @@ public static class SteamPlatform
     /// <summary>
     /// The Steam installation directory, or null if it could not be found.
     /// </summary>
-    public static string GetInstallPath()
+    public static string? GetInstallPath()
     {
         // Plain `if (OperatingSystem.IsWindows())` rather than this file's
         // usual `== true`: CA1416 only recognises the bare form as a
@@ -226,9 +230,9 @@ public static class SteamPlatform
     }
 
     [SupportedOSPlatform("windows")]
-    private static string GetWindowsInstallPath()
+    private static string? GetWindowsInstallPath()
     {
-        return (string)Microsoft.Win32.Registry.GetValue(
+        return (string?)Microsoft.Win32.Registry.GetValue(
             @"HKEY_LOCAL_MACHINE\Software\Valve\Steam",
             "InstallPath",
             null);

@@ -28,10 +28,10 @@ namespace AchievementCaretaker.Providers.Models;
 /// and nothing more; Steam, whose client and cache files know a good deal, fills in the rest.
 /// </para>
 /// </remarks>
-/// <param name="Provider">The id of the provider the game belongs to (<see cref="IStoreProvider.Id"/>).</param>
+/// <param name="Provider">The id of the provider the game belongs to (<see cref="IStore.Id"/>).</param>
 /// <param name="Id">The game's identifier within its store, stable across refreshes.</param>
 /// <param name="Key">What the store's achievement service is addressed by; opaque to callers.</param>
-/// <param name="Title">The name to show.</param>
+/// <param name="Title">The name to show, or null when the store does not know it.</param>
 /// <param name="ImageUrl">The address of the game's capsule art, or null when the store has none.</param>
 /// <param name="Type">What kind of app it is ("normal", "demo", "mod", "junk"), or null when the store does not sort them.</param>
 /// <param name="ReleaseDate">When it was released, if the store says.</param>
@@ -45,9 +45,9 @@ public sealed record StoreGame(
     string Provider,
     string Id,
     string Key,
-    string Title,
-    string ImageUrl,
-    string Type = null,
+    string? Title,
+    string? ImageUrl,
+    string? Type = null,
     DateTimeOffset? ReleaseDate = null,
     int? RatingPercent = null,
     int? RatingScore = null,

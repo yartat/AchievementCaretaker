@@ -18,8 +18,10 @@ namespace AchievementCaretaker.Services;
 /// <summary>The <see cref="IStoreAchievementsService"/>. Stateless.</summary>
 public sealed class StoreAchievementsService : IStoreAchievementsService
 {
+    /// <inheritdoc />
     public bool CanModify(IStoreProvider provider) => provider is IWritableStoreProvider;
 
+    /// <inheritdoc />
     public async Task<StoreAchievementsResult> LoadAsync(
         IStoreProvider provider, string gameKey, CancellationToken cancellationToken)
     {
@@ -38,7 +40,8 @@ public sealed class StoreAchievementsService : IStoreAchievementsService
         }
     }
 
-    public async Task<string> CommitAsync(
+    /// <inheritdoc />
+    public async Task<string?> CommitAsync(
         IStoreProvider provider,
         string gameKey,
         IReadOnlyCollection<KeyValuePair<string, bool>> changes,
@@ -64,8 +67,10 @@ public sealed class StoreAchievementsService : IStoreAchievementsService
         }
     }
 
+    /// <inheritdoc />
     public bool HasStatistics(IStoreProvider provider) => provider is IStatsStoreProvider;
 
+    /// <inheritdoc />
     public async Task<StoreStatsResult> LoadStatsAsync(IStoreProvider provider, string gameKey, CancellationToken cancellationToken)
     {
         if (provider is not IStatsStoreProvider stats)
@@ -87,7 +92,8 @@ public sealed class StoreAchievementsService : IStoreAchievementsService
         }
     }
 
-    public async Task<string> CommitAsync(
+    /// <inheritdoc />
+    public async Task<string?> CommitAsync(
         IStoreProvider provider,
         string gameKey,
         IReadOnlyCollection<KeyValuePair<string, bool>> achievements,
@@ -118,7 +124,8 @@ public sealed class StoreAchievementsService : IStoreAchievementsService
         }
     }
 
-    public async Task<string> ResetAsync(IStoreProvider provider, string gameKey, bool includeAchievements, CancellationToken cancellationToken)
+    /// <inheritdoc />
+    public async Task<string?> ResetAsync(IStoreProvider provider, string gameKey, bool includeAchievements, CancellationToken cancellationToken)
     {
         if (provider is not IStatsStoreProvider stats)
         {

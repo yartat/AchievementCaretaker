@@ -40,10 +40,10 @@ namespace AchievementCaretaker.App.ViewModels;
 internal sealed partial class SettingsViewModel : ObservableObject
 {
     [ObservableProperty]
-    private string _databasePath;
+    private string _databasePath = "";
 
     [ObservableProperty]
-    private string _iconCachePath;
+    private string _iconCachePath = "";
 
     /// <summary>The theme list, in display order. Fixed for the lifetime of the dialog.</summary>
     public ThemeOption[] Themes { get; } =
@@ -78,13 +78,13 @@ internal sealed partial class SettingsViewModel : ObservableObject
     /// judge by looking at it, so the dialog applies it live; the view
     /// restores the previous one if the dialog is cancelled.
     /// </summary>
-    public event Action<AppTheme> ThemePreviewRequested;
+    public event Action<AppTheme>? ThemePreviewRequested;
 
-    /// <summary>Asks the view for a folder; returns null if cancelled.</summary>
-    public event Func<string, string, Task<string>> FolderRequested;
+    /// <summary>Asks the view for a folder, given a title and where to start; returns null if cancelled.</summary>
+    public event Func<string, string?, Task<string?>>? FolderRequested;
 
     /// <summary>Raised with true when the user accepted the changes.</summary>
-    public event Action<bool> CloseRequested;
+    public event Action<bool>? CloseRequested;
 
     public SettingsViewModel(AppSettings settings)
     {
@@ -123,10 +123,10 @@ internal sealed partial class SettingsViewModel : ObservableObject
         }
     }
 
-    private Task<string> RequestFolderAsync(string title, string start)
+    private Task<string?> RequestFolderAsync(string title, string? start)
     {
         return FolderRequested == null
-            ? Task.FromResult<string>(null)
+            ? Task.FromResult<string?>(null)
             : FolderRequested(title, start);
     }
 
@@ -154,8 +154,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
     {
         return new()
         {
-            DatabasePath = DatabasePath?.Trim(),
-            IconCachePath = IconCachePath?.Trim(),
+            DatabasePath = DatabasePath.Trim(),
+            IconCachePath = IconCachePath.Trim(),
             Theme = SelectedTheme?.Value ?? AppTheme.System,
         };
     }

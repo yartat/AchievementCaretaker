@@ -34,31 +34,41 @@ using System.Runtime.InteropServices;
 
 namespace AchievementCaretaker.SteamApi;
 
+/// <summary>
+/// A C++ object of Steam's, called through its vtable: <typeparamref name="TNativeFunctions"/> is
+/// the vtable's layout, one field per virtual method, in declaration order.
+/// </summary>
+/// <typeparam name="TNativeFunctions">The vtable layout of the interface being wrapped.</typeparam>
 public abstract class NativeWrapper<TNativeFunctions> : INativeWrapper
 {
+    /// <summary>The address of the C++ object, passed as <c>this</c> to every call.</summary>
     protected IntPtr ObjectAddress;
-    protected TNativeFunctions Functions;
 
+    /// <summary>The object's vtable, read by <see cref="SetupFunctions"/>.</summary>
+    protected TNativeFunctions Functions = default!;
+
+    /// <inheritdoc />
     public override string ToString()
     {
         return $"Steam Interface<{typeof(TNativeFunctions)}> #{ObjectAddress.ToInt64():X8}";
     }
 
+    /// <inheritdoc />
     public void SetupFunctions(IntPtr objectAddress)
     {
         ObjectAddress = objectAddress;
 
-        var iface = (NativeClass)Marshal.PtrToStructure(
-            ObjectAddress,
-            typeof(NativeClass));
+        var iface = Marshal.PtrToStructure<NativeClass>(ObjectAddress);
 
-        Functions = (TNativeFunctions)Marshal.PtrToStructure(
-            iface.VirtualTable,
-            typeof(TNativeFunctions));
+        Functions = Marshal.PtrToStructure<TNativeFunctions>(iface.VirtualTable)
+            ?? throw new InvalidOperationException($"The vtable of {typeof(TNativeFunctions)} could not be read.");
     }
 
     private readonly Dictionary<IntPtr, Delegate> _functionCache = new();
 
+    /// <summary>The managed delegate for a vtable slot, made once and then kept.</summary>
+    /// <typeparam name="TDelegate">The delegate type that matches the native signature.</typeparam>
+    /// <param name="pointer">The vtable slot.</param>
     protected Delegate GetDelegate<TDelegate>(IntPtr pointer)
     {
         if (_functionCache.TryGetValue(pointer, out var function) == false)
@@ -69,19 +79,31 @@ public abstract class NativeWrapper<TNativeFunctions> : INativeWrapper
         return function;
     }
 
+    /// <summary>The vtable slot as a typed delegate, for calls that cannot go through <see cref="Call{TDelegate}"/>.</summary>
+    /// <typeparam name="TDelegate">The delegate type that matches the native signature.</typeparam>
+    /// <param name="pointer">The vtable slot.</param>
     protected TDelegate GetFunction<TDelegate>(IntPtr pointer)
         where TDelegate : class
     {
         return (TDelegate)((object)GetDelegate<TDelegate>(pointer));
     }
 
-    protected void Call<TDelegate>(IntPtr pointer, params object[] args)
+    /// <summary>Calls a native method that returns nothing.</summary>
+    /// <typeparam name="TDelegate">The delegate type that matches the native signature.</typeparam>
+    /// <param name="pointer">The vtable slot.</param>
+    /// <param name="args">The arguments, <see cref="ObjectAddress"/> first.</param>
+    protected void Call<TDelegate>(IntPtr pointer, params object?[] args)
     {
         GetDelegate<TDelegate>(pointer).DynamicInvoke(args);
     }
 
-    protected TReturn Call<TReturn, TDelegate>(IntPtr pointer, params object[] args)
+    /// <summary>Calls a native method and returns what it returns.</summary>
+    /// <typeparam name="TReturn">The managed type of the native return value.</typeparam>
+    /// <typeparam name="TDelegate">The delegate type that matches the native signature.</typeparam>
+    /// <param name="pointer">The vtable slot.</param>
+    /// <param name="args">The arguments, <see cref="ObjectAddress"/> first.</param>
+    protected TReturn Call<TReturn, TDelegate>(IntPtr pointer, params object?[] args)
     {
-        return (TReturn)GetDelegate<TDelegate>(pointer).DynamicInvoke(args);
+        return (TReturn)GetDelegate<TDelegate>(pointer).DynamicInvoke(args)!;
     }
 }

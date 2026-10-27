@@ -34,6 +34,7 @@ using AchievementCaretaker.SteamApi.Interfaces;
 
 namespace AchievementCaretaker.SteamApi.Wrappers;
 
+/// <summary>Steam's <c>ISteamApps</c> interface, version 008: what the account owns and in which language.</summary>
 public class SteamApps008 : NativeWrapper<ISteamApps008>
 {
     #region IsSubscribed
@@ -41,6 +42,8 @@ public class SteamApps008 : NativeWrapper<ISteamApps008>
     [return: MarshalAs(UnmanagedType.I1)]
     private delegate bool NativeIsSubscribedApp(IntPtr self, uint gameId);
 
+    /// <summary>Whether the logged-in account owns an app.</summary>
+    /// <param name="gameId">The app id.</param>
     public bool IsSubscribedApp(uint gameId)
     {
         return Call<bool, NativeIsSubscribedApp>(Functions.IsSubscribedApp, ObjectAddress, gameId);
@@ -51,7 +54,9 @@ public class SteamApps008 : NativeWrapper<ISteamApps008>
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate IntPtr NativeGetCurrentGameLanguage(IntPtr self);
 
-    public string GetCurrentGameLanguage()
+    /// <summary>The language Steam is set to for games, such as <c>english</c>.</summary>
+    /// <returns>The language, or null when Steam does not say.</returns>
+    public string? GetCurrentGameLanguage()
     {
         var languagePointer = Call<IntPtr, NativeGetCurrentGameLanguage>(
             Functions.GetCurrentGameLanguage,

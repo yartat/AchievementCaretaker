@@ -85,7 +85,7 @@ internal sealed class IconCache
     /// a plain file name. It comes out of Steam's schema blob, so it is not
     /// allowed to steer a write out of the cache directory.
     /// </summary>
-    private string FileFor(uint appId, string iconName)
+    private string? FileFor(uint appId, string iconName)
     {
         if (string.IsNullOrEmpty(iconName) == true ||
             iconName != System.IO.Path.GetFileName(iconName) ||
@@ -98,17 +98,17 @@ internal sealed class IconCache
             appId.ToString(CultureInfo.InvariantCulture) + "_" + iconName);
     }
 
-    public byte[] TryRead(uint appId)
+    public byte[]? TryRead(uint appId)
     {
         return TryReadFile(FileFor(appId));
     }
 
-    public byte[] TryRead(uint appId, string iconName)
+    public byte[]? TryRead(uint appId, string iconName)
     {
         return TryReadFile(FileFor(appId, iconName));
     }
 
-    private static byte[] TryReadFile(string file)
+    private static byte[]? TryReadFile(string? file)
     {
         if (file == null)
         {
@@ -134,7 +134,7 @@ internal sealed class IconCache
         WriteFile(FileFor(appId, iconName), data);
     }
 
-    private void WriteFile(string file, byte[] data)
+    private void WriteFile(string? file, byte[] data)
     {
         if (file == null)
         {
@@ -246,7 +246,7 @@ internal sealed class IconCache
                         destination,
                         StoreImageCache.FolderName,
                         System.IO.Path.GetRelativePath(storeSource, file));
-                    Directory.CreateDirectory(System.IO.Path.GetDirectoryName(target));
+                    Directory.CreateDirectory(System.IO.Path.GetDirectoryName(target)!);
                     File.Move(file, target, true);
                 }
                 catch (Exception)

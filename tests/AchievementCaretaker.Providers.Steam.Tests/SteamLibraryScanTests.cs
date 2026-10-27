@@ -37,7 +37,7 @@ public sealed class SteamLibraryScanTests
             return Owned.Contains(appId);
         }
 
-        public string GetAppData(uint appId, string key) => AppData.TryGetValue((appId, key), out var value) ? value : null;
+        public string? GetAppData(uint appId, string key) => AppData.TryGetValue((appId, key), out var value) ? value : null;
 
         public GameStats? GetCachedStats(uint appId) => Cached.TryGetValue(appId, out var stats) ? stats : null;
 
@@ -45,7 +45,7 @@ public sealed class SteamLibraryScanTests
 
         // The achievement session is not what these tests are about.
         public Task EnsureUserStatsAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
-        public KeyValue LoadSchema() => throw new NotSupportedException();
+        public KeyValue? LoadSchema() => throw new NotSupportedException();
         public bool TryGetAchievement(string id, out bool unlocked, out uint unlockTime) => throw new NotSupportedException();
         public bool SetAchievement(string id, bool unlocked) => throw new NotSupportedException();
         public bool TryGetIntStat(string id, out int value) => throw new NotSupportedException();
@@ -243,7 +243,7 @@ public sealed class SteamLibraryScanTests
         var owned = await backend.FindOwnedAsync(new LibraryCandidate("480", "normal"), TestContext.Current.CancellationToken);
         var other = await backend.FindOwnedAsync(new LibraryCandidate("999", "normal"), TestContext.Current.CancellationToken);
 
-        Assert.Equal("Spacewar", owned.Title);
+        Assert.Equal("Spacewar", owned!.Title);
         Assert.Null(other);
     }
 }

@@ -85,6 +85,7 @@ public sealed class SteamAppIdFile : IDisposable
         return new SteamAppIdFile(folder, previous);
     }
 
+    /// <summary>Restores the working directory and removes the folder and the file in it.</summary>
     public void Dispose()
     {
         if (_disposed == true)

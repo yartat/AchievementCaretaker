@@ -75,11 +75,11 @@ public sealed class LibraryStatsTests : IDisposable
         // Block 1: 0b111 sets bit 2, which the schema does not define; it must not count.
         WriteEarned(480, 0b111, 1);
 
-        var stats = LibraryStats.Create(_install, SteamId).TryGet(480);
+        var stats = LibraryStats.Create(_install, SteamId)!.TryGet(480);
 
         Assert.NotNull(stats);
-        Assert.Equal(3, stats.Value.AchievementsTotal);
-        Assert.Equal(3, stats.Value.AchievementsEarned);
+        Assert.Equal(3, stats!.Value.AchievementsTotal);
+        Assert.Equal(3, stats!.Value.AchievementsEarned);
     }
 
     [Fact]
@@ -87,10 +87,10 @@ public sealed class LibraryStatsTests : IDisposable
     {
         WriteSchema(480);
 
-        var stats = LibraryStats.Create(_install, SteamId).TryGet(480);
+        var stats = LibraryStats.Create(_install, SteamId)!.TryGet(480);
 
-        Assert.Equal(3, stats.Value.AchievementsTotal);
-        Assert.Equal(0, stats.Value.AchievementsEarned);
+        Assert.Equal(3, stats!.Value.AchievementsTotal);
+        Assert.Equal(0, stats!.Value.AchievementsEarned);
     }
 
     [Fact]
@@ -98,19 +98,19 @@ public sealed class LibraryStatsTests : IDisposable
     {
         WriteLocalConfig(480, 90, 1_700_000_000);
 
-        var stats = LibraryStats.Create(_install, SteamId).TryGet(480);
+        var stats = LibraryStats.Create(_install, SteamId)!.TryGet(480);
 
-        Assert.Equal(90, stats.Value.PlaytimeMinutes);
-        Assert.Equal(-1, stats.Value.AchievementsTotal);
-        Assert.Equal(-1, stats.Value.AchievementsEarned);
+        Assert.Equal(90, stats!.Value.PlaytimeMinutes);
+        Assert.Equal(-1, stats!.Value.AchievementsTotal);
+        Assert.Equal(-1, stats!.Value.AchievementsEarned);
         Assert.Equal(
-            DateTimeOffset.FromUnixTimeSeconds(1_700_000_000).LocalDateTime, stats.Value.LastPlayed);
+            DateTimeOffset.FromUnixTimeSeconds(1_700_000_000).LocalDateTime, stats!.Value.LastPlayed);
     }
 
     [Fact]
     public void A_game_nothing_is_known_about_is_null()
     {
-        Assert.Null(LibraryStats.Create(_install, SteamId).TryGet(999));
+        Assert.Null(LibraryStats.Create(_install, SteamId)!.TryGet(999));
     }
 
     [Fact]
@@ -120,9 +120,9 @@ public sealed class LibraryStatsTests : IDisposable
         WriteEarned(480, 1, 0);
 
         // The same account under a different universe/type prefix still finds its files.
-        var stats = LibraryStats.Create(_install, SteamId | (1UL << 56)).TryGet(480);
+        var stats = LibraryStats.Create(_install, SteamId | (1UL << 56))!.TryGet(480);
 
-        Assert.Equal(1, stats.Value.AchievementsEarned);
+        Assert.Equal(1, stats!.Value.AchievementsEarned);
     }
 
     [Fact]

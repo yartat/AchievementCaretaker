@@ -23,7 +23,7 @@ namespace AchievementCaretaker.App.Achievements;
 internal sealed class StoreStatItem : ObservableObject, INotifyDataErrorInfo
 {
     private double _value;
-    private string _valueError;
+    private string? _valueError;
 
     public StoreStatItem(StoreStat source)
     {
@@ -105,14 +105,14 @@ internal sealed class StoreStatItem : ObservableObject, INotifyDataErrorInfo
 
     public bool HasErrors => _valueError != null;
 
-    public event EventHandler<DataErrorsChangedEventArgs> ErrorsChanged;
+    public event EventHandler<DataErrorsChangedEventArgs>? ErrorsChanged;
 
-    public IEnumerable GetErrors(string propertyName) =>
+    public IEnumerable GetErrors(string? propertyName) =>
         propertyName == nameof(ValueText) && _valueError != null
             ? new[] { _valueError }
             : Array.Empty<string>();
 
-    private void SetValueError(string error)
+    private void SetValueError(string? error)
     {
         if (_valueError == error)
         {

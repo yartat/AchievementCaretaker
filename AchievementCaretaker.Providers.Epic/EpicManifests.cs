@@ -28,7 +28,7 @@ public static class EpicManifests
     /// The launcher only exists on Windows; elsewhere this is null and
     /// <see cref="GetInstalled"/> returns nothing.
     /// </summary>
-    public static string ManifestDirectory =>
+    public static string? ManifestDirectory =>
         OperatingSystem.IsWindows() == true
             ? Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
@@ -59,12 +59,20 @@ public static class EpicManifests
                     continue;
                 }
 
+                var ns = Get(root, "CatalogNamespace");
+                var itemId = Get(root, "CatalogItemId");
+                var appName = Get(root, "AppName");
+                if (ns == null || itemId == null || appName == null)
+                {
+                    continue;
+                }
+
                 games.Add(new(
-                    Get(root, "CatalogNamespace"),
-                    Get(root, "CatalogItemId"),
-                    Get(root, "AppName"),
-                    Get(root, "DisplayName"),
-                    Get(root, "InstallLocation")));
+                    ns,
+                    itemId,
+                    appName,
+                    Get(root, "DisplayName") ?? appName,
+                    Get(root, "InstallLocation") ?? ""));
             }
             catch (Exception)
             {
@@ -75,7 +83,7 @@ public static class EpicManifests
         return games;
     }
 
-    private static string Get(JsonElement element, string name)
+    private static string? Get(JsonElement element, string name)
     {
         return element.TryGetProperty(name, out var value) == true && value.ValueKind == JsonValueKind.String
             ? value.GetString()

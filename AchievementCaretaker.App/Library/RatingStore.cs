@@ -119,7 +119,11 @@ internal sealed class RatingStore
                 return path;
             }
 
-            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            var directory = Path.GetDirectoryName(path);
+            if (directory != null)
+            {
+                Directory.CreateDirectory(directory);
+            }
             File.Move(legacy, path);
             return path;
         }
@@ -154,7 +158,11 @@ internal sealed class RatingStore
     {
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(_path));
+            var directory = Path.GetDirectoryName(_path);
+            if (directory != null)
+            {
+                Directory.CreateDirectory(directory);
+            }
 
             Dictionary<string, int> payload = new();
             foreach (var kv in _ratings)

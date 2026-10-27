@@ -26,7 +26,7 @@ public sealed class SteamProviderTests
         public List<KeyValuePair<string, bool>> Written { get; } = new();
         public List<KeyValuePair<string, double>> WrittenStats { get; } = new();
         public bool? ResetAchievements { get; private set; }
-        public Exception Failure { get; set; }
+        public Exception? Failure { get; set; }
 
         public Task<IReadOnlyList<StoreAchievement>> GetAchievementsAsync(CancellationToken cancellationToken)
         {
@@ -77,11 +77,11 @@ public sealed class SteamProviderTests
             return Task.CompletedTask;
         }
 
-        public IReadOnlyCollection<LibraryCandidate> Scanned { get; private set; }
+        public IReadOnlyCollection<LibraryCandidate>? Scanned { get; private set; }
         public bool ScanIsComplete { get; set; } = true;
 
         public Task<LibraryScan> ScanLibraryAsync(
-            IReadOnlyCollection<LibraryCandidate> candidates, IProgress<LibraryScanProgress> progress, CancellationToken cancellationToken)
+            IReadOnlyCollection<LibraryCandidate> candidates, IProgress<LibraryScanProgress>? progress, CancellationToken cancellationToken)
         {
             if (Failure != null)
             {
@@ -109,8 +109,8 @@ public sealed class SteamProviderTests
             return Task.FromResult("12345");
         }
 
-        public Task<StoreGame> FindOwnedAsync(LibraryCandidate candidate, CancellationToken cancellationToken) =>
-            Task.FromResult(candidate.Id == "480" ? new StoreGame("steam", "480", "480", "Spacewar", null, candidate.Type) : null);
+        public Task<StoreGame?> FindOwnedAsync(LibraryCandidate candidate, CancellationToken cancellationToken) =>
+            Task.FromResult(candidate.Id == "480" ? new StoreGame("steam", "480", "480", "Spacewar", null, candidate.Type) : (StoreGame?)null);
     }
 
     /// <summary>Starts the real server in this process, as the process launcher would start it in another.</summary>
@@ -120,8 +120,8 @@ public sealed class SteamProviderTests
         public long LastAppId { get; private set; }
         public int StartCount { get; private set; }
         public bool FailNextStart { get; set; }
-        public string TokenOverride { get; set; }
-        public string ThumbprintOverride { get; set; }
+        public string? TokenOverride { get; set; }
+        public string? ThumbprintOverride { get; set; }
 
         public InProcessLauncher(ISteamAppBackend backend) => _backend = backend;
 
@@ -335,7 +335,7 @@ public sealed class SteamProviderTests
         Assert.Null(bare.PlaytimeMinutes);
         Assert.Null(bare.AchievementsTotal);
 
-        Assert.Equal(new[] { "480", "7" }, backend.Scanned.Select(c => c.Id));
+        Assert.Equal(new[] { "480", "7" }, backend.Scanned!.Select(c => c.Id));
 
         // Progress<T> delivers on the thread pool, a moment after the call that reported.
         for (var wait = 0; wait < 100 && progress.Contains(new LibraryScanProgress(2, 2)) == false; wait++)
@@ -391,7 +391,7 @@ public sealed class SteamProviderTests
         var owned = await provider.FindOwnedAsync(new LibraryCandidate("480", "normal"), token);
         var other = await provider.FindOwnedAsync(new LibraryCandidate("999", "normal"), token);
 
-        Assert.Equal("Spacewar", owned.Title);
+        Assert.Equal("Spacewar", owned!.Title);
         Assert.Null(other);
     }
 

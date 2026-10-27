@@ -1,19 +1,24 @@
 <Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <OutputPath Condition="'$(Platform)'=='x86'">..\bin\x86\</OutputPath>
+    <OutputPath Condition="'$(OutputPath)'=='' and '$(RuntimeIdentifier)'!=''">..\bin\$(RuntimeIdentifier)\</OutputPath>
+    <OutputPath Condition="'$(OutputPath)'==''">..\bin\</OutputPath>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <RuntimeIdentifiers>win-x64;win-x86;win-arm64;linux-x64;linux-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
+  </PropertyGroup>
+
   <PropertyGroup>
     <AssemblyTitle>Achievement Caretaker</AssemblyTitle>
-    <Company>Yaroslav V Tatarenko</Company>
-    <Authors>Yaroslav V Tatarenko</Authors>
     <Description>A single-executable manager for game achievements and stats. Steam support is based on Steam Achievement Manager by Rick (gibbed); GOG support is based on GOG Achievements Manager by Timendum.</Description>
     <Copyright>Copyright © 2026 Yaroslav V Tatarenko. Steam support based on Steam Achievement Manager, copyright © 2008-2024 Rick (gibbed); GOG support based on GOG Achievements Manager by Timendum.</Copyright>
   </PropertyGroup>
+
   <PropertyGroup>
-    <Version>2.1.1</Version>
-    <AssemblyVersion>2.1.1.0</AssemblyVersion>
-    <FileVersion>2.1.1.0</FileVersion>
-  </PropertyGroup>
-  <PropertyGroup>
-    <!-- One executable serves both windows, so the file name is the product
-         name rather than the project name. -->
     <AssemblyName>AchievementCaretaker</AssemblyName>
     <RootNamespace>AchievementCaretaker.App</RootNamespace>
     <ApplicationIcon>Resources\AchievementCaretaker.ico</ApplicationIcon>
@@ -21,46 +26,7 @@
     <ApplicationManifest Condition="'$(RuntimeIdentifier)'=='' or $(RuntimeIdentifier.StartsWith('win'))">app.manifest</ApplicationManifest>
     <ApplicationHighDpiMode>SystemAware</ApplicationHighDpiMode>
   </PropertyGroup>
-  <PropertyGroup>
-    <RepositoryUrl>https://github.com/yartat/AchievementCaretaker/</RepositoryUrl>
-    <RepositoryType>Git</RepositoryType>
-  </PropertyGroup>
-  <PropertyGroup>
-    <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
-    <LangVersion>latest</LangVersion>
-    <Platforms>x86;AnyCPU</Platforms>
-    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-    <!-- One output directory per architecture, and no two may share one. With a
-         pinned RID the native Skia/HarfBuzz libraries are copied flat next to
-         the executable rather than into runtimes/<rid>/, so two architectures
-         writing to one folder overwrite each other's natives and the survivor
-         crashes on startup with an architecture mismatch.
 
-         The second line extends that to `dotnet publish -r <rid>`, which
-         changes the architecture without changing $(Platform) and so would
-         otherwise build through the same ..\bin\ as everything else.
-         $(RuntimeIdentifier) is only set at this point when it came from the
-         command line - the defaults below are applied after - so a plain build
-         still lands in bin\, which is what the documentation promises.
-
-         Separately, and more sharply: **-r win-x86 on its own does not give a
-         32-bit build.** It resolves 32-bit native libraries but still emits a
-         64-bit apphost, and the result dies in SkiaSharp's type initializer
-         with nothing printed. Pass -p:Platform=x86 as well. On a non-Windows
-         host pass both, because the RID default below is guarded by
-         IsOSPlatform('Windows'). packaging/check-pe-arch.sh asserts it. -->
-    <OutputPath Condition="'$(Platform)'=='x86'">..\bin\x86\</OutputPath>
-    <OutputPath Condition="'$(OutputPath)'=='' and '$(RuntimeIdentifier)'!=''">..\bin\$(RuntimeIdentifier)\</OutputPath>
-    <OutputPath Condition="'$(OutputPath)'==''">..\bin\</OutputPath>
-    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
-    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
-    <EnableWindowsTargeting>true</EnableWindowsTargeting>
-    <!-- Every target the application can be published for. Only the x86/x64
-         ones can actually load Steam's client library; see SteamPlatform for
-         why the ARM ones build but report an explanatory error at startup. -->
-    <RuntimeIdentifiers>win-x64;win-x86;win-arm64;linux-x64;linux-arm64;osx-x64;osx-arm64</RuntimeIdentifiers>
-  </PropertyGroup>
   <!-- Pinning a RID is what keeps bin\ from filling with every platform's
        native Skia/HarfBuzz. Without one, a framework-dependent build copies
        every RID's native assets that Avalonia and Skia ship - Linux, musl,
@@ -75,23 +41,23 @@
     <SelfContained>false</SelfContained>
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)'=='Release'">
-    <Optimize>True</Optimize>
-  </PropertyGroup>
+
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.1.2" />
-    <PackageReference Include="Avalonia.Controls.ItemsRepeater" Version="12.0.0" />
-    <PackageReference Include="Avalonia.Controls.WebView" Version="12.1.1" />
-    <PackageReference Include="Avalonia.Desktop" Version="12.1.2" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.2" />
-    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.1.2" />
-    <PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3" Condition="'$(Configuration)'=='Debug'" />
-    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.13" />
+    <PackageReference Include="Avalonia" Version="$(Avalonia)" />
+    <PackageReference Include="Avalonia.Controls.ItemsRepeater" Version="$(AvaloniaItemsRepeater)" />
+    <PackageReference Include="Avalonia.Controls.WebView" Version="$(AvaloniaWebView)" />
+    <PackageReference Include="Avalonia.Desktop" Version="$(Avalonia)" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="$(Avalonia)" />
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="$(AvaloniaDataGrid)" />
+    <PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="$(AvaloniaUIDiagnosticsSupport)" Condition="'$(Configuration)'=='Debug'" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="$(CommunityToolkitMvvm)" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="$(Net10x)" />
   </ItemGroup>
+
   <ItemGroup>
     <AvaloniaResource Include="Resources\**" />
   </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\AchievementCaretaker.SteamApi\AchievementCaretaker.SteamApi.csproj" />
     <ProjectReference Include="..\AchievementCaretaker.Services\AchievementCaretaker.Services.csproj" />
@@ -100,4 +66,5 @@
     <ProjectReference Include="..\AchievementCaretaker.Providers.Epic\AchievementCaretaker.Providers.Epic.csproj" />
     <ProjectReference Include="..\AchievementCaretaker.Providers.Gog\AchievementCaretaker.Providers.Gog.csproj" />
   </ItemGroup>
+
 </Project>

@@ -35,14 +35,29 @@ using System.Linq;
 
 namespace AchievementCaretaker.SteamApi;
 
+/// <summary>
+/// A connection to the running Steam client, for one app id: the interfaces Caretaker uses,
+/// and the callback pump. Nothing but <see cref="Initialize"/> sets the interfaces.
+/// </summary>
 public class Client : IDisposable
 {
-    public Wrappers.SteamClient018 SteamClient;
-    public Wrappers.SteamUser012 SteamUser;
-    public Wrappers.SteamUserStats013 SteamUserStats;
-    public Wrappers.SteamUtils005 SteamUtils;
-    public Wrappers.SteamApps001 SteamApps001;
-    public Wrappers.SteamApps008 SteamApps008;
+    /// <summary>The client's entry point. Set by <see cref="Initialize"/>.</summary>
+    public Wrappers.SteamClient018 SteamClient = null!;
+
+    /// <summary>The logged-in user. Set by <see cref="Initialize"/>.</summary>
+    public Wrappers.SteamUser012 SteamUser = null!;
+
+    /// <summary>The user's achievements and statistics. Set by <see cref="Initialize"/>.</summary>
+    public Wrappers.SteamUserStats013 SteamUserStats = null!;
+
+    /// <summary>Facts about the client and the app id it was initialised with. Set by <see cref="Initialize"/>.</summary>
+    public Wrappers.SteamUtils005 SteamUtils = null!;
+
+    /// <summary>Steam's data about any app, by key. Set by <see cref="Initialize"/>.</summary>
+    public Wrappers.SteamApps001 SteamApps001 = null!;
+
+    /// <summary>Ownership and language. Set by <see cref="Initialize"/>.</summary>
+    public Wrappers.SteamApps008 SteamApps008 = null!;
 
     private bool _isDisposed = false;
     private int _pipe;
@@ -50,6 +65,12 @@ public class Client : IDisposable
 
     private readonly List<ICallback> _callbacks = new();
 
+    /// <summary>
+    /// Loads Steam's client library, connects to the running client and the logged-in user, and
+    /// fetches the interfaces.
+    /// </summary>
+    /// <param name="appId">The app id to act as, or 0 for none (enough to ask about the whole account).</param>
+    /// <exception cref="ClientInitializeException">Steam could not be reached; <see cref="ClientInitializeException.Failure"/> says at which step.</exception>
     public void Initialize(long appId)
     {
         if (string.IsNullOrEmpty(Steam.GetInstallPath()) == true)
@@ -67,11 +88,8 @@ public class Client : IDisposable
             throw new ClientInitializeException(ClientInitializeFailure.Load, "failed to load SteamClient");
         }
 
-        SteamClient = Steam.CreateInterface<Wrappers.SteamClient018>("SteamClient018");
-        if (SteamClient == null)
-        {
-            throw new ClientInitializeException(ClientInitializeFailure.CreateSteamClient, "failed to create ISteamClient018");
-        }
+        SteamClient = Steam.CreateInterface<Wrappers.SteamClient018>("SteamClient018")
+            ?? throw new ClientInitializeException(ClientInitializeFailure.CreateSteamClient, "failed to create ISteamClient018");
 
         _pipe = SteamClient.CreateSteamPipe();
         if (_pipe == 0)
@@ -97,11 +115,14 @@ public class Client : IDisposable
         SteamApps008 = SteamClient.GetSteamApps008(_user, _pipe);
     }
 
+    /// <summary>Releases the user and the pipe if they were not already.</summary>
     ~Client()
     {
         Dispose(false);
     }
 
+    /// <summary>Releases the user and the pipe to Steam.</summary>
+    /// <param name="disposing">True when called from <see cref="Dispose()"/>, false from the finalizer.</param>
     protected virtual void Dispose(bool disposing)
     {
         if (_isDisposed == true)
@@ -124,6 +145,7 @@ public class Client : IDisposable
         _isDisposed = true;
     }
 
+    /// <summary>Releases the user and the pipe to Steam.</summary>
     public void Dispose()
     {
         Dispose(true);
@@ -144,6 +166,9 @@ public class Client : IDisposable
         GC.SuppressFinalize(this);
     }
 
+    /// <summary>Makes a callback and registers it, so <see cref="RunCallbacks"/> delivers to it.</summary>
+    /// <typeparam name="TCallback">The callback to make.</typeparam>
+    /// <returns>The callback, ready to have its <c>OnRun</c> subscribed to.</returns>
     public TCallback CreateAndRegisterCallback<TCallback>()
         where TCallback : ICallback, new()
     {
@@ -154,6 +179,11 @@ public class Client : IDisposable
 
     private bool _runningCallbacks;
 
+    /// <summary>
+    /// Takes every pending callback off the pipe and hands each to the registered callbacks with its id.
+    /// Does nothing when called again from inside a callback.
+    /// </summary>
+    /// <param name="server">True for the game-server callbacks, false for the client's.</param>
     public void RunCallbacks(bool server)
     {
         if (_runningCallbacks == true)

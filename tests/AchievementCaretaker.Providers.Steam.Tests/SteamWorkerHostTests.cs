@@ -43,13 +43,13 @@ public sealed class SteamWorkerHostTests
         public Task ResetAsync(bool includeAchievements, CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task<LibraryScan> ScanLibraryAsync(
-            IReadOnlyCollection<LibraryCandidate> candidates, IProgress<LibraryScanProgress> progress, CancellationToken cancellationToken) =>
+            IReadOnlyCollection<LibraryCandidate> candidates, IProgress<LibraryScanProgress>? progress, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
         public Task<string> GetAccountAsync(CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
-        public Task<StoreGame> FindOwnedAsync(LibraryCandidate candidate, CancellationToken cancellationToken) =>
+        public Task<StoreGame?> FindOwnedAsync(LibraryCandidate candidate, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
     }
 

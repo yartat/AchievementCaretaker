@@ -42,33 +42,37 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace AchievementCaretaker.App;
 
+/// <summary>The application: its styles and resources, and the choice of the first window.</summary>
 public partial class App : Application
 {
     /// <summary>
     /// The root of the dependency graph. Validated when built, so a singleton that
     /// reaches for something scoped fails at start rather than on first use.
     /// </summary>
-    private ServiceProvider _services;
+    private ServiceProvider? _services;
 
+    /// <inheritdoc />
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
     }
 
+    /// <inheritdoc />
     public override void OnFrameworkInitializationCompleted()
     {
         RequestedThemeVariant = AppThemes.ToVariant(AppSettings.Load().Theme);
 
-        _services = new ServiceCollection()
+        var services = new ServiceCollection()
             .AddCaretaker()
             .BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
+        _services = services;
 
         // The library database is prepared once, here, before any window asks for it.
-        _services.MigrateLibraryDatabase();
+        services.MigrateLibraryDatabase();
 
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            desktop.MainWindow = CreateMainWindow(desktop.Args);
+            desktop.MainWindow = CreateMainWindow(services, desktop.Args);
             desktop.ShutdownRequested += OnShutdownRequested;
         }
         base.OnFrameworkInitializationCompleted();
@@ -86,7 +90,7 @@ public partial class App : Application
     /// <c>SteamProvider</c>); an application id on the command line, which used to open the
     /// editor for that game, is accepted and ignored.
     /// </remarks>
-    private Window CreateMainWindow(string[] args)
+    private static Window CreateMainWindow(ServiceProvider services, string[]? args)
     {
         if (Program.IsRunningFromSteamDirectory() == true)
         {
@@ -101,13 +105,13 @@ public partial class App : Application
 
         // One scope for the library window: its view model comes out of it, and it
         // goes when the window closes.
-        var scope = _services.CreateScope();
+        var scope = services.CreateScope();
         GamePickerWindow library = new() { DataContext = scope.ServiceProvider.GetRequiredService<GamePickerViewModel>() };
         library.Closed += (_, _) => scope.Dispose();
         return library;
     }
 
-    private void OnShutdownRequested(object sender, ShutdownRequestedEventArgs e)
+    private void OnShutdownRequested(object? sender, ShutdownRequestedEventArgs e)
     {
         // Disposes the store providers, which the container owns.
         _services?.Dispose();

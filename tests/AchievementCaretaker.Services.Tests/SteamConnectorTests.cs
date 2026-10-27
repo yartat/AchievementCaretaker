@@ -19,11 +19,11 @@ public sealed class SteamConnectorTests
 {
     private sealed class FakeEnvironment : ISteamEnvironment
     {
-        public string Unsupported { get; set; }
+        public string? Unsupported { get; set; }
         public bool Installed { get; set; } = true;
         public int? ProcessId { get; set; } = 100;
 
-        public string UnsupportedReason => Unsupported;
+        public string? UnsupportedReason => Unsupported;
         public bool IsInstalled() => Installed;
         public int? GetRunningProcessId() => ProcessId;
     }
@@ -43,10 +43,10 @@ public sealed class SteamConnectorTests
             throw new NotSupportedException();
 
         public Task<LibraryScan> ScanAsync(
-            IReadOnlyCollection<LibraryCandidate> candidates, IProgress<LibraryScanProgress> progress, CancellationToken cancellationToken = default) =>
+            IReadOnlyCollection<LibraryCandidate> candidates, IProgress<LibraryScanProgress>? progress, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public Task<StoreGame> FindOwnedAsync(uint id, CancellationToken cancellationToken = default) =>
+        public Task<StoreGame?> FindOwnedAsync(uint id, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
     }
 

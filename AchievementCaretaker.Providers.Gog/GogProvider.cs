@@ -91,10 +91,13 @@ public sealed class GogProvider : IWritableStoreProvider, IStoreAccount
     /// <summary>Product id to the game's client secret, read only by a write.</summary>
     private readonly ConcurrentDictionary<string, string> _clientSecrets = new();
 
-    public GogSession Session { get; private set; }
+    /// <summary>The saved sign-in, or null when signed out.</summary>
+    public GogSession? Session { get; private set; }
 
+    /// <inheritdoc />
     public string Id => "gog";
 
+    /// <inheritdoc />
     public string DisplayName => "GOG";
 
     /// <summary>
@@ -106,9 +109,11 @@ public sealed class GogProvider : IWritableStoreProvider, IStoreAccount
         $"{AuthHost}/auth?client_id={GalaxyClientId}" +
         $"&redirect_uri={Uri.EscapeDataString(RedirectUri)}&response_type=code&layout=galaxy";
 
+    /// <inheritdoc />
     public string SignInHint => "the address the browser ends on (it contains \"code=\"), or just the code";
 
-    public SignInResultKind GetSignInResultKind(Uri address) =>
+    /// <inheritdoc />
+    public SignInResultKind GetSignInResultKind(Uri? address) =>
         address != null &&
         address.Host.Equals("embed.gog.com", StringComparison.OrdinalIgnoreCase) &&
         address.AbsolutePath.StartsWith("/on_login_success", StringComparison.OrdinalIgnoreCase) &&
@@ -116,12 +121,19 @@ public sealed class GogProvider : IWritableStoreProvider, IStoreAccount
             ? SignInResultKind.Address
             : SignInResultKind.None;
 
+    /// <inheritdoc />
     public bool IsSignedIn => Session?.HasRefreshToken == true;
 
-    public string AccountName => Session?.DisplayName;
+    /// <inheritdoc />
+    public string? AccountName => Session?.DisplayName;
 
-    public string AccountId => IsSignedIn == true ? Session.UserId : null;
+    /// <inheritdoc />
+    public string? AccountId => IsSignedIn == true ? Session?.UserId : null;
 
+    /// <summary>Makes the provider, reading the saved session if there is one.</summary>
+    /// <param name="httpFactory">Where the named client is asked for, per request.</param>
+    /// <param name="sessions">Where the session is kept between runs.</param>
+    /// <param name="sessionPath">The session file, <c>gog.json</c> in the home directory.</param>
     public GogProvider(IHttpClientFactory httpFactory, ISessionStore sessions, string sessionPath)
     {
         _httpFactory = httpFactory;
@@ -140,8 +152,11 @@ public sealed class GogProvider : IWritableStoreProvider, IStoreAccount
 
     private HttpClient CreateClient() => _httpFactory.CreateClient(HttpClientName);
 
+    private static ProviderException NotSignedIn() => new("login_required", "Not signed in to GOG.");
+
     #region Sign-in
 
+    /// <inheritdoc />
     public async Task SignInAsync(string pasted, CancellationToken cancellationToken = default)
     {
         var match = Regex.Match(pasted ?? "", @"[?&]code=([A-Za-z0-9_\-]+)");
@@ -151,7 +166,7 @@ public sealed class GogProvider : IWritableStoreProvider, IStoreAccount
             throw new ProviderException("invalid_code", "That does not look like a GOG authorization code.");
         }
 
-        await RequestTokenAsync(
+        var session = await RequestTokenAsync(
             new()
             {
                 ["grant_type"] = "authorization_code",
@@ -165,14 +180,15 @@ public sealed class GogProvider : IWritableStoreProvider, IStoreAccount
         try
         {
             using var data = await GetJsonAsync($"{EmbedHost}/userData.json", true, cancellationToken);
-            Session.DisplayName = GetString(data.RootElement, "username");
-            _sessions.Save(_sessionPath, Session);
+            session.DisplayName = GetString(data.RootElement, "username");
+            _sessions.Save(_sessionPath, session);
         }
         catch (Exception e) when (e is ProviderException or HttpRequestException)
         {
         }
     }
 
+    /// <inheritdoc />
     public async Task EnsureSignedInAsync(CancellationToken cancellationToken = default)
     {
         if (Session?.IsAccessTokenValid == true)
@@ -180,27 +196,28 @@ public sealed class GogProvider : IWritableStoreProvider, IStoreAccount
             return;
         }
 
-        if (Session?.HasRefreshToken != true)
+        if (Session?.RefreshToken is not { Length: > 0 } refreshToken)
         {
-            throw new ProviderException("login_required", "Not signed in to GOG.");
+            throw NotSignedIn();
         }
 
         await RequestTokenAsync(
             new()
             {
                 ["grant_type"] = "refresh_token",
-                ["refresh_token"] = Session.RefreshToken,
+                ["refresh_token"] = refreshToken,
             },
             cancellationToken);
     }
 
+    /// <inheritdoc />
     public void SignOut()
     {
         Session = null;
         _sessions.Delete(_sessionPath);
     }
 
-    private async Task RequestTokenAsync(Dictionary<string, string> parameters, CancellationToken cancellationToken)
+    private async Task<GogSession> RequestTokenAsync(Dictionary<string, string> parameters, CancellationToken cancellationToken)
     {
         parameters["client_id"] = GalaxyClientId;
         parameters["client_secret"] = GalaxyClientSecret;
@@ -228,6 +245,7 @@ public sealed class GogProvider : IWritableStoreProvider, IStoreAccount
 
         Session = session;
         _sessions.Save(_sessionPath, session);
+        return session;
     }
 
     #endregion
@@ -332,7 +350,10 @@ public sealed class GogProvider : IWritableStoreProvider, IStoreAccount
 
     #region Achievements
 
+    /// <summary>A game's achievements with the signed-in player's progress.</summary>
     /// <param name="gameKey">The game's product id.</param>
+    /// <param name="locale">The language the names and descriptions are asked for in.</param>
+    /// <param name="cancellationToken">The token to cancel the request.</param>
     public async Task<IReadOnlyList<StoreAchievement>> GetAchievementsAsync(
         string gameKey,
         string locale = "en",
@@ -349,13 +370,12 @@ public sealed class GogProvider : IWritableStoreProvider, IStoreAccount
 
         // Reading takes the account's own token. Only changing an achievement
         // needs a token issued to the game's client, see SetAchievementsAsync.
-        using var document = await GetJsonAsync(
+        using var document = await GetJsonOrNullAsync(
             $"{GameplayHost}/clients/{Uri.EscapeDataString(clientId)}" +
-            $"/users/{Uri.EscapeDataString(Session.UserId)}/achievements",
+            $"/users/{Uri.EscapeDataString(AccountId ?? throw NotSignedIn())}/achievements",
             true,
             cancellationToken,
-            locale,
-            nullOnNotFound: true);
+            locale);
 
         if (document == null ||
             TryWalk(document.RootElement, out var items, "items") == false ||
@@ -371,11 +391,15 @@ public sealed class GogProvider : IWritableStoreProvider, IStoreAccount
             var date = GetDate(item, "date_unlocked");
             var unlocked = date != null;
             var id = GetString(item, "achievement_id") ?? GetString(item, "achievement_key");
+            if (id == null)
+            {
+                continue;
+            }
 
             achievements.Add(new(
                 id,
                 GetString(item, "name") ?? id,
-                GetString(item, "description"),
+                GetString(item, "description") ?? "",
                 unlocked == true
                     ? FirstOf(item, "image_url_unlocked", "image_url_locked")
                     : FirstOf(item, "image_url_locked", "image_url_unlocked"),
@@ -415,22 +439,21 @@ public sealed class GogProvider : IWritableStoreProvider, IStoreAccount
     }
 
     /// <summary>The newest build's record from GOGDB, or null when the game has none.</summary>
-    private async Task<JsonDocument> GetNewestBuildAsync(string productId, CancellationToken cancellationToken)
+    private async Task<JsonDocument?> GetNewestBuildAsync(string productId, CancellationToken cancellationToken)
     {
         var path = $"{GogDbHost}/data/products/{Uri.EscapeDataString(productId)}";
-        using var product = await GetJsonAsync(
-            $"{path}/product.json", false, cancellationToken, nullOnNotFound: true);
+        using var product = await GetJsonOrNullAsync($"{path}/product.json", false, cancellationToken);
         var buildId = product == null ? null : NewestBuildId(product.RootElement);
         return buildId == null
             ? null
-            : await GetJsonAsync($"{path}/builds/{buildId}.json", false, cancellationToken, nullOnNotFound: true);
+            : await GetJsonOrNullAsync($"{path}/builds/{buildId}.json", false, cancellationToken);
     }
 
     /// <summary>
     /// The newest published build, preferring ones GOG still lists. The id can
     /// exceed what a double holds exactly, so it is kept as the raw text.
     /// </summary>
-    private static string NewestBuildId(JsonElement product)
+    private static string? NewestBuildId(JsonElement product)
     {
         if (TryWalk(product, out var builds, "builds") == false || builds.ValueKind != JsonValueKind.Array)
         {
@@ -455,6 +478,9 @@ public sealed class GogProvider : IWritableStoreProvider, IStoreAccount
     /// Unlocks or re-locks achievements as the signed-in player. Not part of
     /// listing: it is the one place the game's client secret is read.
     /// </summary>
+    /// <param name="gameKey">The game's product id.</param>
+    /// <param name="changes">Achievement id and the state it should have.</param>
+    /// <param name="cancellationToken">The token to cancel the writes.</param>
     public async Task SetAchievementsAsync(
         string gameKey,
         IReadOnlyCollection<KeyValuePair<string, bool>> changes,
@@ -473,6 +499,7 @@ public sealed class GogProvider : IWritableStoreProvider, IStoreAccount
             throw new ProviderException("no_client", "GOG has no build of this game that achievements can be changed through.");
         }
 
+        var userId = AccountId ?? throw NotSignedIn();
         var gameToken = await RequestGameTokenAsync(clientId, secret, cancellationToken);
 
         // GOG refuses a date in the future, and a clock a little ahead of GOG's is
@@ -491,7 +518,7 @@ public sealed class GogProvider : IWritableStoreProvider, IStoreAccount
                 using var request = new HttpRequestMessage(
                     HttpMethod.Post,
                     $"{GameplayHost}/clients/{Uri.EscapeDataString(clientId)}" +
-                    $"/users/{Uri.EscapeDataString(Session.UserId)}" +
+                    $"/users/{Uri.EscapeDataString(userId)}" +
                     $"/achievements/{Uri.EscapeDataString(change.Key)}");
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", gameToken);
                 request.Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
@@ -523,7 +550,7 @@ public sealed class GogProvider : IWritableStoreProvider, IStoreAccount
         Dictionary<string, string> parameters = new()
         {
             ["grant_type"] = "refresh_token",
-            ["refresh_token"] = Session.RefreshToken,
+            ["refresh_token"] = Session?.RefreshToken ?? throw NotSignedIn(),
             ["client_id"] = clientId,
             ["client_secret"] = clientSecret,
             ["without_new_session"] = "1",
@@ -558,8 +585,30 @@ public sealed class GogProvider : IWritableStoreProvider, IStoreAccount
         string url,
         bool signedIn,
         CancellationToken cancellationToken,
-        string locale = null,
-        bool nullOnNotFound = false)
+        string? locale = null)
+    {
+        using var response = await GetAsync(url, signedIn, locale, cancellationToken);
+        return await ReadJsonAsync(response, cancellationToken);
+    }
+
+    /// <summary>As <see cref="GetJsonAsync"/>, but an HTTP 404 is an answer: null.</summary>
+    private async Task<JsonDocument?> GetJsonOrNullAsync(
+        string url,
+        bool signedIn,
+        CancellationToken cancellationToken,
+        string? locale = null)
+    {
+        using var response = await GetAsync(url, signedIn, locale, cancellationToken);
+        return response.StatusCode == HttpStatusCode.NotFound
+            ? null
+            : await ReadJsonAsync(response, cancellationToken);
+    }
+
+    private async Task<HttpResponseMessage> GetAsync(
+        string url,
+        bool signedIn,
+        string? locale,
+        CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.Accept.ParseAdd("application/json");
@@ -570,15 +619,14 @@ public sealed class GogProvider : IWritableStoreProvider, IStoreAccount
         if (signedIn == true)
         {
             await EnsureSignedInAsync(cancellationToken);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Session.AccessToken);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Session?.AccessToken);
         }
 
-        using var response = await CreateClient().SendAsync(request, cancellationToken);
-        if (nullOnNotFound == true && response.StatusCode == HttpStatusCode.NotFound)
-        {
-            return null;
-        }
+        return await CreateClient().SendAsync(request, cancellationToken);
+    }
 
+    private static async Task<JsonDocument> ReadJsonAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
         ThrowIfError(response, body);
         return JsonDocument.Parse(body);
@@ -593,8 +641,8 @@ public sealed class GogProvider : IWritableStoreProvider, IStoreAccount
     /// </summary>
     private static void ThrowIfError(HttpResponseMessage response, string body)
     {
-        string code = null;
-        string message = null;
+        string? code = null;
+        string? message = null;
         try
         {
             using var document = JsonDocument.Parse(body);

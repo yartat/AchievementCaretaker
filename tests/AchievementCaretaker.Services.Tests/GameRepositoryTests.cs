@@ -25,7 +25,7 @@ public sealed class GameRepositoryTests : IDisposable
 
     private IGameRepository Repo => _db.Repository;
 
-    private static CachedGame Game(uint id, string name = null) => new() { Id = id, Name = name ?? "Game " + id, Type = "normal" };
+    private static CachedGame Game(uint id, string? name = null) => new() { Id = id, Name = name ?? "Game " + id, Type = "normal" };
 
     #region Steam library
 
@@ -161,7 +161,7 @@ public sealed class GameRepositoryTests : IDisposable
 
     #region Store libraries
 
-    private static CachedStoreGame Store(string id, string name = null) => new() { Id = id, Key = "k" + id, Name = name ?? "Store " + id };
+    private static CachedStoreGame Store(string id, string? name = null) => new() { Id = id, Key = "k" + id, Name = name ?? "Store " + id };
 
     [Fact]
     public void A_store_library_is_kept_per_provider_and_account()
@@ -328,7 +328,7 @@ public sealed class GameRepositoryTests : IDisposable
 
 public sealed class DatabaseMigrationTests : IDisposable
 {
-    private TestDatabase _db;
+    private TestDatabase _db = null!;
 
     public void Dispose() => _db?.Dispose();
 
@@ -363,7 +363,7 @@ public sealed class DatabaseMigrationTests : IDisposable
         catch (IOException)
         {
         }
-        _db = null;
+        _db = null!;
     }
 
     [Fact]
@@ -384,7 +384,7 @@ public sealed class DatabaseMigrationTests : IDisposable
         }
         using var command = connection.CreateCommand();
         command.CommandText = sql;
-        return Convert.ToString(command.ExecuteScalar());
+        return Convert.ToString(command.ExecuteScalar())!;
     }
 
     [Fact]
@@ -426,7 +426,7 @@ public sealed class DatabaseMigrationTests : IDisposable
         _db.Repository.Sync(1, new[] { new CachedGame { Id = 2, Name = "new" } });
         Assert.Single(_db.Repository.LoadAll(1));
         _db.Dispose();
-        _db = null;
+        _db = null!;
         Directory.Delete(dir, true);
     }
 

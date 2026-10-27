@@ -32,9 +32,13 @@ using System.Runtime.InteropServices;
 
 namespace AchievementCaretaker.SteamApi.Types;
 
+/// <summary>The data of the <c>UserStatsStored</c> callback, laid out as Steam sends it.</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct UserStatsStored
 {
+    /// <summary>The app the statistics are for.</summary>
     public ulong GameId;
+
+    /// <summary>Steam's result code: 1 is success.</summary>
     public int Result;
 }

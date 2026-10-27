@@ -47,6 +47,10 @@ namespace AchievementCaretaker.Providers.Steam;
 /// </summary>
 public static class SteamSchemaReader
 {
+    /// <summary>The achievements the schema defines, with their names and descriptions in one language.</summary>
+    /// <param name="root">The parsed schema file.</param>
+    /// <param name="appId">The app the schema is for; its section is the one read.</param>
+    /// <param name="language">The Steam language name to read the display text in; English fills in where it is missing.</param>
     public static IReadOnlyList<SteamAchievementDefinition> ReadAchievements(KeyValue root, long appId, string language)
     {
         List<SteamAchievementDefinition> result = new();
@@ -83,13 +87,13 @@ public static class SteamSchemaReader
 
                 foreach (var bit in bits.Children)
                 {
-                    var id = bit["name"].AsString("");
+                    var id = bit["name"].AsString("") ?? "";
                     result.Add(new SteamAchievementDefinition(
                         id,
                         GetLocalizedString(bit["display"]["name"], language, id),
                         GetLocalizedString(bit["display"]["desc"], language, ""),
-                        bit["display"]["icon"].AsString(""),
-                        bit["display"]["icon_gray"].AsString(""),
+                        bit["display"]["icon"].AsString("") ?? "",
+                        bit["display"]["icon_gray"].AsString("") ?? "",
                         bit["display"]["hidden"].AsBoolean(false),
                         bit["permission"].AsInteger(0)));
                 }
@@ -98,6 +102,10 @@ public static class SteamSchemaReader
         return result;
     }
 
+    /// <summary>The statistics the schema defines, with their display names in one language.</summary>
+    /// <param name="root">The parsed schema file.</param>
+    /// <param name="appId">The app the schema is for; its section is the one read.</param>
+    /// <param name="language">The Steam language name to read the display text in; English fills in where it is missing.</param>
     public static IReadOnlyList<SteamStatDefinition> ReadStats(KeyValue root, long appId, string language)
     {
         List<SteamStatDefinition> result = new();
@@ -114,7 +122,7 @@ public static class SteamSchemaReader
                 continue;
             }
 
-            var id = stat["name"].AsString("");
+            var id = stat["name"].AsString("") ?? "";
             switch (ReadType(stat))
             {
                 case APITypes.UserStatType.Integer:
@@ -159,7 +167,7 @@ public static class SteamSchemaReader
         // schema in the new format?
         var typeNode = stat["type"];
         if (typeNode.Valid == true && typeNode.Type == KeyValueType.String &&
-            Enum.TryParse((string)typeNode.Value, true, out type) == true)
+            typeNode.Value is string typeName && Enum.TryParse(typeName, true, out type) == true)
         {
             return type;
         }

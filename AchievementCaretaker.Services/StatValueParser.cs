@@ -23,7 +23,7 @@ public static class StatValueParser
     /// <param name="culture">How numbers are written; the user's own by default.</param>
     /// <param name="value">The number, when there is no <paramref name="error"/>.</param>
     /// <param name="error">Why it is refused, or null.</param>
-    public static bool TryParse(StoreStat stat, string text, IFormatProvider culture, out double value, out string error)
+    public static bool TryParse(StoreStat stat, string text, IFormatProvider culture, out double value, out string? error)
     {
         culture ??= CultureInfo.CurrentCulture;
         value = 0;

@@ -43,6 +43,9 @@ public sealed class SteamWorkerHost : IAsyncDisposable
         _exitRequested = exitRequested;
     }
 
+    /// <summary>Starts serving the backend over TLS on a port of the loopback address that the system picks.</summary>
+    /// <param name="backend">What the service does with Steam.</param>
+    /// <param name="handshake">The certificate to serve with and the token every call must carry.</param>
     public static async Task<SteamWorkerHost> StartAsync(ISteamAppBackend backend, SteamWorkerHandshake handshake)
     {
         TaskCompletionSource exit = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -76,7 +79,7 @@ public sealed class SteamWorkerHost : IAsyncDisposable
         await app.StartAsync();
 
         var addresses = app.Services.GetRequiredService<Microsoft.AspNetCore.Hosting.Server.IServer>()
-            .Features.Get<Microsoft.AspNetCore.Hosting.Server.Features.IServerAddressesFeature>().Addresses;
+            .Features.Get<Microsoft.AspNetCore.Hosting.Server.Features.IServerAddressesFeature>()!.Addresses;
         var address = new Uri(addresses.First());
         return new SteamWorkerHost(app, address.Port, exit);
     }
@@ -110,6 +113,7 @@ public sealed class SteamWorkerHost : IAsyncDisposable
         await Task.WhenAny(host.ExitRequested, closed);
     }
 
+    /// <summary>Stops serving and releases the port.</summary>
     public async ValueTask DisposeAsync()
     {
         await _app.StopAsync();

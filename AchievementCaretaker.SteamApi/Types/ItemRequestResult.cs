@@ -30,15 +30,33 @@
 
 namespace AchievementCaretaker.SteamApi.Types;
 
+/// <summary>How Steam answered a request for a user's items.</summary>
 public enum ItemRequestResult : int
 {
+    /// <summary>The value was not one Steam defines.</summary>
     InvalidValue = -1,
+
+    /// <summary>The request succeeded.</summary>
     OK = 0,
+
+    /// <summary>The request was refused.</summary>
     Denied = 1,
+
+    /// <summary>Steam's servers failed.</summary>
     ServerError = 2,
+
+    /// <summary>Steam's servers did not answer in time.</summary>
     Timeout = 3,
+
+    /// <summary>The request was not valid.</summary>
     Invalid = 4,
+
+    /// <summary>Nothing matched.</summary>
     NoMatch = 5,
+
+    /// <summary>Something went wrong that Steam does not say.</summary>
     UnknownError = 6,
+
+    /// <summary>Nobody is logged on.</summary>
     NotLoggedOn = 7,
 }

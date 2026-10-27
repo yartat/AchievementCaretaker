@@ -34,10 +34,10 @@ internal sealed partial class GamePickerViewModel : IProgressSink
     public IReadOnlyList<StoreLibraryViewModel> StoreLibraries { get; private set; } =
         Array.Empty<StoreLibraryViewModel>();
 
-    private StoreLibraryViewModel _selectedStoreLibrary;
+    private StoreLibraryViewModel? _selectedStoreLibrary;
 
     /// <summary>The store on screen, or null for Steam.</summary>
-    public StoreLibraryViewModel SelectedStoreLibrary
+    public StoreLibraryViewModel? SelectedStoreLibrary
     {
         get => _selectedStoreLibrary;
         private set
@@ -78,7 +78,7 @@ internal sealed partial class GamePickerViewModel : IProgressSink
     public bool ShowSteamBanner => IsSteamSelected == true && IsSteamConnected == false;
 
     /// <summary>Why there is no Steam: not installed, not running, nobody logged in.</summary>
-    public string SteamUnavailableText => _steam?.Reason;
+    public string? SteamUnavailableText => _steam?.Reason;
 
     private void NotifySteamState()
     {
@@ -108,13 +108,13 @@ internal sealed partial class GamePickerViewModel : IProgressSink
     }
 
     /// <summary>Raised when a store game's achievements should be shown; the window owns the window.</summary>
-    public event Action<StoreAchievementsViewModel> StoreAchievementsRequested;
+    public event Action<StoreAchievementsViewModel>? StoreAchievementsRequested;
 
     /// <summary>Raised to sign in to a store in a browser inside the application.</summary>
-    public event Func<IStoreAccount, Task<BrowserSignInResult>> BrowserSignInRequested;
+    public event Func<IStoreAccount, Task<BrowserSignInResult>>? BrowserSignInRequested;
 
     /// <summary>Raised before a sign-out; the window asks the user.</summary>
-    public event Func<string, string, Task<bool>> ConfirmRequested;
+    public event Func<string, string, Task<bool>>? ConfirmRequested;
 
     [RelayCommand]
     private void SelectSteam()
@@ -134,7 +134,7 @@ internal sealed partial class GamePickerViewModel : IProgressSink
     /// <summary>Who is signed in to each of <see cref="_storeProviders"/>: the same objects, in their other role, found by <see cref="IStore.Id"/>.</summary>
     private readonly IEnumerable<IStoreAccount> _storeAccounts;
 
-    private StoreImageCache _storeImages;
+    private StoreImageCache? _storeImages;
 
     /// <summary>
     /// Opens a Steam game in the achievements window, in this process. The window talks to a
@@ -198,7 +198,7 @@ internal sealed partial class GamePickerViewModel : IProgressSink
         OnPropertyChanged(nameof(StoreLibraries));
     }
 
-    private void OnStorePropertyChanged(object sender, PropertyChangedEventArgs e)
+    private void OnStorePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (ReferenceEquals(sender, SelectedStoreLibrary) == false)
         {

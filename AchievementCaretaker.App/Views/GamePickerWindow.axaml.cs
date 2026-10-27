@@ -37,15 +37,18 @@ using AchievementCaretaker.App.Library;
 
 namespace AchievementCaretaker.App.Views;
 
+/// <summary>The library window: the rail of sources and the games of the one on screen.</summary>
 public partial class GamePickerWindow : Window
 {
-    private GamePickerViewModel _viewModel;
+    private GamePickerViewModel? _viewModel;
 
+    /// <summary>Makes the window; its view model arrives as the data context.</summary>
     public GamePickerWindow()
     {
         InitializeComponent();
     }
 
+    /// <inheritdoc />
     protected override void OnDataContextChanged(System.EventArgs e)
     {
         if (_viewModel != null)
@@ -70,7 +73,7 @@ public partial class GamePickerWindow : Window
         base.OnDataContextChanged(e);
     }
 
-    private async System.Threading.Tasks.Task<AppSettings> OnSettingsRequested(AppSettings current)
+    private async System.Threading.Tasks.Task<AppSettings?> OnSettingsRequested(AppSettings current)
     {
         SettingsViewModel viewModel = new(current);
         SettingsWindow window = new() { DataContext = viewModel };
@@ -78,6 +81,7 @@ public partial class GamePickerWindow : Window
         return accepted == true ? viewModel.ToSettings() : null;
     }
 
+    /// <inheritdoc />
     protected override void OnClosed(System.EventArgs e)
     {
         if (_viewModel != null)

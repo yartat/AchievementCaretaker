@@ -23,19 +23,19 @@ public sealed class StoreLibraryServiceTests : IDisposable
     // One object in both roles, as the real stores are.
     private sealed class FakeProvider : IStoreProvider, IStoreAccount
     {
-        public string AccountIdValue { get; set; } = "acct";
-        public Func<string, IReadOnlyList<StoreAchievement>> Achievements { get; set; }
-        public Exception LibraryError { get; set; }
+        public string? AccountIdValue { get; set; } = "acct";
+        public Func<string, IReadOnlyList<StoreAchievement>>? Achievements { get; set; }
+        public Exception? LibraryError { get; set; }
         public IReadOnlyList<StoreGame> Library { get; set; } = Array.Empty<StoreGame>();
 
         public string Id => "fake";
         public string DisplayName => "Fake";
         public string SignInUrl => "";
         public string SignInHint => "";
-        public SignInResultKind GetSignInResultKind(Uri address) => SignInResultKind.None;
+        public SignInResultKind GetSignInResultKind(Uri? address) => SignInResultKind.None;
         public bool IsSignedIn => AccountIdValue != null;
         public string AccountName => "n";
-        public string AccountId => AccountIdValue;
+        public string? AccountId => AccountIdValue;
         public Task SignInAsync(string pasted, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task EnsureSignedInAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
         public void SignOut() { }
@@ -53,7 +53,7 @@ public sealed class StoreLibraryServiceTests : IDisposable
             string gameKey, string locale = "en", CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return Task.FromResult(Achievements(gameKey));
+            return Task.FromResult(Achievements!(gameKey));
         }
     }
 
@@ -97,7 +97,7 @@ public sealed class StoreLibraryServiceTests : IDisposable
 
         var refresh = await _service.RefreshAsync(provider, TestContext.Current.CancellationToken);
 
-        Assert.Single(refresh.Library);
+        Assert.Single(refresh.Library!);
         Assert.False(refresh.SessionExpired);
         Assert.Null(refresh.Failure);
     }

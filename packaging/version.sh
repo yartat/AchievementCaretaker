@@ -22,7 +22,7 @@ root="$(cd "$here/.." && pwd)"
 
 project_version() {
     sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' \
-        "$root/AchievementCaretaker.App/AchievementCaretaker.App.csproj" | head -1
+        "$root/Directory.Build.props" | head -1
 }
 
 tag="${CI_COMMIT_TAG:-}"
