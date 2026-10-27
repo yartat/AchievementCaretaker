@@ -492,6 +492,94 @@ public sealed class UbisoftProviderTests : IAsyncDisposable
         Assert.All(achievements, a => Assert.False(a.Unlocked));
     }
 
+    private async Task<UbisoftProvider> WritableAsync()
+    {
+        _demux.Products.Add(new FakeProduct(920, Configuration: Yaml("Far Cry 6", "abc123.zip")));
+        _demux.Blocks[920] = Yaml("Far Cry 6", "abc123.zip");
+        _demux.Earned["SYNC"] = new[] { (1u, 1_730_000_000UL) };
+        _cdn.Route("/assets/abc123.zip", _ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(Archive()) });
+        return await SignedInAsync();
+    }
+
+    private static KeyValuePair<string, bool>[] Unlock(params string[] ids) => ids.Select(id => new KeyValuePair<string, bool>(id, true)).ToArray();
+
+    [Fact]
+    public async Task Unlocking_sends_the_whole_earned_list_with_the_old_times_and_the_new_one_stamped_now()
+    {
+        var provider = await WritableAsync();
+        Assert.True(provider.CanWrite);
+        Assert.False(provider.CanRelock);
+        var before = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        await provider.SetAchievementsAsync("920", Unlock("2"), TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, _demux.WriteCalls);
+        Assert.Equal((1u, 1_730_000_000UL), _demux.LastWrite[0]);
+        Assert.Equal(2u, _demux.LastWrite[1].Id);
+        Assert.InRange((long)_demux.LastWrite[1].Time, before, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        var list = await provider.GetAchievementsAsync("920", "en", TestContext.Current.CancellationToken);
+        Assert.Equal(new[] { true, true, false }, list.Select(a => a.Unlocked));
+    }
+
+    [Fact]
+    public async Task What_is_already_earned_is_not_written_again_and_is_shown_as_fixed()
+    {
+        var provider = await WritableAsync();
+
+        await provider.SetAchievementsAsync("920", Unlock("1"), TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, _demux.WriteCalls);
+        var list = await provider.GetAchievementsAsync("920", "en", TestContext.Current.CancellationToken);
+        Assert.Equal(new[] { true, false, false }, list.Select(a => a.Protected));
+    }
+
+    [Fact]
+    public async Task A_lock_is_refused_before_anything_is_sent()
+    {
+        var provider = await WritableAsync();
+
+        var error = await Assert.ThrowsAsync<ProviderException>(() => provider.SetAchievementsAsync(
+            "920", new[] { new KeyValuePair<string, bool>("2", true), new KeyValuePair<string, bool>("1", false) }, TestContext.Current.CancellationToken));
+
+        Assert.Equal("cannot_relock", error.ErrorCode);
+        Assert.Equal(0, _demux.WriteCalls);
+    }
+
+    [Fact]
+    public async Task An_achievement_the_game_does_not_have_is_refused_before_anything_is_sent()
+    {
+        var provider = await WritableAsync();
+
+        var error = await Assert.ThrowsAsync<ProviderException>(() => provider.SetAchievementsAsync("920", Unlock("999"), TestContext.Current.CancellationToken));
+
+        Assert.Equal("invalid_achievement", error.ErrorCode);
+        Assert.Equal(0, _demux.WriteCalls);
+    }
+
+    [Fact]
+    public async Task A_write_the_service_does_not_keep_is_reported_and_not_taken_for_done()
+    {
+        var provider = await WritableAsync();
+        _demux.IgnoreWrites = true;
+
+        var error = await Assert.ThrowsAsync<ProviderException>(() => provider.SetAchievementsAsync("920", Unlock("2"), TestContext.Current.CancellationToken));
+
+        Assert.Equal("not_recorded", error.ErrorCode);
+    }
+
+    [Fact]
+    public async Task Without_a_sign_in_nothing_can_be_written_and_nothing_is_offered()
+    {
+        LayOutLauncher();
+        var provider = Provider();
+
+        Assert.False(provider.CanWrite);
+        var error = await Assert.ThrowsAsync<ProviderException>(() => provider.SetAchievementsAsync("920", Unlock("2"), TestContext.Current.CancellationToken));
+
+        Assert.Equal("login_required", error.ErrorCode);
+        Assert.Equal(0, _demux.WriteCalls);
+    }
+
     [Fact]
     public async Task A_ticket_the_socket_service_refuses_asks_for_a_new_sign_in()
     {

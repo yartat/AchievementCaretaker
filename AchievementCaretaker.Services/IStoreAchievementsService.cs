@@ -24,6 +24,12 @@ public interface IStoreAchievementsService
     bool CanModify(IStoreProvider provider);
 
     /// <summary>
+    /// Whether an unlocked achievement can be locked again. False for a store that only records them (Ubisoft
+    /// Connect); an unlock there cannot be undone.
+    /// </summary>
+    bool CanRelock(IStoreProvider provider);
+
+    /// <summary>
     /// Reads the achievements. A store failure does not throw; it comes back as
     /// <see cref="StoreAchievementsResult.Failure"/>. Cancellation does throw.
     /// </summary>

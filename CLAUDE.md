@@ -58,7 +58,7 @@ what would be committed, but do not run `git commit`, `git tag` or `git push` un
 | `AchievementCaretaker.Providers.Steam.Worker` | class library | The helper's side: the Kestrel gRPC host, `SteamAppBackend` (schema + achievements + set/store through an `ISteamAppGateway`) and `SteamClientGateway` over `SteamApi.Client`. `AchievementCaretaker.exe --steam-worker <appid>` runs it (`Program.Main`, before Avalonia starts). |
 | `AchievementCaretaker.Providers.Epic` | class library | The Epic Games provider, read-only. Every unofficial Epic endpoint is in its `EpicProvider.cs`. |
 | `AchievementCaretaker.Providers.Gog` | class library | The GOG provider; it can also unlock and lock. Every unofficial GOG endpoint is in its `GogProvider.cs`. |
-| `AchievementCaretaker.Providers.Ubisoft` | class library | The Ubisoft Connect provider, read-only, from the launcher's own files on this computer (Windows): `OwnershipFile`, `GameConfigurations`, `SpoolFile`, `AchievementArchive` and `GameNames` read them, `UbisoftProvider` puts them together (its `.Online.cs` half signs in and reads the account from Ubisoft through `DemuxClient`/`UbisoftOnline`). Without a sign-in the only network use is Ubisoft's public CDN; signing in (optional) reads the account from Ubisoft over its session service and socket service. |
+| `AchievementCaretaker.Providers.Ubisoft` | class library | The Ubisoft Connect provider, from the launcher's own files on this computer (Windows): `OwnershipFile`, `GameConfigurations`, `SpoolFile`, `AchievementArchive` and `GameNames` read them, `UbisoftProvider` puts them together (its `.Online.cs` half signs in and reads the account from Ubisoft through `DemuxClient`/`UbisoftOnline`). Without a sign-in the only network use is Ubisoft's public CDN; signing in (optional) reads the account from Ubisoft over its session service and socket service. |
 
 `AchievementCaretaker.slnx` is the solution, in the **`.slnx`** format. There is no
 `.sln`; do not add one back. Its `Documentation` folder carries `README.md`, `CLAUDE.md`,
@@ -102,18 +102,18 @@ The rules:
   A helper is kept for 30 s after its last call so one editing session starts Steam once, and
   `GetAchievementsAsync` always starts a fresh one (a reload must see Steam's current state).
   Closing its standard input is what makes it exit, so a crashed application leaves none behind.
-- **Epic is read-only; GOG can write.** Epic: no unlocking, no re-locking, no EOS SDK, no
+- **Epic is read-only; GOG can write; Ubisoft can unlock.** Epic: no unlocking, no re-locking, no EOS SDK, no
   reading a game's client secret. Epic cannot re-lock an achievement anyway, and the tools that
   unlock inject into the game or need that secret. GOG: changing an achievement needs a token
   issued to the *game's* client, so `GogProvider.SetAchievementsAsync` reads the client secret
   from GOGDB's build record, **only when something is written**. Listing reads the client id
   and nothing else. The secret and the game token are never logged, kept on disk or put in an
   error message, and the account's own session is not touched by the game token. Writing is a
-  separate interface, `IWritableStoreProvider`, which only GOG implements; the achievements
+  separate interface, `IWritableStoreProvider`, which GOG and Ubisoft Connect implement; the achievements
   window shows the checkboxes and the Lock / Invert / Unlock buttons only for a provider that
   has it, and sends the pending changes with Commit, as Steam's does. Verified against a
   live GOG account (unlock and re-lock), unlike Steam's write path.
-- **Ubisoft Connect is found on this computer, and read only.** `UbisoftProvider` reads what the launcher
+- **Ubisoft Connect is found on this computer, and can unlock when signed in.** `UbisoftProvider` reads what the launcher
   keeps: the ownership cache (`%LOCALAPPDATA%\Ubisoft Game Launcher\cache\ownership`, one file per user
   named by a GUID), the configuration catalog (`...\cache\configuration\configurations`: names, pictures
   and the achievement list's file name per product), the achievement archives
@@ -169,9 +169,24 @@ The rules:
   - **It registers only on Windows**, in `AddUbisoftProvider`, the one place that asks; elsewhere
     there is no such source. Icons are copied out of the archives into `~/.sac/ubisoft/icons` and given
     as `file:` addresses, which `StoreImageCache` reads where they are.
-  UbiSlot also **writes** the spool to unlock achievements (through `uplay_r164.dll` and a session the
-  launcher restarts the process into, which the stdin-handshake helper cannot be started from). That is
-  deliberately not here, and would be a separate decision.
+  - **It can unlock, only when signed in, and an unlock is final.** `UbisoftProvider` is an
+    `IWritableStoreProvider` with `CanWrite` = `IsSignedInOnline` (the launcher's files are only read) and
+    `CanRelock` = false (both default to true on the interface, so GOG and Steam are unchanged). The service takes a
+    game's **whole** list of earned achievements, so `SetAchievementsAsync` reads it, sends it back with its times
+    plus the new ids (stamped now, in the unit the service uses: seconds), and **reads it again**, because the
+    service answers a write with an empty message whether it kept anything or not. It refuses a lock, an id the
+    game's list does not have, and an unsigned account before sending. The window follows `CanRelock`: no Lock or
+    Invert, achievements already earned are `Protected` (shown fixed), and `StoreAchievementsViewModel` asks once
+    before sending an unlock. Tried on a live account (Far Cry 5, "ARCADE Player"; the launcher showed it earned).
+    It changes a real account and UbiSlot warns of risk to it: **never write to a real account without the user
+    naming the achievement and saying go**, and say it cannot be undone. The launcher's local spool does not change
+    (the current launcher reads achievements from the network), so it cannot be used to check a write.
+  - **One socket connection per account at a time.** Ubisoft closes the service for an account signed in a second
+    time (the launcher, another Caretaker), so the provider closes its connection 20 s after its last use and an
+    ownership request only follows the list request. A second Caretaker running at once will fail with "Ubisoft
+    closed the service".
+  UbiSlot's own way of unlocking (the spool, through `uplay_r164.dll` and a session the launcher restarts the
+  process into) is deliberately not used.
 - **Every unofficial endpoint lives in its store's one `*Provider.cs`.** They are the
   stores' own and can change; keep them in one file each.
 - **A provider never holds an `HttpClient`.** It takes an `IHttpClientFactory` and asks for

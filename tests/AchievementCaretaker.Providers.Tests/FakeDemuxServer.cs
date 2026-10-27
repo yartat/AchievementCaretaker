@@ -55,6 +55,14 @@ internal sealed class FakeDemuxServer : IUbisoftConnector, IAsyncDisposable
 
     public int AchievementCalls { get; private set; }
 
+    public int WriteCalls { get; private set; }
+
+    /// <summary>The achievements the last write carried: (id, time).</summary>
+    public List<(uint Id, ulong Time)> LastWrite { get; } = new();
+
+    /// <summary>Answers a write as the service does, but keeps nothing.</summary>
+    public bool IgnoreWrites { get; set; }
+
     public string? LastAchievementUser { get; private set; }
 
     public string? LastAchievementProduct { get; private set; }
@@ -208,6 +216,28 @@ internal sealed class FakeDemuxServer : IUbisoftConnector, IAsyncDisposable
             // Req { id, read_achievements_req { user_id, product { product_id, platform_id } } }
             var request = Parse(inner);
             var id = (ulong)request.First(f => f.Number == 1).Value;
+            if (request.FirstOrDefault(f => f.Number == 4).Value is byte[] write)
+            {
+                // write_achievements_req { achievement_blob { product_achievements { product, achievements { achievements* } } } }
+                WriteCalls++;
+                var writtenProduct = Parse((byte[])Parse((byte[])Parse(write).First(f => f.Number == 1).Value).First(f => f.Number == 1).Value);
+                var key = Encoding.UTF8.GetString((byte[])Parse((byte[])writtenProduct.First(f => f.Number == 1).Value).First(f => f.Number == 1).Value);
+                var writtenEntries = Parse((byte[])writtenProduct.First(f => f.Number == 2).Value)
+                    .Where(f => f.Number == 1)
+                    .Select(f => Parse((byte[])f.Value))
+                    .Select(e => ((uint)(ulong)e.First(x => x.Number == 1).Value, (ulong)e.First(x => x.Number == 2).Value))
+                    .ToArray();
+                LastWrite.Clear();
+                LastWrite.AddRange(writtenEntries);
+                if (IgnoreWrites == false)
+                {
+                    Earned[key] = writtenEntries;
+                }
+
+                var written = Varint(1, id).Concat(Bytes(4, Array.Empty<byte>())).ToArray();
+                var framedWrite = new byte[] { (byte)(written.Length >> 24), (byte)(written.Length >> 16), (byte)(written.Length >> 8), (byte)written.Length }.Concat(written).ToArray();
+                return Bytes(2, Bytes(1, Varint(1, connection).Concat(Bytes(2, framedWrite)).ToArray()));
+            }
             var read = Parse((byte[])request.First(f => f.Number == 3).Value);
             LastAchievementUser = Encoding.UTF8.GetString((byte[])read.First(f => f.Number == 1).Value);
             var product = Parse((byte[])read.First(f => f.Number == 2).Value);

@@ -71,7 +71,8 @@ itself.
 - If you sign in: `connect.ubisoft.com` (the sign-in page, in the embedded browser),
   `public-ubiservices.ubi.com` (renewing the sign-in) and `dmx.upc.ubisoft.com` (Ubisoft's service for the
   launcher, which lists your games and the achievements you have earned). They receive your sign-in ticket
-  and the product identifiers of your games.
+  and the product identifiers of your games. If you unlock a Ubisoft achievement, the service receives the
+  game's list of earned achievements with the new one, and Ubisoft records it on your account.
 
 **GOGDB** (`www.gogdb.org`, a volunteer community site; only for GOG)
 - Used to find the internal identifier that GOG uses for a game. Reading achievements sends the

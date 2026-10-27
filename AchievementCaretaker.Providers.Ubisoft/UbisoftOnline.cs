@@ -34,7 +34,8 @@ internal sealed record OnlineProduct(uint ProductId, bool Owned, uint ProductTyp
 /// <summary>What the server has recorded as earned for one achievement.</summary>
 /// <param name="Id">The achievement's id.</param>
 /// <param name="EarnedAt">When, or null when the record has no usable time.</param>
-internal sealed record OnlineAchievement(uint Id, DateTimeOffset? EarnedAt);
+/// <param name="RawTime">The time as the service sent it, so that a record can be sent back as it was.</param>
+internal sealed record OnlineAchievement(uint Id, DateTimeOffset? EarnedAt, ulong RawTime);
 
 /// <summary>
 /// An account's session on Ubisoft's socket service: signed in with its ticket, with the ownership and
@@ -52,6 +53,7 @@ internal sealed class UbisoftOnline : IAsyncDisposable
     private uint? _ownership;
     private uint? _achievements;
     private uint _serviceRequest;
+    private bool _initialized;
 
     private UbisoftOnline(DemuxClient client, UbisoftSession session)
     {
@@ -118,6 +120,8 @@ internal sealed class UbisoftOnline : IAsyncDisposable
             throw new DemuxException("Ubisoft would not list the account's games.");
         }
 
+        _initialized = true;
+
         List<OnlineProduct> products = new();
         var owned = ProtoMessage.Read(DemuxClient.Field(initialize, 2).Bytes ?? Array.Empty<byte>());
         foreach (var game in owned.Where(field => field.Number == 1 && field.Bytes != null))
@@ -146,6 +150,12 @@ internal sealed class UbisoftOnline : IAsyncDisposable
     /// <param name="cancellationToken">The token to give up.</param>
     public async Task<string?> GetConfigurationAsync(uint productId, CancellationToken cancellationToken)
     {
+        // The service closes itself on any other request before the list has been asked for.
+        if (!_initialized)
+        {
+            await GetProductsAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         var reply = await OwnershipAsync(
             request => request.Message(9, new ProtoMessage().Varint(1, productId)),
             cancellationToken).ConfigureAwait(false);
@@ -188,10 +198,40 @@ internal sealed class UbisoftOnline : IAsyncDisposable
                 }
 
                 DateTimeOffset? when = time is > 0 and <= long.MaxValue && SpoolFile.TryToDate((long)time, out var date) == true ? date : null;
-                earned.Add(new OnlineAchievement((uint)id, when));
+                earned.Add(new OnlineAchievement((uint)id, when, time));
             }
         }
         return earned;
+    }
+
+    /// <summary>
+    /// Records achievements as earned. The service takes the game's whole list of earned achievements, not a change to
+    /// it, so the caller sends what is already earned (with its times, as read) and what is added; it answers with an
+    /// empty message, which says nothing about whether it kept them, so the caller reads the list again.
+    /// </summary>
+    /// <param name="syncId">The key the achievements service knows the game by.</param>
+    /// <param name="earned">Every achievement that should be earned: id and time, in the unit the service uses.</param>
+    /// <param name="cancellationToken">The token to give up.</param>
+    public async Task WriteAchievementsAsync(string syncId, IEnumerable<(uint Id, ulong Time)> earned, CancellationToken cancellationToken)
+    {
+        _achievements ??= await _client.OpenServiceAsync("ach_frontend", cancellationToken).ConfigureAwait(false);
+
+        var list = new ProtoMessage();
+        foreach (var (id, time) in earned)
+        {
+            list.Message(1, new ProtoMessage().Varint(1, id).Varint(2, time));
+        }
+        var forProduct = new ProtoMessage()
+            .Message(1, new ProtoMessage().Text(1, syncId).Text(2, Platform))
+            .Message(2, list);
+        var write = new ProtoMessage().Message(1, new ProtoMessage().Message(1, forProduct));
+        var request = new ProtoMessage().Varint(1, ++_serviceRequest).Message(4, write);
+
+        var reply = ProtoMessage.Read(await _client.CallAsync(_achievements.Value, request.ToArray(), cancellationToken).ConfigureAwait(false));
+        if (reply.Any(field => field.Number == 4) == false)
+        {
+            throw new DemuxException("Ubisoft's achievements service did not accept the write.");
+        }
     }
 
     /// <inheritdoc />

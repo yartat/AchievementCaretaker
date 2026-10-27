@@ -286,7 +286,7 @@ with four workers.
 The library window can show an Epic Games or GOG library beside Steam's: the owned games, and each
 game's achievements with the signed-in player's progress. Epic is read-only. GOG's achievements can also be unlocked and re-locked: the
 achievements window has the Steam editor's checkboxes, Lock / Invert / Unlock buttons and
-Uncommitted bar, and Commit sends the changes through `IWritableStoreProvider`, which only GOG
+Uncommitted bar, and Commit sends the changes through `IWritableStoreProvider`, which GOG and Ubisoft Connect (signed in, unlock only)
 implements. How the two stores' endpoints work is in [EPIC-RESEARCH.md](EPIC-RESEARCH.md)
 and [GOG-RESEARCH.md](GOG-RESEARCH.md); this is how the application uses them.
 
@@ -370,8 +370,19 @@ A signed-in account is read over Ubisoft's socket service (`DemuxClient`, `Ubiso
 current, signs in with the ticket, and opens `ownership_service` (the owned products, each with its catalog
 block, which `GameConfigurations.Parse` reads exactly as it reads the launcher's) and `ach_frontend` (what the
 account has earned, by product id). The names, pictures and achievement lists still come from the catalog
-block and the public CDN. One connection is kept, calls take turns on it, and it is opened again once if it
-has dropped. The provider is therefore `IDisposable`, which the container honours.
+block and the public CDN. Calls take turns on one connection, which is opened again once if it has dropped and
+is closed 20 seconds after its last use: Ubisoft lets an account be signed in to the service once at a time, so a
+connection left open would turn the launcher away and be turned away itself. The ownership service closes
+itself on any request before its list has been asked for, so that is always the first. The provider is
+`IDisposable`, which the container honours.
+
+A signed-in account can also **unlock**: `UbisoftProvider` is an `IWritableStoreProvider` with `CanWrite` true
+only when signed in (the launcher's files are only read) and `CanRelock` false. `ach_frontend` takes a game's whole
+list of earned achievements, so `SetAchievementsAsync` reads what is earned, sends it back with its times and the new
+ones stamped now, and reads it again to see that the service kept them (it answers a write with an empty message
+either way). An unlock cannot be undone, so the window shows no Lock or Invert, shows what is earned as fixed
+(`StoreAchievement.Protected`), and asks once before sending (`CanRelock` on the achievements service, a
+confirmation in `StoreAchievementsViewModel`).
 
 ## Services and tests
 

@@ -20,7 +20,7 @@ Achievement Manager 8.0.
 - **Ubisoft Connect, as a fourth source** (Windows). Caretaker reads the files the Ubisoft Connect
   launcher keeps on your computer: the games it says are yours, what they are called, and the record of
   what you earned on this computer, with dates. There is nothing to sign in to: whoever is logged in to
-  the launcher is the account, which has to be installed and logged in to once. It is **read only**.
+  the launcher is the account, which has to be installed and logged in to once.
   The launcher's own catalog gives the games their names and a background picture, and the
   achievement list of a game is downloaded from Ubisoft's public content server when the launcher has
   not saved it (on the machine this was tried on: 54 games with pictures, 28 with achievement lists,
@@ -31,7 +31,10 @@ Achievement Manager 8.0.
   [Achievements](https://github.com/PSerban93/Achievements) by PSerban93 and
   [galaxy-integration-uplay](https://github.com/melcom-creations/galaxy-integration-uplay) by melcom and
   [UplayKit](https://github.com/UplayDB/UplayKit) by UplayDB (all MIT); see [ATTRIBUTION.md](ATTRIBUTION.md) and [UBISOFT-RESEARCH.md](UBISOFT-RESEARCH.md).
-  Unlocking, which UbiSlot does, is not part of this.
+  **Unlocking.** Signed in, a game's achievements can be unlocked on your Ubisoft account from the achievements
+  window (tick, then Commit); the launcher shows it. It cannot be undone, so there is no Lock or Invert, what is
+  earned is shown as fixed, and Caretaker asks first. It changes your real account, which UbiSlot warns may carry
+  risks; tried once on a live account.
   **Signing in to Ubisoft is optional.** With Ubisoft's own page, in a browser window inside Caretaker (it
   never sees your password), the account is read from Ubisoft: the games it owns and the achievements it has
   earned, including on other computers, and the launcher is not needed. Signing out returns to the

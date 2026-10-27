@@ -49,7 +49,7 @@ namespace AchievementCaretaker.Providers.Ubisoft;
 /// computer, so an achievement not in it is shown as not earned. See <c>docs/UBISOFT-RESEARCH.md</c>.
 /// </para>
 /// </remarks>
-public sealed partial class UbisoftProvider : IStoreProvider, ILocalStoreAccount, IDisposable, IAsyncDisposable
+public sealed partial class UbisoftProvider : IWritableStoreProvider, ILocalStoreAccount, IDisposable, IAsyncDisposable
 {
     /// <summary>The provider's id: <see cref="StoreGame.Provider"/> of its games.</summary>
     public const string ProviderId = "ubisoft";
@@ -309,7 +309,8 @@ public sealed partial class UbisoftProvider : IStoreProvider, ILocalStoreAccount
         AchievementArchive archive,
         uint gameId,
         string locale,
-        IReadOnlyDictionary<uint, DateTimeOffset?> earnedAt)
+        IReadOnlyDictionary<uint, DateTimeOffset?> earnedAt,
+        bool lockEarned = false)
     {
         var icons = ExtractIcons(archive, gameId);
         return archive.ReadAchievements(locale)
@@ -326,7 +327,8 @@ public sealed partial class UbisoftProvider : IStoreProvider, ILocalStoreAccount
                     null,
                     earned,
                     null,
-                    earned == true ? when : null);
+                    earned == true ? when : null,
+                    Protected: lockEarned == true && earned == true);
             })
             .ToList();
     }

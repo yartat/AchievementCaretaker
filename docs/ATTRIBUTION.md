@@ -125,10 +125,10 @@ about them comes from four open-source tools:
 
 The schemas of the launcher's cache files (ownership, configuration) are from the same UplayDB projects.
 
-The C# is written for this project; the parsers are rewritten, not ported. What UbiSlot does beyond
-reading is **not** part of this project: it writes the spool to unlock achievements, through
-`uplay_r164.dll` and a session the launcher restarts the process into. Caretaker's provider is read
-only. See [UBISOFT-RESEARCH.md](UBISOFT-RESEARCH.md).
+The C# is written for this project; the parsers are rewritten, not ported. UbiSlot unlocks achievements by
+writing the spool through `uplay_r164.dll` and a session the launcher restarts the process into; that is **not**
+part of this project. Caretaker unlocks, for a signed-in account, through the achievements service UplayKit
+documents (`WriteAchievementsReq`), which needs neither. See [UBISOFT-RESEARCH.md](UBISOFT-RESEARCH.md).
 
 All four are MIT, which asks that their copyright and permission notices travel with substantial portions.
 They are reproduced here, and the header of every file of the provider names the projects it derives from.

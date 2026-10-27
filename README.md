@@ -3,8 +3,8 @@
 Achievement Caretaker is a lightweight, portable application for your game achievements.
 It edits achievements and statistics in **Steam**, and shows the library and achievements of
 your **Epic Games** and **GOG** accounts, and of **Ubisoft Connect** from the launcher installed on
-your computer (Windows). Epic and Ubisoft Connect are read-only; GOG achievements can be
-unlocked and locked. Steam needs the
+your computer (Windows). Epic is read-only; GOG achievements can be unlocked and locked, and
+Ubisoft Connect achievements can be unlocked (not locked again), when you are signed in. Steam needs the
 [Steam client](https://store.steampowered.com/about/), running and logged in, to refresh its
 library and to open a game's achievements; Epic Games and GOG need only a network connection
 and a sign-in. The library window opens without Steam, shows what it saved last time, and
@@ -208,7 +208,7 @@ If a session is refused later, Caretaker forgets it and shows the sign-in panel 
 
 ### Ubisoft Connect
 
-Windows only, and **read only**. There are two ways to read an account, and the second is optional:
+Windows only. There are two ways to read an account, and the second is optional:
 
 - **From the launcher on this computer.** Caretaker reads the files the Ubisoft Connect launcher keeps,
   so there is nothing to sign in to: whoever is logged in to the launcher here is the account, shown in
@@ -230,8 +230,13 @@ Windows only, and **read only**. There are two ways to read an account, and the 
 - Counts appear in the library for games whose list is already on this computer; **Load progress**
   reads the rest. There is no XP or rarity.
 
-Unlike UbiSlot, which Caretaker's Ubisoft support is based on, Caretaker does not unlock Ubisoft
-achievements. See [docs/UBISOFT-RESEARCH.md](docs/UBISOFT-RESEARCH.md).
+**Unlocking.** Signed in with your Ubisoft account, a game's achievements window has checkboxes and a
+**Commit** button, and ticking an achievement and committing records it as earned on your account (the
+launcher shows it too). **It cannot be undone**: Ubisoft's service only takes what is earned, so there is
+no Lock or Invert, achievements already earned are shown as fixed, and Caretaker asks before it sends.
+It changes your real account, and UbiSlot, which Caretaker's Ubisoft support is based on, warns that this
+may carry risks for it; the first one was tried on a live account and the launcher showed it at once.
+Without a sign-in nothing can be changed. See [docs/UBISOFT-RESEARCH.md](docs/UBISOFT-RESEARCH.md).
 
 ## Building
 

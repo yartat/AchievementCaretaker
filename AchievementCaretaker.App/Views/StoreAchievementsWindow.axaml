@@ -258,18 +258,19 @@
               </Button>
 
               <!-- The Steam editor's lock / invert / unlock buttons. Only for a store
-                   whose achievements can be changed (GOG); Epic's are not shown. -->
+                   whose achievements can be changed (GOG, Ubisoft Connect); Epic's are not
+                   shown. Lock and Invert are left out where an unlock cannot be undone (Ubisoft). -->
               <Rectangle Width="1" Margin="4,4"
                          IsVisible="{Binding CanModify}"
                          Fill="{DynamicResource SamBorderBrush}" />
               <Button Classes="quiet" Height="26"
-                      IsVisible="{Binding CanModify}"
+                      IsVisible="{Binding ShowRelock}"
                       Command="{Binding LockAllCommand}"
                       ToolTip.Tip="Lock every achievement shown">
                 <PathIcon Data="{StaticResource LockIcon}" />
               </Button>
               <Button Classes="quiet" Height="26"
-                      IsVisible="{Binding CanModify}"
+                      IsVisible="{Binding ShowRelock}"
                       Command="{Binding InvertAllCommand}"
                       ToolTip.Tip="Invert every achievement shown">
                 <PathIcon Data="{StaticResource InvertIcon}" />

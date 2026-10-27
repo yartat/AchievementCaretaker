@@ -53,6 +53,14 @@ public sealed partial class UbisoftProvider
     private bool _sessionLoaded;
     private UbisoftOnline? _connection;
     private string? _connectionTicket;
+    private CancellationTokenSource? _idle;
+
+    /// <summary>
+    /// How long the connection is kept after its last use. Ubisoft lets an account be signed in to its socket service
+    /// once at a time, so a connection left open would turn the launcher (or another Caretaker) away, and be turned away
+    /// itself ("Ubisoft closed the service"): it is held only for as long as one run of calls takes.
+    /// </summary>
+    private static readonly TimeSpan _idleLimit = TimeSpan.FromSeconds(20);
 
     /// <inheritdoc />
     public string SignInUrl =>
@@ -304,17 +312,18 @@ public sealed partial class UbisoftProvider
             request.Headers.TryAddWithoutValidation("Referer", WebOrigin);
             request.Headers.UserAgent.Clear();
             request.Headers.TryAddWithoutValidation("User-Agent", WebUserAgent);
-            if (method == HttpMethod.Post)
-            {
-                request.Content = JsonContent.Create(new { rememberMe = true });
-            }
+            // The service wants a JSON content type on both (a PUT without one is answered 415).
+            request.Content = method == HttpMethod.Post
+                ? JsonContent.Create(new { rememberMe = true })
+                : new ByteArrayContent(Array.Empty<byte>()) { Headers = { ContentType = new("application/json") } };
 
             using var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
             if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
             {
                 return null;
             }
-            if (response.IsSuccessStatusCode == false)
+
+            if (!response.IsSuccessStatusCode)
             {
                 throw new ProviderException("network", $"Ubisoft's sign-in service answered {(int)response.StatusCode}.");
             }
@@ -426,7 +435,107 @@ public sealed partial class UbisoftProvider
             archive,
             gameId,
             locale,
-            earned.GroupBy(a => a.Id).ToDictionary(group => group.Key, group => group.Min(a => a.EarnedAt)));
+            earned.GroupBy(a => a.Id).ToDictionary(group => group.Key, group => group.Min(a => a.EarnedAt)),
+            lockEarned: true);
+    }
+
+    /// <summary>Changes can be made when Caretaker is signed in to the account: the launcher's files are only read.</summary>
+    public bool CanWrite => IsSignedInOnline;
+
+    /// <summary>An achievement recorded as earned cannot be taken back: Ubisoft's service takes only what is earned.</summary>
+    public bool CanRelock => false;
+
+    /// <summary>
+    /// Records achievements as earned on the signed-in account. The service takes a game's whole list of earned
+    /// achievements, so what is already earned is read first and sent back with its times, and only the new ones
+    /// are added, stamped with now. The list is read again afterwards, since the service answers a write with an
+    /// empty message whether it kept the achievements or not. Not undoable, and only an unlock: a change to
+    /// "locked" is refused.
+    /// </summary>
+    /// <param name="gameKey">The game's product id.</param>
+    /// <param name="changes">Achievement id and the state it should have; each must be true.</param>
+    /// <param name="cancellationToken">The token to cancel the write.</param>
+    /// <exception cref="ProviderException">Not signed in, an achievement the game does not have, a lock, or a write the service did not keep.</exception>
+    public async Task SetAchievementsAsync(
+        string gameKey,
+        IReadOnlyCollection<KeyValuePair<string, bool>> changes,
+        CancellationToken cancellationToken = default)
+    {
+        if (changes.Count == 0)
+        {
+            return;
+        }
+
+        if (!IsSignedInOnline)
+        {
+            throw new ProviderException("login_required", "Sign in to your Ubisoft account to change achievements: the launcher's files are only read.");
+        }
+
+        if (changes.Any(change => change.Value == false))
+        {
+            throw new ProviderException("cannot_relock", "An achievement recorded on a Ubisoft account cannot be locked again.");
+        }
+
+        if (!uint.TryParse(gameKey, NumberStyles.None, CultureInfo.InvariantCulture, out var gameId))
+        {
+            throw new ProviderException("invalid_game", $"'{gameKey}' is not a Ubisoft game id.");
+        }
+
+        var yaml = await BlockOfAsync(new OnlineProduct(gameId, true, 0, 3, false, null), cancellationToken).ConfigureAwait(false);
+        var game = yaml == null ? null : GameConfigurations.Parse(gameId, gameId, yaml);
+        if (game?.AchievementsSyncId is not { } syncId)
+        {
+            throw new ProviderException("no_sync_id", "Ubisoft's achievements service does not know this game by a key Caretaker can find.");
+        }
+
+        // Only achievements the game has: the service would take any number.
+        using var archive = await FindOrDownloadArchiveAsync(gameId, game, cancellationToken).ConfigureAwait(false)
+            ?? throw new ProviderException("no_list", "Ubisoft has no achievement list for this game that Caretaker can read.");
+        var known = archive.ReadAchievements("en").Select(a => a.Id).ToHashSet();
+        List<uint> wanted = new();
+        foreach (var change in changes)
+        {
+            if (!uint.TryParse(change.Key, NumberStyles.None, CultureInfo.InvariantCulture, out var id) || !known.Contains(id))
+            {
+                throw new ProviderException("invalid_achievement", $"This game has no achievement '{change.Key}'.");
+            }
+
+            wanted.Add(id);
+        }
+
+        var current = await WithOnlineAsync(online => online.GetAchievementsAsync(syncId, cancellationToken), cancellationToken).ConfigureAwait(false);
+        var added = wanted.Distinct().Where(id => current.Any(c => c.Id == id) == false).ToList();
+        if (added.Count == 0)
+        {
+            return;
+        }
+
+        // The service's own unit: the times it sends are seconds, unless a record in the list is in milliseconds.
+        var now = current.Any(c => c.RawTime >= 10_000_000_000)
+            ? (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+            : (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var everything = current.Select(c => (c.Id, c.RawTime)).Concat(added.Select(id => (id, now))).ToList();
+
+        try
+        {
+            await WithOnlineAsync(
+                async online =>
+                {
+                    await online.WriteAchievementsAsync(syncId, everything, cancellationToken).ConfigureAwait(false);
+                    return true;
+                },
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (ProviderException e) when (e.ErrorCode == "network" && e.Message.Contains("did not accept the write", StringComparison.Ordinal))
+        {
+            throw new ProviderException("not_recorded", "Ubisoft did not accept the change.");
+        }
+
+        var after = await WithOnlineAsync(online => online.GetAchievementsAsync(syncId, cancellationToken), cancellationToken).ConfigureAwait(false);
+        if (!added.Any(id => after.Any(a => a.Id == id)))
+        {
+            throw new ProviderException("not_recorded", "Ubisoft answered, but did not keep the change. Nothing was recorded.");
+        }
     }
 
     /// <summary>A product's catalog block: the list's, else one asked for. Kept in memory for the run.</summary>
@@ -458,6 +567,7 @@ public sealed partial class UbisoftProvider
     private async Task<T> WithOnlineAsync<T>(Func<UbisoftOnline, Task<T>> action, CancellationToken cancellationToken)
     {
         await _connecting.WaitAsync(cancellationToken).ConfigureAwait(false);
+        _idle?.Cancel();
         try
         {
             for (var attempt = 0; ; attempt++)
@@ -473,7 +583,9 @@ public sealed partial class UbisoftProvider
                         _connection = await UbisoftOnline.ConnectAsync(_connector, session, cancellationToken).ConfigureAwait(false);
                         _connectionTicket = session.Ticket;
                     }
-                    return await action(_connection).ConfigureAwait(false);
+                    var result = await action(_connection).ConfigureAwait(false);
+                    DropWhenIdle();
+                    return result;
                 }
                 catch (DemuxException e)
                 {
@@ -497,6 +609,36 @@ public sealed partial class UbisoftProvider
         {
             _connecting.Release();
         }
+    }
+
+    /// <summary>Closes the connection <see cref="_idleLimit"/> after now, unless something uses it first.</summary>
+    private void DropWhenIdle()
+    {
+        CancellationTokenSource idle = new();
+        _idle = idle;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(_idleLimit, idle.Token).ConfigureAwait(false);
+                await _connecting.WaitAsync(idle.Token).ConfigureAwait(false);
+                try
+                {
+                    if (idle.IsCancellationRequested == false)
+                    {
+                        await DropConnectionAsync().ConfigureAwait(false);
+                    }
+                }
+                finally
+                {
+                    _connecting.Release();
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Used again before the limit.
+            }
+        });
     }
 
     private async Task DropConnectionAsync()

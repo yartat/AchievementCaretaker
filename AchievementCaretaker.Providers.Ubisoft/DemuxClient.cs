@@ -163,7 +163,7 @@ internal sealed class DemuxClient : IAsyncDisposable
             }
             catch (ChannelClosedException e)
             {
-                throw new DemuxException("Ubisoft closed the service.", e.InnerException ?? e);
+                throw e.InnerException as DemuxException ?? new DemuxException("Ubisoft closed the service.", e);
             }
 
             if (reply.Length < 4 || BinaryPrimitives.ReadUInt32BigEndian(reply) != reply.Length - 4)
@@ -255,10 +255,19 @@ internal sealed class DemuxClient : IAsyncDisposable
                 break;
 
             case 2 when push.Bytes != null:
-                var closed = (uint)Field(ProtoMessage.Read(push.Bytes), 1).Varint;
+                var closing = ProtoMessage.Read(push.Bytes);
+                var closed = (uint)Field(closing, 1).Varint;
                 if (_services.TryRemove(closed, out var channel) == true)
                 {
-                    channel.Writer.TryComplete(new DemuxException("Ubisoft closed the service."));
+                    var reason = Field(closing, 2).Varint switch
+                    {
+                        1 => " (it was told to quit)",
+                        2 => " (the account is signed in somewhere else)",
+                        3 => " (the account is banned)",
+                        4 => " (it was not signed in)",
+                        _ => "",
+                    };
+                    channel.Writer.TryComplete(new DemuxException("Ubisoft closed the service" + reason + "."));
                 }
                 break;
 

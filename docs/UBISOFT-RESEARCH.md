@@ -11,7 +11,7 @@ Ubisoft Connect is the fourth source in the library window, after Steam, Epic Ga
 the others it is **found on this computer**: the account, the games and what was earned are read from
 the files the launcher keeps, and there is nothing to sign in to. The network use without a sign-in is
 Ubisoft's public content server, for pictures and achievement lists. **Signing in with Ubisoft's own page is
-optional** and reads the account from Ubisoft instead (below). It is read only. The code is
+optional** and reads the account from Ubisoft instead (below), and can unlock achievements on it. The code is
 `AchievementCaretaker.Providers.Ubisoft`, an `IStoreProvider` that is also an `ILocalStoreAccount`.
 
 **Without a sign-in the launcher must be installed and logged in once.** Without its caches there is no list
@@ -38,12 +38,11 @@ Four sources, none of which documents a Ubisoft endpoint that needs credentials:
 
 What was **not** taken:
 
-- **Unlocking.** UbiSlot writes the spool, and to do so makes the launcher treat it as a running game:
-  it loads `uplay_r164.dll`, calls `UPLAY_Startup`, which asks for the process to be restarted under the
-  launcher, and writes while that session is alive. That needs a third way of starting this
-  executable and a channel that does not depend on its standard input (the launcher starts the
-  process, not Caretaker), and, by UbiSlot's own README, "modifying achievement data may carry account
-  or service-related risks". Not part of this step.
+- **UbiSlot's way of unlocking.** UbiSlot writes the spool, and to do so makes the launcher treat it as a running
+  game: it loads `uplay_r164.dll`, calls `UPLAY_Startup`, which asks for the process to be restarted under the
+  launcher, and writes while that session is alive. That would need a third way of starting this executable and a
+  channel that does not depend on its standard input. Not used: a signed-in account unlocks through the achievements
+  service directly (below), with no DLL and no restart.
 - **Rarity.** Achievements' table of Uplay and Steam ids could give Steam's global percentages for the
   games that are also on Steam. Not used.
 - **Password sign-in.** UbiServices (UplayDB) and the launcher's own tools sign in with an e-mail and a
@@ -163,6 +162,25 @@ game**, and the launcher's own library includes games in state 0 (cannot be down
 so no state is filtered; the ones left out are the products owned only through a lapsed subscription
 (`locked_by_subscription`), which are the same games again under another product id. And the achievements need
 the sync id above.
+
+### Unlocking
+
+`ach_frontend` also takes `WriteAchievementsReq(achievement_blob(product_achievements(product(product_id,
+platform_id), achievements(achievement_id, timestamp))))`, with the same `product_id` (the sync id) and `PC` as a read.
+It answers with an empty `WriteAchievementsRsp` whether or not anything was kept, so a write is checked by reading again.
+Times are in seconds. **The list is the game's whole list of earned achievements**, so a write sends what is earned
+(with its times as read) plus the new ones: a partial list could replace the rest. Nothing in the protocol takes an
+achievement away, so an unlock is final.
+
+Tried on a live account with one achievement (Far Cry 5, "ARCADE Player", 22 earned, 23 after): the service kept it
+and the 22 others with their times, a fresh connection read it back, and Ubisoft Connect showed it earned with that
+day's date and 23 of 72. The launcher's local spool did **not** change, because the current launcher reads
+achievements over the network and keeps a spool only for games played on that computer.
+
+What the application does about it: the window shows what is earned as fixed, offers no Lock or Invert, asks before an
+unlock is sent, refuses an achievement the game's list does not have, and reports a write the service did not keep.
+Ubisoft may treat recording achievements outside the game as against its terms (UbiSlot says "modifying achievement
+data may carry account or service-related risks"); that risk is the user's, and the README says so.
 
 ## What the files hold, and what they do not
 
