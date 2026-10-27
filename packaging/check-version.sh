@@ -37,14 +37,10 @@ expect() {
 
 echo "checking that the repository says $version"
 
-for project in AchievementCaretaker.App AchievementCaretaker.SteamApi AchievementCaretaker.Providers.Abstractions \
-    AchievementCaretaker.Providers.Shared AchievementCaretaker.Providers.Epic AchievementCaretaker.Providers.Gog \
-    AchievementCaretaker.Services AchievementCaretaker.Providers.Steam AchievementCaretaker.Providers.Steam.Worker; do
-    csproj="$project/$project.csproj"
-    expect "$project Version"         "$csproj" "<Version>$version</Version>"
-    expect "$project AssemblyVersion" "$csproj" "<AssemblyVersion>$assembly</AssemblyVersion>"
-    expect "$project FileVersion"     "$csproj" "<FileVersion>$assembly</FileVersion>"
-done
+# The version is declared once, in Directory.Build.props, for every project.
+expect "Version"         "Directory.Build.props" "<Version>$version</Version>"
+expect "AssemblyVersion" "Directory.Build.props" "<AssemblyVersion>$assembly</AssemblyVersion>"
+expect "FileVersion"     "Directory.Build.props" "<FileVersion>$assembly</FileVersion>"
 
 expect "library window title" \
     "AchievementCaretaker.App/Views/GamePickerWindow.axaml" \

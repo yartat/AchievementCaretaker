@@ -1185,7 +1185,7 @@ release. Delete whichever forge is not used. `packaging/` holds the shared half:
 | File | Does |
 |---|---|
 | `packaging/version.sh` | prints `VERSION=…`: the tag version, or the project version with a `~dev` suffix off a tag. Reads GitLab's and GitHub's tag variables both |
-| `packaging/check-version.sh` | fails unless the tag, both `.csproj` files, both window titles and the release-notes heading agree |
+| `packaging/check-version.sh` | fails unless the tag, `Directory.Build.props`, both window titles and the release-notes heading agree |
 | `packaging/check-pe-arch.sh` | asserts a published Windows bundle is all one architecture |
 | `packaging/windows/build-installer.sh` | drives NSIS to build the per-user Windows installer |
 | `packaging/windows/installer.nsi` | the installer itself |
