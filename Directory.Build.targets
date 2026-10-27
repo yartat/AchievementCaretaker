@@ -2,7 +2,7 @@
 <Project>
 
   <PropertyGroup Condition="!($(MSBuildProjectName.EndsWith(`.Tests`)))">
-    <DocumentationFile>bin\$(Configuration)\$(TargetFramework)\$(AssemblyName).xml</DocumentationFile>
+    <DocumentationFile>$(OutputPath)$(AssemblyName).xml</DocumentationFile>
   </PropertyGroup>
 
   <PropertyGroup>
