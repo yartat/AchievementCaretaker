@@ -39,7 +39,7 @@ VIAddVersionKey "FileDescription" "${APP_NAME} ${ARCH} installer"
 VIAddVersionKey "FileVersion" "${VERSION4}"
 VIAddVersionKey "ProductVersion" "${VERSION}"
 VIAddVersionKey "CompanyName" "${PUBLISHER}"
-VIAddVersionKey "LegalCopyright" "Copyright (c) 2026 ${PUBLISHER}. Steam support based on Steam Achievement Manager, copyright (c) 2008-2024 Rick (gibbed); GOG support based on GOG Achievements Manager by Timendum."
+VIAddVersionKey "LegalCopyright" "Copyright (c) 2026 ${PUBLISHER}. Steam support based on Steam Achievement Manager, copyright (c) 2008-2024 Rick (gibbed); GOG support based on GOG Achievements Manager by Timendum; Ubisoft Connect support based on UbiSlot by BalTor02, Achievements by PSerban93, galaxy-integration-uplay by melcom and UplayKit by UplayDB."
 
 !define MUI_ICON "${ICON}"
 !define MUI_UNICON "${ICON}"

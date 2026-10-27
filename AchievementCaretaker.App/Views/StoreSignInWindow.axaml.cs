@@ -120,6 +120,19 @@ public partial class StoreSignInWindow : Window
             return;
         }
 
+        // A store that leaves its sign-in in the page's storage gets its script run on its own pages only.
+        if (_account.SignInScript is { } script && e.Request?.Host == new Uri(_account.SignInUrl).Host)
+        {
+            try
+            {
+                await Browser.InvokeScript(script);
+            }
+            catch (Exception)
+            {
+                ShowUnavailable();
+            }
+        }
+
         switch (_account.GetSignInResultKind(e.Request))
         {
             case SignInResultKind.Address:

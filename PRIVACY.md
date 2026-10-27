@@ -11,7 +11,8 @@ Last updated: 2026-10-16.
 
 - It sends no usage statistics, analytics, crash reports or advertising identifiers anywhere.
 - It has no account of its own. Your Steam, Epic Games and GOG accounts are used only through
-  those stores' own clients or sign-in pages, as described below.
+  those stores' own clients or sign-in pages, as described below. Ubisoft Connect is read from the
+  files its launcher keeps on your computer; nothing about you is sent to Ubisoft (see below).
 - It does not read your passwords, and it does not read the stored credentials of any other
   application.
 
@@ -26,7 +27,8 @@ Everything is kept in the `.sac` folder in your user profile (`C:\Users\<you>\.s
 | `ratings.json` | your own like or dislike for each game. This is not your Steam review and is never sent to Steam |
 | `games.db` | the library, achievement counts and achievement lists you have loaded, kept separately for each account |
 | `icons/`, `store/` | cached game images and achievement icons |
-| `epic.json`, `gog.json` | your sign-in token for that store, present only while you are signed in to it |
+| `ubisoft/icons/`, `ubisoft/archives/` | Ubisoft achievement icons, and achievement lists downloaded from Ubisoft's content server because the launcher had not saved them (Windows) |
+| `epic.json`, `gog.json`, `ubisoft.json` | your sign-in token for that store, present only while you are signed in to it (Ubisoft: only if you chose to sign in; without it the launcher's files are read) |
 
 The sign-in tokens are a credential for your whole store account. On Windows they are encrypted
 with the Windows Data Protection API for your user account. On other systems the file is readable
@@ -58,6 +60,18 @@ itself.
 - `auth.gog.com`, for signing in, in the embedded browser, and for refreshing your token.
 - `embed.gog.com`, `api.gog.com` and `gameplay.gog.com`, for your library, product information,
   and your achievements. To unlock or re-lock an achievement, they receive the request you make.
+
+**Ubisoft** (only if you use the Ubisoft Connect source)
+- `static3.cdn.ubi.com`, Ubisoft's public content server, for the pictures of your games and for the
+  achievement lists of games whose list the launcher has not saved. These are plain downloads of
+  public files named by the launcher's own catalog; no sign-in is involved and the request carries
+  no account identifier, but, as with any request, the server sees your IP address.
+- Without a sign-in, your games, what you earned and your account are read from the launcher's files on
+  your computer and are not sent anywhere.
+- If you sign in: `connect.ubisoft.com` (the sign-in page, in the embedded browser),
+  `public-ubiservices.ubi.com` (renewing the sign-in) and `dmx.upc.ubisoft.com` (Ubisoft's service for the
+  launcher, which lists your games and the achievements you have earned). They receive your sign-in ticket
+  and the product identifiers of your games.
 
 **GOGDB** (`www.gogdb.org`, a volunteer community site; only for GOG)
 - Used to find the internal identifier that GOG uses for a game. Reading achievements sends the

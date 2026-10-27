@@ -14,8 +14,8 @@
 
   <PropertyGroup>
     <AssemblyTitle>Achievement Caretaker</AssemblyTitle>
-    <Description>A single-executable manager for game achievements and stats. Steam support is based on Steam Achievement Manager by Rick (gibbed); GOG support is based on GOG Achievements Manager by Timendum.</Description>
-    <Copyright>Copyright © 2026 Yaroslav V Tatarenko. Steam support based on Steam Achievement Manager, copyright © 2008-2024 Rick (gibbed); GOG support based on GOG Achievements Manager by Timendum.</Copyright>
+    <Description>A single-executable manager for game achievements and stats. Steam support is based on Steam Achievement Manager by Rick (gibbed); GOG support is based on GOG Achievements Manager by Timendum; Ubisoft Connect support is based on UbiSlot by BalTor02, Achievements by PSerban93, galaxy-integration-uplay by melcom and UplayKit by UplayDB.</Description>
+    <Copyright>Copyright © 2026 Yaroslav V Tatarenko. Steam support based on Steam Achievement Manager, copyright © 2008-2024 Rick (gibbed); GOG support based on GOG Achievements Manager by Timendum; Ubisoft Connect support based on UbiSlot by BalTor02, Achievements by PSerban93, galaxy-integration-uplay by melcom and UplayKit by UplayDB.</Copyright>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -65,6 +65,7 @@
     <ProjectReference Include="..\AchievementCaretaker.Providers.Abstractions\AchievementCaretaker.Providers.Abstractions.csproj" />
     <ProjectReference Include="..\AchievementCaretaker.Providers.Epic\AchievementCaretaker.Providers.Epic.csproj" />
     <ProjectReference Include="..\AchievementCaretaker.Providers.Gog\AchievementCaretaker.Providers.Gog.csproj" />
+    <ProjectReference Include="..\AchievementCaretaker.Providers.Ubisoft\AchievementCaretaker.Providers.Ubisoft.csproj" />
   </ItemGroup>
 
 </Project>

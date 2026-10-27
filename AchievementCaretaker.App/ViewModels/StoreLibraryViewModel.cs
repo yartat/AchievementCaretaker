@@ -181,6 +181,39 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
 
     public bool IsSignedOut => _account.IsSignedIn == false;
 
+    /// <summary>
+    /// The account is found on this computer, not signed in to by Caretaker (Ubisoft Connect): there is no sign-in
+    /// panel, no Switch account and no Sign out, and nothing to read progress with that the listing has not.
+    /// </summary>
+    public bool IsLocalAccount => _account is ILocalStoreAccount;
+
+    /// <summary>The sign-in panel is shown: signed out, from a store Caretaker signs in to.</summary>
+    public bool IsSignInVisible => IsSignedOut == true && IsLocalAccount == false;
+
+    /// <summary>The store's own client was not found or has nobody logged in: say so, and offer to look again.</summary>
+    public bool IsLocalMissing => IsSignedOut == true && IsLocalAccount == true;
+
+    /// <summary>Why a local account cannot be read, from the account.</summary>
+    public string LocalMissingText => (_account as ILocalStoreAccount)?.UnavailableMessage ?? "";
+
+    /// <summary>Caretaker is also signed in to the local account's store, which has what the files do not.</summary>
+    public bool IsOnline => (_account as ILocalStoreAccount)?.IsSignedInOnline == true;
+
+    /// <summary>The local account's store can also be signed in to (Ubisoft): optional, for what the files do not hold.</summary>
+    public bool CanSignInOnline => IsLocalAccount == true && _account.SignInUrl.Length > 0;
+
+    /// <summary>The rail offers "Sign in": signed out of a store Caretaker signs in to, or of a local one that can be.</summary>
+    public bool IsRailSignInVisible => IsSignedOut == true && (IsLocalAccount == false || CanSignInOnline == true);
+
+    /// <summary>A local account that is read from this computer is offered the optional sign-in, in the account menu.</summary>
+    public bool IsLocalSignInOffered => IsSignedIn == true && CanSignInOnline == true && IsOnline == false;
+
+    /// <summary>The account can be switched or signed out of: one Caretaker signed in to, not one only found on this computer.</summary>
+    public bool CanChangeAccount => IsSignedIn == true && (IsLocalAccount == false || IsOnline == true);
+
+    /// <summary>The account menu has something in it.</summary>
+    public bool HasAccountMenu => CanChangeAccount == true || IsLocalSignInOffered == true;
+
     /// <summary>The rail's account line: who is signed in, or the way to sign in.</summary>
     public string RailAccountText =>
         IsSignedIn == true
@@ -222,6 +255,8 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
         {
             nameof(IsSignedIn), nameof(IsSignedOut), nameof(AccountText),
             nameof(RailAccountText), nameof(CanRefresh), nameof(CanLoadProgress),
+            nameof(IsSignInVisible), nameof(IsLocalMissing), nameof(CanChangeAccount),
+            nameof(IsOnline), nameof(IsRailSignInVisible), nameof(IsLocalSignInOffered), nameof(HasAccountMenu),
         })
         {
             OnPropertyChanged(name);
@@ -289,6 +324,14 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
         }
         else if (result.Unavailable == true)
         {
+            if (string.IsNullOrEmpty(_account.SignInHint) == true)
+            {
+                // The store hands its sign-in over inside the page, so nothing can be pasted back from another browser.
+                ErrorRaised?.Invoke(
+                    "The browser built into Caretaker could not start, and signing in to this store needs it. " +
+                    "On Windows it needs the WebView2 runtime.");
+                return;
+            }
             if (IsSignedIn == true)
             {
                 ErrorRaised?.Invoke(
@@ -354,6 +397,40 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Looks for the store's client again, for a local account that was not there: the user has since
+    /// installed it or logged in to it. What is found replaces what is on screen, as a sign-in does.
+    /// </summary>
+    [RelayCommand]
+    private async Task LookAgainAsync()
+    {
+        if (IsBusy == true)
+        {
+            return;
+        }
+
+        NotifySignInChanged();
+        if (IsSignedIn == false)
+        {
+            StatusText = $"{DisplayName} was still not found.";
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            CancelProgress();
+            ClearLibrary();
+            LoadFromCache();
+            NotifySignInChanged();
+            await RefreshLibraryCoreAsync();
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     [RelayCommand]
     private async Task SignOutAsync()
     {
@@ -365,6 +442,12 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
 
         ForgetAccount();
         StatusText = $"Signed out of {DisplayName}.";
+
+        // A local account is still there to be read after Caretaker's own sign-in to it has gone.
+        if (IsSignedIn == true)
+        {
+            await LookAgainAsync();
+        }
     }
 
     /// <summary>Called when a request finds the session no longer valid.</summary>
@@ -522,6 +605,7 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
                     info.ImageUrl = game.ImageUrl;
                     info.LogoLoader = null;
                 }
+                ApplyListedProgress(info, game);
                 continue;
             }
 
@@ -530,11 +614,24 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
                 Name = game.Title,
                 ImageUrl = game.ImageUrl,
             };
+            ApplyListedProgress(_games[game.Id], game);
         }
 
         foreach (var gone in _games.Keys.Where(id => owned.Contains(id) == false).ToList())
         {
             _games.Remove(gone);
+        }
+    }
+
+    /// <summary>
+    /// A store that already knows a game's counts when it lists it (Ubisoft Connect reads them from local files)
+    /// says so; the others leave them out and the counts come from reading each game's achievements.
+    /// </summary>
+    private static void ApplyListedProgress(StoreGameInfo info, StoreGame game)
+    {
+        if (game.AchievementsTotal is int total && game.AchievementsEarned is int earned)
+        {
+            info.Progress = new StoreProgress(earned, total);
         }
     }
 
@@ -829,7 +926,12 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
             return;
         }
 
-        var games = _games.Values.Where(g => g.Progress.HasValue == false).OrderBy(g => g.Name).ToList();
+        // A store that is read from this computer or from one connection (Ubisoft) is cheap to read again, and what
+        // was earned since changes the count, so it reads every game that has achievements, not only the unknown ones.
+        var games = _games.Values
+            .Where(g => g.Progress.HasValue == false || (IsLocalAccount == true && g.Progress.Value.Total > 0))
+            .OrderBy(g => g.Name)
+            .ToList();
         var total = games.Count;
         if (total == 0)
         {

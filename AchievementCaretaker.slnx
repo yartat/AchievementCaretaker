@@ -26,6 +26,7 @@
     <File Path="docs/BUILD.md" />
     <File Path="docs/EPIC-RESEARCH.md" />
     <File Path="docs/GOG-RESEARCH.md" />
+    <File Path="docs/UBISOFT-RESEARCH.md" />
     <File Path="docs/RELEASE-NOTES.md" />
   </Folder>
   <Folder Name="/Providers/">
@@ -45,6 +46,9 @@
       <Platform Solution="*|x86" Project="x86" />
     </Project>
     <Project Path="AchievementCaretaker.Providers.Steam/AchievementCaretaker.Providers.Steam.csproj">
+      <Platform Solution="*|x86" Project="x86" />
+    </Project>
+    <Project Path="AchievementCaretaker.Providers.Ubisoft/AchievementCaretaker.Providers.Ubisoft.csproj">
       <Platform Solution="*|x86" Project="x86" />
     </Project>
     <Project Path="AchievementCaretaker.SteamApi/AchievementCaretaker.SteamApi.csproj">

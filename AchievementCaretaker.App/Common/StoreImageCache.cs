@@ -114,6 +114,13 @@ internal sealed class StoreImageCache
             return null;
         }
 
+        // A file on this computer (Ubisoft's icons, taken out of the archives) is read where it is: it
+        // is already a file, so there is nothing to download and nothing to keep a second copy of.
+        if (Uri.TryCreate(url, UriKind.Absolute, out var address) == true && address.IsFile == true)
+        {
+            return await DecodeGatedAsync(() => OpenLocal(address.LocalPath), decodeWidth, cancellationToken);
+        }
+
         var cached = await DecodeGatedAsync(() => TryOpen(provider, url), decodeWidth, cancellationToken);
         if (cached != null)
         {
@@ -135,6 +142,20 @@ internal sealed class StoreImageCache
             throw;
         }
         catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private static FileStream? OpenLocal(string path)
+    {
+        try
+        {
+            return File.Exists(path) == true
+                ? new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.SequentialScan)
+                : null;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             return null;
         }

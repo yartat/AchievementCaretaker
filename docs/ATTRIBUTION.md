@@ -8,6 +8,7 @@ file says which it belongs to.
 | **Steam support**: `AchievementCaretaker.SteamApi`, and the Steam half of the application (the library window, the achievement editor, their caches) | [Steam Achievement Manager](https://github.com/gibbed/SteamAchievementManager) by Rick (gibbed) | zlib |
 | **GOG provider**: `AchievementCaretaker.Providers.Gog` | [GOG Achievements Manager](https://github.com/timendum/gog_achievements) by Timendum | none published |
 | **Epic Games provider**: `AchievementCaretaker.Providers.Epic` | the endpoints documented by [Legendary](https://github.com/derrod/legendary) and Heroic | Legendary: GPL-3.0 |
+| **Ubisoft Connect provider**: `AchievementCaretaker.Providers.Ubisoft` | [UbiSlot](https://github.com/BalTor02/UbiSlot) by BalTor02, [Achievements](https://github.com/PSerban93/Achievements) by PSerban93 [galaxy-integration-uplay](https://github.com/melcom-creations/galaxy-integration-uplay) by melcom and [UplayKit](https://github.com/UplayDB/UplayKit) by UplayDB | all MIT |
 | Everything else: the shared store code, the store windows and view models, `tools/`, CI and packaging | this project | — |
 
 ## Steam support is based on Steam Achievement Manager
@@ -98,6 +99,65 @@ Legendary is licensed **GPL-3.0**. None of its source is included, but the two G
 queries follow its published query text with fewer fields. That is said here rather than
 left unsaid; whether it is enough to matter is for the project owner to decide.
 
+## The Ubisoft Connect provider is based on UbiSlot, Achievements, galaxy-integration-uplay and UplayKit
+
+The Ubisoft Connect provider reads the files Ubisoft Connect keeps on the computer, and what it knows
+about them comes from four open-source tools:
+
+- **UbiSlot** by **BalTor02** (C#, Windows): <https://github.com/BalTor02/UbiSlot>, MIT,
+  © 2026 Balkrishna Toraskar. Where the launcher keeps the ownership cache, the achievement archives
+  and the spool, and what is in them; and the list of game ids and names (`Data/UplayGames.txt`),
+  which is a **copy** of UbiSlot's, whose ids UbiSlot credits to **NikitaGareev**. UbiSlot credits
+  **PSerban93** for the way the achievement data is extracted.
+- **Achievements** by **PSerban93** (JavaScript, Electron): <https://github.com/PSerban93/Achievements>,
+  MIT, © 2025 JokerVerse. How the spool and the archives are read, and that the archive's name carries
+  a hash and may have no `.zip`.
+- **galaxy-integration-uplay** by **melcom** (Python, a GOG Galaxy plugin):
+  <https://github.com/melcom-creations/galaxy-integration-uplay>, MIT, © 2019 FriendsOfGalaxy and
+  © 2026 melcom. That the launcher's configuration catalog and Ubisoft's public content server hold
+  the names and pictures of the games, and what Ubisoft's sign-in page leaves in the browser and how the
+  session is renewed (`UbisoftProvider.Online.cs`).
+- **UplayKit** (C#) and **Uplay-Protobufs** by **UplayDB**: <https://github.com/UplayDB/UplayKit>,
+  <https://github.com/UplayDB/Uplay-Protobufs>, MIT, © 2022-2025 UplayDB. The socket protocol Ubisoft's
+  launcher uses (framing, the version check, signing in with a ticket, the ownership and achievements
+  services) and the field numbers of its messages, which `DemuxClient`, `UbisoftOnline` and
+  `ProtoMessage` follow. The code is written again, not copied.
+
+The schemas of the launcher's cache files (ownership, configuration) are from the same UplayDB projects.
+
+The C# is written for this project; the parsers are rewritten, not ported. What UbiSlot does beyond
+reading is **not** part of this project: it writes the spool to unlock achievements, through
+`uplay_r164.dll` and a session the launcher restarts the process into. Caretaker's provider is read
+only. See [UBISOFT-RESEARCH.md](UBISOFT-RESEARCH.md).
+
+All four are MIT, which asks that their copyright and permission notices travel with substantial portions.
+They are reproduced here, and the header of every file of the provider names the projects it derives from.
+
+> MIT License
+>
+> Copyright (c) 2026 Balkrishna Toraskar (UbiSlot)
+>
+> Copyright (c) 2025 JokerVerse (Achievements)
+>
+> Copyright (c) 2019 FriendsOfGalaxy and (c) 2026 melcom (galaxy-integration-uplay)
+>
+> Copyright (c) 2022-2025 UplayDB (UplayKit, Uplay-Protobufs)
+>
+> Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
+> associated documentation files (the "Software"), to deal in the Software without restriction,
+> including without limitation the rights to use, copy, modify, merge, publish, distribute,
+> sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
+> furnished to do so, subject to the following conditions:
+>
+> The above copyright notice and this permission notice shall be included in all copies or
+> substantial portions of the Software.
+>
+> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
+> NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+> NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+> DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+> OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 ## Licence position — needs a decision
 
 The repository currently carries **two** licence files, and they do not agree:
@@ -125,9 +185,10 @@ decided, treat `LICENSE.txt` as governing the SAM-derived files and `LICENSE` th
 ## Trademarks
 
 Steam is a trademark of Valve Corporation, GOG and GOG Galaxy are trademarks of GOG sp. z
-o.o., and Epic Games is a trademark of Epic Games, Inc. This project is not affiliated with,
-endorsed by, or sponsored by any of them, nor by the authors of Steam Achievement Manager,
-GOG Achievements Manager or Legendary.
+o.o., Epic Games is a trademark of Epic Games, Inc., and Ubisoft and Ubisoft Connect are
+trademarks of Ubisoft Entertainment. This project is not affiliated with, endorsed by, or
+sponsored by any of them, nor by the authors of Steam Achievement Manager, GOG Achievements
+Manager, Legendary, UbiSlot or Achievements.
 
 ## Third-party components
 
