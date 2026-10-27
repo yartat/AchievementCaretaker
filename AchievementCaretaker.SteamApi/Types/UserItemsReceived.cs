@@ -32,10 +32,16 @@ using System.Runtime.InteropServices;
 
 namespace AchievementCaretaker.SteamApi.Types;
 
+/// <summary>The data of the <c>UserItemsReceived</c> callback, laid out as Steam sends it.</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct UserItemsReceived
 {
+    /// <summary>The app the items belong to.</summary>
     public ulong GameId;
+
+    /// <summary>A field whose meaning Steam does not document.</summary>
     public int Unknown;
+
+    /// <summary>How many items there are.</summary>
     public int ItemCount;
 }

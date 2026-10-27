@@ -29,7 +29,8 @@ namespace AchievementCaretaker.Providers;
 [SupportedOSPlatform("windows")]
 public sealed class DpapiSessionStore : ISessionStore
 {
-    public T Load<T>(string path)
+    /// <inheritdoc/>
+    public T? Load<T>(string path)
         where T : class
     {
         try
@@ -66,14 +67,20 @@ public sealed class DpapiSessionStore : ISessionStore
         }
     }
 
+    /// <inheritdoc/>
     public void Save<T>(string path, T session)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path)));
+        var directory = Path.GetDirectoryName(Path.GetFullPath(path));
+        if (!string.IsNullOrEmpty(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
 
         var json = JsonSerializer.SerializeToUtf8Bytes(session, new JsonSerializerOptions() { WriteIndented = true });
         File.WriteAllBytes(path, ProtectedData.Protect(json, null, DataProtectionScope.CurrentUser));
     }
 
+    /// <inheritdoc/>
     public void Delete(string path)
     {
         if (File.Exists(path) == true)
@@ -83,10 +90,8 @@ public sealed class DpapiSessionStore : ISessionStore
     }
 
     /// <summary>The length of a UTF-8 byte-order mark at the start, which the JSON reader does not skip.</summary>
-    private static int BomLength(byte[] bytes)
-    {
-        return bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF ? 3 : 0;
-    }
+    private static int BomLength(byte[] bytes) =>
+        bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF ? 3 : 0;
 
     /// <summary>
     /// True when the first byte that is not a byte-order mark or white space is
@@ -100,6 +105,7 @@ public sealed class DpapiSessionStore : ISessionStore
         {
             index++;
         }
+
         return index < bytes.Length && bytes[index] == (byte)'{';
     }
 }

@@ -34,6 +34,7 @@ public sealed class SteamWorkerProcessLauncher : ISteamWorkerLauncher
         _executable = executable;
     }
 
+    /// <inheritdoc />
     public async Task<ISteamWorker> StartAsync(long appId, CancellationToken cancellationToken)
     {
         var handshake = SteamWorkerHandshake.Create();

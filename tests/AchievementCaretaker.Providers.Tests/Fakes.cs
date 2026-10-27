@@ -18,7 +18,7 @@ using System.Threading.Tasks;
 namespace AchievementCaretaker.Providers.Tests;
 
 /// <summary>One request a provider made, as the fake saw it.</summary>
-internal sealed record SeenRequest(HttpMethod Method, string Url, string Authorization, string Body, string UserAgent);
+internal sealed record SeenRequest(HttpMethod Method, string Url, string? Authorization, string? Body, string UserAgent);
 
 /// <summary>
 /// A store's HTTP service, played by a table of routes: the first route whose text is in the
@@ -26,7 +26,7 @@ internal sealed record SeenRequest(HttpMethod Method, string Url, string Authori
 /// </summary>
 internal sealed class FakeStore : HttpMessageHandler, IHttpClientFactory
 {
-    private readonly List<(string Fragment, HttpMethod Method, Func<SeenRequest, HttpResponseMessage> Answer)> _routes = new();
+    private readonly List<(string Fragment, HttpMethod? Method, Func<SeenRequest, HttpResponseMessage> Answer)> _routes = new();
     private readonly ConcurrentQueue<SeenRequest> _seen = new();
 
     public IReadOnlyList<SeenRequest> Requests => _seen.ToList();
@@ -34,10 +34,10 @@ internal sealed class FakeStore : HttpMessageHandler, IHttpClientFactory
     public IEnumerable<SeenRequest> RequestsTo(string fragment) => Requests.Where(r => r.Url.Contains(fragment, StringComparison.Ordinal));
 
     /// <summary>Answers requests whose address contains <paramref name="fragment"/> with a fixed JSON body.</summary>
-    public FakeStore Json(string fragment, string json, HttpStatusCode status = HttpStatusCode.OK, HttpMethod method = null) =>
+    public FakeStore Json(string fragment, string json, HttpStatusCode status = HttpStatusCode.OK, HttpMethod? method = null) =>
         Route(fragment, _ => Reply(status, json), method);
 
-    public FakeStore Route(string fragment, Func<SeenRequest, HttpResponseMessage> answer, HttpMethod method = null)
+    public FakeStore Route(string fragment, Func<SeenRequest, HttpResponseMessage> answer, HttpMethod? method = null)
     {
         _routes.Add((fragment, method, answer));
         return this;
@@ -52,7 +52,7 @@ internal sealed class FakeStore : HttpMessageHandler, IHttpClientFactory
     {
         var seen = new SeenRequest(
             request.Method,
-            request.RequestUri.ToString(),
+            request.RequestUri!.ToString(),
             request.Headers.Authorization?.ToString(),
             request.Content == null ? null : await request.Content.ReadAsStringAsync(cancellationToken),
             request.Headers.UserAgent.ToString());
@@ -80,12 +80,12 @@ internal sealed class MemorySessionStore : ISessionStore
 
     public int Deletes { get; private set; }
 
-    public T Load<T>(string path)
+    public T? Load<T>(string path)
         where T : class => _saved.TryGetValue(path, out var session) ? session as T : null;
 
     public void Save<T>(string path, T session)
     {
-        _saved[path] = session;
+        _saved[path] = session!;
         Saves++;
     }
 

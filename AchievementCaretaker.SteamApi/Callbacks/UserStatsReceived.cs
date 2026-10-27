@@ -30,8 +30,12 @@
 
 namespace AchievementCaretaker.SteamApi.Callbacks;
 
+/// <summary>Steam's answer to <see cref="Wrappers.SteamUserStats013.RequestUserStats"/>.</summary>
 public class UserStatsReceived : Callback<Types.UserStatsReceived>
 {
+    /// <inheritdoc />
     public override int Id => 1101;
+
+    /// <inheritdoc />
     public override bool IsServer => false;
 }

@@ -23,8 +23,8 @@ public sealed class SteamLibraryServiceTests
 {
     private sealed class FakeScanProvider : ILibraryScanProvider
     {
-        public IReadOnlyCollection<LibraryCandidate> Scanned { get; private set; }
-        public LibraryCandidate Found { get; private set; }
+        public IReadOnlyCollection<LibraryCandidate>? Scanned { get; private set; }
+        public LibraryCandidate? Found { get; private set; }
 
         public string Id => "steam";
         public string DisplayName => "Steam";
@@ -46,7 +46,7 @@ public sealed class SteamLibraryServiceTests
             throw new NotSupportedException();
 
         public Task<LibraryScan> ScanLibraryAsync(
-            IReadOnlyCollection<LibraryCandidate> candidates, IProgress<LibraryScanProgress> progress, CancellationToken cancellationToken = default)
+            IReadOnlyCollection<LibraryCandidate> candidates, IProgress<LibraryScanProgress>? progress, CancellationToken cancellationToken = default)
         {
             Scanned = candidates;
             return Task.FromResult(new LibraryScan("42", Array.Empty<StoreGame>(), true));
@@ -54,16 +54,16 @@ public sealed class SteamLibraryServiceTests
 
         public Task<string> GetAccountAsync(CancellationToken cancellationToken = default) => Task.FromResult("42");
 
-        public Task<StoreGame> FindOwnedAsync(LibraryCandidate candidate, CancellationToken cancellationToken = default)
+        public Task<StoreGame?> FindOwnedAsync(LibraryCandidate candidate, CancellationToken cancellationToken = default)
         {
             Found = candidate;
-            return Task.FromResult<StoreGame>(null);
+            return Task.FromResult<StoreGame?>(null);
         }
     }
 
     private sealed class FakeHandler : HttpMessageHandler
     {
-        public Func<HttpResponseMessage> Respond { get; set; }
+        public Func<HttpResponseMessage> Respond { get; set; } = null!;
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
             Task.FromResult(Respond());
@@ -146,7 +146,7 @@ public sealed class SteamLibraryServiceTests
         var found = await service.FindOwnedAsync(480, TestContext.Current.CancellationToken);
 
         Assert.Equal("42", scan.Account);
-        Assert.Equal(candidates, provider.Scanned.ToArray());
+        Assert.Equal(candidates, provider.Scanned!.ToArray());
         Assert.Null(found);
         Assert.Equal(new LibraryCandidate("480", "normal"), provider.Found);
         Assert.Equal("42", await service.GetAccountAsync(TestContext.Current.CancellationToken));

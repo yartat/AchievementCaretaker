@@ -209,6 +209,9 @@ version is pinned in `global.json`. No Visual Studio installation is required.
 dotnet build AchievementCaretaker.slnx -c Release
 ```
 
+The build is expected to finish with 0 warnings and 0 errors: nullable reference types and
+XML documentation are enabled, and CI treats warnings as errors.
+
 The executable is written to `bin\` alongside the Avalonia assemblies and native libraries —
 the whole directory is needed to run, not just the executable. Full instructions, including
 32-bit, cross-platform and self-contained builds, are in [docs/BUILD.md](docs/BUILD.md).

@@ -1,40 +1,24 @@
 <Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+
   <PropertyGroup>
     <AssemblyTitle>Achievement Caretaker Services</AssemblyTitle>
-    <Company>Yaroslav V Tatarenko</Company>
-    <Authors>Yaroslav V Tatarenko</Authors>
     <Description>The logic behind the windows of Achievement Caretaker, without a user interface: the library and achievement caches and the services that use them. The Steam half is based on Steam Achievement Manager by Rick (gibbed).</Description>
-    <Copyright>Copyright © 2026 Yaroslav V Tatarenko. Steam support based on Steam Achievement Manager, copyright © 2008-2024 Rick (gibbed).</Copyright>
   </PropertyGroup>
-  <PropertyGroup>
-    <Version>2.1.1</Version>
-    <AssemblyVersion>2.1.1.0</AssemblyVersion>
-    <FileVersion>2.1.1.0</FileVersion>
-  </PropertyGroup>
-  <PropertyGroup>
-    <RepositoryUrl>https://github.com/yartat/AchievementCaretaker/</RepositoryUrl>
-    <RepositoryType>Git</RepositoryType>
-  </PropertyGroup>
-  <PropertyGroup>
-    <!-- No user interface and no Avalonia: what is here can be tested by anyone who
-         references it, which is the point of it being a library. -->
-    <TargetFramework>net10.0</TargetFramework>
-    <LangVersion>latest</LangVersion>
-    <Platforms>x86;AnyCPU</Platforms>
-  </PropertyGroup>
+
   <ItemGroup>
-    <PackageReference Include="Dapper" Version="2.1.66" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.1" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.13" />
-    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.13" />
-    <!-- Pinned ahead of the version Microsoft.Data.Sqlite pulls in: that one is
-         SQLitePCLRaw 2.1.11, which carries GHSA-2m69-gcr7-jv3q. -->
-    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.13" />
+    <PackageReference Include="Dapper" Version="$(Dapper)" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="$(Net10x)" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="$(Net10x)" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="$(Net10x)" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="$(SqlLite)" />
   </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\AchievementCaretaker.Providers.Abstractions\AchievementCaretaker.Providers.Abstractions.csproj" />
   </ItemGroup>
-  <PropertyGroup Condition="'$(Configuration)'=='Release'">
-    <Optimize>True</Optimize>
-  </PropertyGroup>
+
 </Project>

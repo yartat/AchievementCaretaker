@@ -26,11 +26,14 @@ public sealed class StoreLibraryService : IStoreLibraryService
 
     private readonly IGameRepository _cache;
 
+    /// <summary>Makes the service over the library cache.</summary>
+    /// <param name="cache">The saved libraries.</param>
     public StoreLibraryService(IGameRepository cache)
     {
         _cache = cache;
     }
 
+    /// <inheritdoc />
     public IReadOnlyList<CachedStoreGame> LoadCached(IStoreAccount account)
     {
         // Nobody signed in, nobody's library to show.
@@ -50,6 +53,7 @@ public sealed class StoreLibraryService : IStoreLibraryService
         }
     }
 
+    /// <inheritdoc />
     public async Task<StoreLibraryRefresh> RefreshAsync(IStoreProvider provider, CancellationToken cancellationToken)
     {
         try
@@ -75,7 +79,8 @@ public sealed class StoreLibraryService : IStoreLibraryService
         }
     }
 
-    public async Task<string> SaveLibraryAsync(IStoreAccount account, IReadOnlyCollection<CachedStoreGame> games)
+    /// <inheritdoc />
+    public async Task<string?> SaveLibraryAsync(IStoreAccount account, IReadOnlyCollection<CachedStoreGame> games)
     {
         var accountId = account.AccountId;
         if (accountId == null)
@@ -94,6 +99,7 @@ public sealed class StoreLibraryService : IStoreLibraryService
         }
     }
 
+    /// <inheritdoc />
     public void SaveProgress(IStoreAccount account, IReadOnlyCollection<(string Id, int Earned, int Total)> results)
     {
         var accountId = account.AccountId;
@@ -112,12 +118,13 @@ public sealed class StoreLibraryService : IStoreLibraryService
         }
     }
 
+    /// <inheritdoc />
     public async Task<StoreProgressRun> LoadProgressAsync(
         IStoreProvider provider,
         IStoreAccount account,
         IReadOnlyCollection<(string Id, string Key)> games,
-        Action<string, int, int> gameRead,
-        Action<int> stepped,
+        Action<string, int, int>? gameRead,
+        Action<int>? stepped,
         CancellationToken cancellationToken)
     {
         using var run = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -142,7 +149,7 @@ public sealed class StoreLibraryService : IStoreLibraryService
                     }
                 }
 
-                List<(string Id, int Earned, int Total)> batch = null;
+                List<(string Id, int Earned, int Total)>? batch = null;
                 try
                 {
                     var achievements = await provider.GetAchievementsAsync(game.Key, "en", token);

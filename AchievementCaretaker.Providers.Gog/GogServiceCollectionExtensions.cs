@@ -18,6 +18,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace AchievementCaretaker.Providers.Gog;
 
+/// <summary>Registration of the GOG provider.</summary>
 public static class GogServiceCollectionExtensions
 {
     /// <summary>
@@ -25,6 +26,7 @@ public static class GogServiceCollectionExtensions
     /// as an <see cref="IStoreProvider"/> and as an <see cref="IStoreAccount"/>: two roles of
     /// the one object, so the account signed in is the one the provider reads for.
     /// </summary>
+    /// <param name="services">The container being built.</param>
     /// <param name="homeDirectory">Where the session file lives: <c>gog.json</c> in it.</param>
     public static IServiceCollection AddGogProvider(this IServiceCollection services, string homeDirectory)
     {

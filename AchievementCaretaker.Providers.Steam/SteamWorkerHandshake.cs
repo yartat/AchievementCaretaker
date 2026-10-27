@@ -56,8 +56,12 @@ public sealed record SteamWorkerHandshake(string PfxBase64, string Token)
         }
     }
 
+    /// <summary>The handshake as the single line the helper reads from its standard input.</summary>
     public string ToLine() => JsonSerializer.Serialize(this);
 
+    /// <summary>Reads the line <see cref="ToLine"/> wrote.</summary>
+    /// <param name="line">The line from the helper's standard input.</param>
+    /// <exception cref="InvalidOperationException">The line is empty.</exception>
     public static SteamWorkerHandshake FromLine(string line) =>
         JsonSerializer.Deserialize<SteamWorkerHandshake>(line)
             ?? throw new InvalidOperationException("Empty handshake.");

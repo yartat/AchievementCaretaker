@@ -48,11 +48,14 @@ public sealed class SteamAppBackend : ISteamAppBackend
 {
     private readonly ISteamAppGateway _gateway;
 
+    /// <summary>Makes the backend over a connection to Steam.</summary>
+    /// <param name="gateway">The native calls; a fake in a test.</param>
     public SteamAppBackend(ISteamAppGateway gateway)
     {
         _gateway = gateway;
     }
 
+    /// <inheritdoc />
     public async Task<IReadOnlyList<StoreAchievement>> GetAchievementsAsync(CancellationToken cancellationToken)
     {
         await _gateway.EnsureUserStatsAsync(cancellationToken);
@@ -89,6 +92,7 @@ public sealed class SteamAppBackend : ISteamAppBackend
         return result;
     }
 
+    /// <inheritdoc />
     public async Task<IReadOnlyList<StoreStat>> GetStatsAsync(CancellationToken cancellationToken)
     {
         await _gateway.EnsureUserStatsAsync(cancellationToken);
@@ -123,6 +127,7 @@ public sealed class SteamAppBackend : ISteamAppBackend
         return result;
     }
 
+    /// <inheritdoc />
     public async Task CommitAsync(
         IReadOnlyCollection<KeyValuePair<string, bool>> achievements,
         IReadOnlyCollection<KeyValuePair<string, double>> statistics,
@@ -194,9 +199,10 @@ public sealed class SteamAppBackend : ISteamAppBackend
 
     #region Library
 
+    /// <inheritdoc />
     public Task<LibraryScan> ScanLibraryAsync(
         IReadOnlyCollection<LibraryCandidate> candidates,
-        IProgress<LibraryScanProgress> progress,
+        IProgress<LibraryScanProgress>? progress,
         CancellationToken cancellationToken)
     {
         // Every call is a Steam client call, one per candidate over the whole published list: off
@@ -206,7 +212,7 @@ public sealed class SteamAppBackend : ISteamAppBackend
 
     private LibraryScan Scan(
         IReadOnlyCollection<LibraryCandidate> candidates,
-        IProgress<LibraryScanProgress> progress,
+        IProgress<LibraryScanProgress>? progress,
         CancellationToken cancellationToken)
     {
         List<StoreGame> owned = new();
@@ -240,21 +246,23 @@ public sealed class SteamAppBackend : ISteamAppBackend
         return new LibraryScan(AccountOf(_gateway.SteamId), owned, complete);
     }
 
+    /// <inheritdoc />
     public Task<string> GetAccountAsync(CancellationToken cancellationToken) =>
         Task.FromResult(AccountOf(_gateway.SteamId));
 
     private static string AccountOf(ulong steamId) => ((uint)(steamId & 0xFFFFFFFFUL)).ToString(CultureInfo.InvariantCulture);
 
-    public Task<StoreGame> FindOwnedAsync(LibraryCandidate candidate, CancellationToken cancellationToken)
+    /// <inheritdoc />
+    public Task<StoreGame?> FindOwnedAsync(LibraryCandidate candidate, CancellationToken cancellationToken)
     {
-        var found = uint.TryParse(candidate.Id, NumberStyles.None, CultureInfo.InvariantCulture, out var appId) == true &&
+        StoreGame? found = uint.TryParse(candidate.Id, NumberStyles.None, CultureInfo.InvariantCulture, out var appId) == true &&
                     _gateway.IsSubscribed(appId) == true
             ? Describe(appId, candidate.Type)
             : null;
         return Task.FromResult(found);
     }
 
-    private StoreGame Describe(uint appId, string type)
+    private StoreGame Describe(uint appId, string? type)
     {
         var id = appId.ToString(CultureInfo.InvariantCulture);
         var stats = _gateway.GetCachedStats(appId);
@@ -278,7 +286,7 @@ public sealed class SteamAppBackend : ISteamAppBackend
     /// The small capsule in the game's language, then in English, then the old logo: the order the
     /// library window always looked in.
     /// </summary>
-    private string ImageUrl(uint appId)
+    private string? ImageUrl(uint appId)
     {
         var language = _gateway.Language;
 
@@ -303,13 +311,13 @@ public sealed class SteamAppBackend : ISteamAppBackend
             : null;
     }
 
-    private static int? ParseInt(string value) =>
+    private static int? ParseInt(string? value) =>
         string.IsNullOrEmpty(value) == false &&
         int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
             ? parsed
             : null;
 
-    private static DateTimeOffset? ParseUnixDate(string value) =>
+    private static DateTimeOffset? ParseUnixDate(string? value) =>
         string.IsNullOrEmpty(value) == false &&
         long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var seconds) &&
         seconds > 0
@@ -318,6 +326,7 @@ public sealed class SteamAppBackend : ISteamAppBackend
 
     #endregion
 
+    /// <inheritdoc />
     public async Task ResetAsync(bool includeAchievements, CancellationToken cancellationToken)
     {
         await _gateway.EnsureUserStatsAsync(cancellationToken);

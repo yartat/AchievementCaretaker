@@ -29,13 +29,27 @@
  */
 namespace AchievementCaretaker.SteamApi;
 
+/// <summary>The step of <see cref="Client.Initialize"/> that failed.</summary>
 public enum ClientInitializeFailure : byte
 {
+    /// <summary>No step is named.</summary>
     Unknown = 0,
+
+    /// <summary>Steam's install directory could not be found.</summary>
     GetInstallPath,
+
+    /// <summary>Steam's client library could not be loaded into this process.</summary>
     Load,
+
+    /// <summary>The library did not hand out its <c>ISteamClient</c>.</summary>
     CreateSteamClient,
+
+    /// <summary>The pipe to the running client could not be opened: Steam is not running.</summary>
     CreateSteamPipe,
+
+    /// <summary>Nobody is logged in to the client.</summary>
     ConnectToGlobalUser,
+
+    /// <summary>Steam thinks this process is another app than the one it asked to be.</summary>
     AppIdMismatch,
 }

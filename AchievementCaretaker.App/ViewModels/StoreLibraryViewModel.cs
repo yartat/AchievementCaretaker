@@ -78,7 +78,7 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
 
     private readonly Dictionary<string, StoreGameInfo> _games = new();
 
-    private CancellationTokenSource _progressRun;
+    private CancellationTokenSource? _progressRun;
 
     public ObservableCollection<StoreGameInfo> FilteredGames { get; } = new();
 
@@ -87,22 +87,22 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
     public string DisplayName => _provider.DisplayName;
 
     /// <summary>The picker raises its own error dialog from this.</summary>
-    public event Action<string> ErrorRaised;
+    public event Action<string>? ErrorRaised;
 
     /// <summary>The window opens the achievement viewer from this.</summary>
-    public event Action<StoreAchievementsViewModel> AchievementsRequested;
+    public event Action<StoreAchievementsViewModel>? AchievementsRequested;
 
     /// <summary>
     /// Raised to sign in with the store's own page in a browser inside the
     /// application; the window owns the window. Returns what the page ended on.
     /// </summary>
-    public event Func<IStoreAccount, Task<BrowserSignInResult>> BrowserSignInRequested;
+    public event Func<IStoreAccount, Task<BrowserSignInResult>>? BrowserSignInRequested;
 
     /// <summary>Raised before something the user may not want; the window asks.</summary>
-    public event Func<string, string, Task<bool>> ConfirmRequested;
+    public event Func<string, string, Task<bool>>? ConfirmRequested;
 
     [ObservableProperty]
-    private StoreGameInfo _selectedGame;
+    private StoreGameInfo? _selectedGame;
 
     /// <summary>Whether this is the source the rail has selected. Set by the picker.</summary>
     [ObservableProperty]
@@ -133,6 +133,11 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
 
     /// <param name="provider">What the store has: its library and achievements.</param>
     /// <param name="account">Who is signed in to it. The same store as <paramref name="provider"/>.</param>
+    /// <param name="library">Loads, refreshes and saves the library and its achievement counts.</param>
+    /// <param name="session">Signs in and out, and words what is asked and said about it.</param>
+    /// <param name="achievements">Reads a game's achievements for its window.</param>
+    /// <param name="images">Reads and keeps the capsules.</param>
+    /// <param name="sink">Where long jobs report to: the library window's status bar.</param>
     public StoreLibraryViewModel(
         IStoreProvider provider,
         IStoreAccount account,
@@ -314,7 +319,7 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
             var result = await _session.SignInAsync(_account, pasted, _lifetime.Token);
             if (result.SignedIn == false)
             {
-                ErrorText = result.Error;
+                ErrorText = result.Error ?? "";
             }
             else
             {
@@ -481,7 +486,7 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
             {
                 StatusText = refresh.Failure;
             }
-            else
+            else if (refresh.Library != null)
             {
                 Merge(refresh.Library);
                 RefreshCollectionCounts();
@@ -840,7 +845,7 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
         _sink.Begin($"Loading {DisplayName} progress...");
         _sink.Report($"Loading {DisplayName} progress, 0 of {total:N0}...", 0, total);
 
-        StoreProgressRun result = null;
+        StoreProgressRun result;
         try
         {
             result = await _library.LoadProgressAsync(
@@ -905,4 +910,4 @@ internal sealed partial class StoreLibraryViewModel : ObservableObject
 /// nothing because the user closed it, or <see cref="Unavailable"/> because the
 /// browser could not start and the user should be offered their own.
 /// </summary>
-internal readonly record struct BrowserSignInResult(string Pasted, bool Unavailable);
+internal readonly record struct BrowserSignInResult(string? Pasted, bool Unavailable);

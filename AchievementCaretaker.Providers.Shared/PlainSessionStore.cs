@@ -23,7 +23,8 @@ namespace AchievementCaretaker.Providers;
 [UnsupportedOSPlatform("windows")]
 public sealed class PlainSessionStore : ISessionStore
 {
-    public T Load<T>(string path)
+    /// <inheritdoc/>
+    public T? Load<T>(string path)
         where T : class
     {
         try
@@ -37,9 +38,14 @@ public sealed class PlainSessionStore : ISessionStore
         }
     }
 
+    /// <inheritdoc/>
     public void Save<T>(string path, T session)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path)));
+        var directory = Path.GetDirectoryName(Path.GetFullPath(path));
+        if (!string.IsNullOrEmpty(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
 
         File.WriteAllBytes(
             path,
@@ -47,6 +53,7 @@ public sealed class PlainSessionStore : ISessionStore
         File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
     }
 
+    /// <inheritdoc/>
     public void Delete(string path)
     {
         if (File.Exists(path) == true)

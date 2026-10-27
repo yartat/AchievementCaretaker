@@ -34,15 +34,15 @@ public sealed record GogSession
 
     /// <summary>The token that authorises requests to GOG's services.</summary>
     [JsonPropertyName("access_token")]
-    public string AccessToken { get; set; }
+    public string? AccessToken { get; set; }
 
     /// <summary>The credential that gets a new access token; replaced on every refresh.</summary>
     [JsonPropertyName("refresh_token")]
-    public string RefreshToken { get; set; }
+    public string? RefreshToken { get; set; }
 
     /// <summary>The GOG account's id, which a saved library is keyed by.</summary>
     [JsonPropertyName("user_id")]
-    public string UserId { get; set; }
+    public string? UserId { get; set; }
 
     /// <summary>
     /// Seconds the access token lasts, as the token response says. Only used
@@ -57,7 +57,7 @@ public sealed record GogSession
 
     /// <summary>The account's name, for the rail.</summary>
     [JsonPropertyName("displayName")]
-    public string DisplayName { get; set; }
+    public string? DisplayName { get; set; }
 
     /// <summary>Whether <see cref="AccessToken"/> can be used now, with a minute of slack so a token is not used just as it expires in flight.</summary>
     [JsonIgnore]

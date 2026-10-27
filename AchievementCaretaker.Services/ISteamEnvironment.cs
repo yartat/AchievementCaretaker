@@ -15,7 +15,7 @@ namespace AchievementCaretaker.Services;
 public interface ISteamEnvironment
 {
     /// <summary>Why Steam can never work here (Valve ships no client for this processor), or null when it can.</summary>
-    string UnsupportedReason { get; }
+    string? UnsupportedReason { get; }
 
     /// <summary>Whether Steam is installed.</summary>
     bool IsInstalled();

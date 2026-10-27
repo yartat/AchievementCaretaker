@@ -70,7 +70,7 @@ internal sealed class StoreImageCache
     /// bytes: a store's capsule is megabytes, so reading hundreds into arrays fills the large object
     /// heap with garbage the collector takes its time over (562 MB of it after scrolling one list).
     /// </summary>
-    private Stream TryOpen(string provider, string url)
+    private Stream? TryOpen(string provider, string? url)
     {
         if (string.IsNullOrEmpty(url) == true)
         {
@@ -99,12 +99,15 @@ internal sealed class StoreImageCache
     /// hundreds of images and decoding them on the UI thread stalls the window.
     /// The caller assigns the result, on the UI thread.
     /// </remarks>
+    /// <param name="provider">The store's id, which names the subfolder.</param>
+    /// <param name="url">Where the image is; null or empty for a game or achievement with none.</param>
+    /// <param name="cancellationToken">The token to cancel the read or the download.</param>
     /// <param name="decodeWidth">
     /// Decode no wider than this, or null for the image as it is. A store's capsule art can be
     /// 4000 pixels wide (some 900 of them were 8.6 GB decoded), and it is shown a few hundred
     /// wide; small icons need no such limit.
     /// </param>
-    public async Task<Bitmap> LoadAsync(string provider, string url, CancellationToken cancellationToken, int? decodeWidth = null)
+    public async Task<Bitmap?> LoadAsync(string provider, string? url, CancellationToken cancellationToken, int? decodeWidth = null)
     {
         if (string.IsNullOrEmpty(url) == true)
         {
@@ -142,7 +145,7 @@ internal sealed class StoreImageCache
     /// caller that is cancelled while it waits for its turn (a tile that scrolled out of view) never
     /// reads or decodes anything.
     /// </summary>
-    private async Task<Bitmap> DecodeGatedAsync(Func<Stream> open, int? decodeWidth, CancellationToken cancellationToken)
+    private async Task<Bitmap?> DecodeGatedAsync(Func<Stream?> open, int? decodeWidth, CancellationToken cancellationToken)
     {
         await _decodeGate.WaitAsync(cancellationToken);
         try
@@ -156,7 +159,7 @@ internal sealed class StoreImageCache
     }
 
     /// <summary>Null for no stream, and for data that is not an image: a truncated file means a re-download. Disposes the stream.</summary>
-    private static Bitmap Decode(Stream source, int? decodeWidth)
+    private static Bitmap? Decode(Stream? source, int? decodeWidth)
     {
         if (source == null)
         {
@@ -174,7 +177,7 @@ internal sealed class StoreImageCache
         }
     }
 
-    public void Write(string provider, string url, byte[] data)
+    public void Write(string provider, string? url, byte[] data)
     {
         if (string.IsNullOrEmpty(url) == true)
         {
@@ -183,7 +186,11 @@ internal sealed class StoreImageCache
         try
         {
             var file = FileFor(provider, url);
-            Directory.CreateDirectory(Path.GetDirectoryName(file));
+            var directory = Path.GetDirectoryName(file);
+            if (directory != null)
+            {
+                Directory.CreateDirectory(directory);
+            }
             File.WriteAllBytes(file, data);
         }
         catch (Exception)

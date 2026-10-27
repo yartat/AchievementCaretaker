@@ -56,7 +56,7 @@ internal static class Program
     /// No arguments means the library window, which initialises Steam with
     /// application id 0.
     /// </summary>
-    internal static bool TryParseAppId(string[] args, out long appId)
+    internal static bool TryParseAppId(string[]? args, out long appId)
     {
         if (args == null || args.Length == 0)
         {

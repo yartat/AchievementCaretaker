@@ -45,8 +45,8 @@ internal sealed class TileGrid : ScrollViewer
     public static readonly StyledProperty<IDataTemplate> ItemTemplateProperty =
         AvaloniaProperty.Register<TileGrid, IDataTemplate>(nameof(ItemTemplate));
 
-    public static readonly StyledProperty<object> SelectedItemProperty =
-        AvaloniaProperty.Register<TileGrid, object>(nameof(SelectedItem), defaultBindingMode: BindingMode.TwoWay);
+    public static readonly StyledProperty<object?> SelectedItemProperty =
+        AvaloniaProperty.Register<TileGrid, object?>(nameof(SelectedItem), defaultBindingMode: BindingMode.TwoWay);
 
     public static readonly StyledProperty<double> TileWidthProperty =
         AvaloniaProperty.Register<TileGrid, double>(nameof(TileWidth), 211);
@@ -100,7 +100,7 @@ internal sealed class TileGrid : ScrollViewer
         set => SetValue(ItemTemplateProperty, value);
     }
 
-    public object SelectedItem
+    public object? SelectedItem
     {
         get => GetValue(SelectedItemProperty);
         set => SetValue(SelectedItemProperty, value);

@@ -16,6 +16,8 @@ namespace AchievementCaretaker.Services;
 /// </summary>
 public sealed class DatabaseState
 {
+    /// <summary>Makes the state for a database at a path; nothing is opened yet.</summary>
+    /// <param name="path">The database file.</param>
     public DatabaseState(string path)
     {
         Path = path;
@@ -25,8 +27,9 @@ public sealed class DatabaseState
     public string Path { get; internal set; }
 
     /// <summary>Why the database could not be prepared at start, or null. A database that could not is not used.</summary>
-    public string Error { get; internal set; }
+    public string? Error { get; internal set; }
 
+    /// <summary>Whether the database was prepared and can be read and written.</summary>
     public bool IsAvailable => Error == null;
 
     /// <summary>The connection string for <see cref="Path"/>; the file is created if it is not there.</summary>

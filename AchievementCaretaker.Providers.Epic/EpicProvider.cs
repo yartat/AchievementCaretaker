@@ -75,10 +75,13 @@ public sealed class EpicProvider : IStoreProvider, IStoreAccount
     private readonly ISessionStore _sessions;
     private readonly string _sessionPath;
 
-    public EpicSession Session { get; private set; }
+    /// <summary>The saved sign-in, or null when signed out.</summary>
+    public EpicSession? Session { get; private set; }
 
+    /// <inheritdoc />
     public string Id => "epic";
 
+    /// <inheritdoc />
     public string DisplayName => "Epic Games";
 
     /// <summary>
@@ -91,21 +94,30 @@ public sealed class EpicProvider : IStoreProvider, IStoreAccount
         Uri.EscapeDataString(
             $"https://www.epicgames.com/id/api/redirect?clientId={LauncherClientId}&responseType=code");
 
+    /// <inheritdoc />
     public string SignInHint => "the page that shows \"authorizationCode\" (or just the code)";
 
-    public SignInResultKind GetSignInResultKind(Uri address) =>
+    /// <inheritdoc />
+    public SignInResultKind GetSignInResultKind(Uri? address) =>
         address != null &&
         address.Host.EndsWith("epicgames.com", StringComparison.OrdinalIgnoreCase) &&
         address.AbsolutePath.StartsWith("/id/api/redirect", StringComparison.OrdinalIgnoreCase)
             ? SignInResultKind.PageText
             : SignInResultKind.None;
 
+    /// <inheritdoc />
     public bool IsSignedIn => Session?.IsRefreshTokenValid == true;
 
-    public string AccountName => Session?.DisplayName;
+    /// <inheritdoc />
+    public string? AccountName => Session?.DisplayName;
 
-    public string AccountId => IsSignedIn == true ? Session.AccountId : null;
+    /// <inheritdoc />
+    public string? AccountId => IsSignedIn == true ? Session?.AccountId : null;
 
+    /// <summary>Makes the provider, reading the saved session if there is one.</summary>
+    /// <param name="httpFactory">Where the named client is asked for, per request.</param>
+    /// <param name="sessions">Where the session is kept between runs.</param>
+    /// <param name="sessionPath">The session file, <c>epic.json</c> in the home directory.</param>
     public EpicProvider(IHttpClientFactory httpFactory, ISessionStore sessions, string sessionPath)
     {
         _httpFactory = httpFactory;
@@ -123,12 +135,16 @@ public sealed class EpicProvider : IStoreProvider, IStoreAccount
 
     private HttpClient CreateClient() => _httpFactory.CreateClient(HttpClientName);
 
+    private static ProviderException NotSignedIn() => new("login_required", "Not signed in to Epic Games.");
+
     #region Sign-in
 
     /// <summary>
     /// Accepts either the bare authorization code or the whole JSON the
     /// redirect page shows, since pasting the page is what people will do.
     /// </summary>
+    /// <param name="pasted">The code, or the page's text.</param>
+    /// <param name="cancellationToken">The token to cancel the sign-in.</param>
     public async Task SignInAsync(string pasted, CancellationToken cancellationToken = default)
     {
         var match = Regex.Match(pasted ?? "", "\"authorizationCode\"\\s*:\\s*\"([0-9a-fA-F]+)\"");
@@ -148,6 +164,7 @@ public sealed class EpicProvider : IStoreProvider, IStoreAccount
             cancellationToken);
     }
 
+    /// <inheritdoc />
     public async Task EnsureSignedInAsync(CancellationToken cancellationToken = default)
     {
         if (Session?.IsAccessTokenValid == true)
@@ -155,9 +172,9 @@ public sealed class EpicProvider : IStoreProvider, IStoreAccount
             return;
         }
 
-        if (Session?.IsRefreshTokenValid != true)
+        if (Session is not { IsRefreshTokenValid: true, RefreshToken: { } refreshToken })
         {
-            throw new ProviderException("login_required", "Not signed in to Epic Games.");
+            throw NotSignedIn();
         }
 
         try
@@ -166,7 +183,7 @@ public sealed class EpicProvider : IStoreProvider, IStoreAccount
                 new()
                 {
                     ["grant_type"] = "refresh_token",
-                    ["refresh_token"] = Session.RefreshToken,
+                    ["refresh_token"] = refreshToken,
                     ["token_type"] = "eg1",
                 },
                 cancellationToken);
@@ -180,6 +197,7 @@ public sealed class EpicProvider : IStoreProvider, IStoreAccount
         }
     }
 
+    /// <inheritdoc />
     public void SignOut()
     {
         Session = null;
@@ -200,7 +218,8 @@ public sealed class EpicProvider : IStoreProvider, IStoreAccount
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
         ThrowIfEpicError(response, body);
 
-        Session = JsonSerializer.Deserialize<EpicSession>(body);
+        Session = JsonSerializer.Deserialize<EpicSession>(body)
+            ?? throw new ProviderException("bad_response", "Epic did not return a session.");
         _sessions.Save(_sessionPath, Session);
     }
 
@@ -214,8 +233,8 @@ public sealed class EpicProvider : IStoreProvider, IStoreAccount
     /// </summary>
     public async Task<IReadOnlyList<StoreGame>> GetLibraryAsync(CancellationToken cancellationToken = default)
     {
-        List<(string Namespace, string CatalogItemId, string AppName)> records = new();
-        string cursor = null;
+        List<(string Namespace, string CatalogItemId, string? AppName)> records = new();
+        string? cursor = null;
         do
         {
             var url = $"{LibraryHost}/library/api/public/items?includeMetadata=true";
@@ -290,7 +309,7 @@ public sealed class EpicProvider : IStoreProvider, IStoreAccount
 
     private async Task<List<StoreGame>> DescribeAsync(
         string ns,
-        List<(string Namespace, string CatalogItemId, string AppName)> items,
+        List<(string Namespace, string CatalogItemId, string? AppName)> items,
         CancellationToken cancellationToken)
     {
         List<StoreGame> games = new();
@@ -320,13 +339,13 @@ public sealed class EpicProvider : IStoreProvider, IStoreAccount
                     continue;
                 }
 
-                games.Add(new(Id, itemId, ns, GetString(item, "title") ?? appName, PickImage(item)));
+                games.Add(new(Id, itemId, ns, GetString(item, "title") ?? appName ?? itemId, PickImage(item)));
             }
         }
         return games;
     }
 
-    private static string PickImage(JsonElement item)
+    private static string? PickImage(JsonElement item)
     {
         if (item.TryGetProperty("keyImages", out var images) == false ||
             images.ValueKind != JsonValueKind.Array)
@@ -383,7 +402,10 @@ public sealed class EpicProvider : IStoreProvider, IStoreAccount
         }
         """;
 
+    /// <summary>A game's achievements with the signed-in player's progress.</summary>
     /// <param name="gameKey">The game's namespace, which GraphQL calls its sandbox id.</param>
+    /// <param name="locale">The language the names and descriptions are asked for in.</param>
+    /// <param name="cancellationToken">The token to cancel the requests.</param>
     public async Task<IReadOnlyList<StoreAchievement>> GetAchievementsAsync(
         string gameKey,
         string locale = "en",
@@ -397,7 +419,7 @@ public sealed class EpicProvider : IStoreProvider, IStoreAccount
             cancellationToken);
         using var player = await QueryAsync(
             PlayerAchievementQuery,
-            new { epicAccountId = Session.AccountId, sandboxId = gameKey },
+            new { epicAccountId = AccountId ?? throw NotSignedIn(), sandboxId = gameKey },
             cancellationToken);
 
         Dictionary<string, (bool Unlocked, double Progress, DateTimeOffset? Date)> states = new();
@@ -450,7 +472,12 @@ public sealed class EpicProvider : IStoreProvider, IStoreAccount
             }
 
             var name = GetString(definition, "name");
-            states.TryGetValue(name ?? "", out var state);
+            if (name == null)
+            {
+                continue;
+            }
+
+            states.TryGetValue(name, out var state);
 
             // Locked achievements show their locked text, which for a
             // hidden one is the placeholder Epic wants shown instead.
@@ -460,7 +487,7 @@ public sealed class EpicProvider : IStoreProvider, IStoreAccount
             achievements.Add(new(
                 name,
                 FirstOf(definition, prefix + "DisplayName", other + "DisplayName") ?? name,
-                FirstOf(definition, prefix + "Description", other + "Description"),
+                FirstOf(definition, prefix + "Description", other + "Description") ?? "",
                 FirstOf(definition, prefix + "IconLink", other + "IconLink"),
                 GetBool(definition, "hidden"),
                 (int?)GetDouble(definition, "XP"),
@@ -484,7 +511,7 @@ public sealed class EpicProvider : IStoreProvider, IStoreAccount
         };
         request.Headers.UserAgent.Clear();
         request.Headers.UserAgent.ParseAdd(StoreUserAgent);
-        request.Headers.Authorization = new AuthenticationHeaderValue("bearer", Session.AccessToken);
+        request.Headers.Authorization = new AuthenticationHeaderValue("bearer", Session?.AccessToken);
 
         using var response = await CreateClient().SendAsync(request, cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -513,7 +540,7 @@ public sealed class EpicProvider : IStoreProvider, IStoreAccount
         await EnsureSignedInAsync(cancellationToken);
 
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.Authorization = new AuthenticationHeaderValue("bearer", Session.AccessToken);
+        request.Headers.Authorization = new AuthenticationHeaderValue("bearer", Session?.AccessToken);
 
         using var response = await CreateClient().SendAsync(request, cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -528,8 +555,8 @@ public sealed class EpicProvider : IStoreProvider, IStoreAccount
     /// </summary>
     private static void ThrowIfEpicError(HttpResponseMessage response, string body)
     {
-        string code = null;
-        string message = null;
+        string? code = null;
+        string? message = null;
         try
         {
             using var document = JsonDocument.Parse(body);

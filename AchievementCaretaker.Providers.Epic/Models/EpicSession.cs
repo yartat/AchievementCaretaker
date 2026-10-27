@@ -31,7 +31,7 @@ public sealed record EpicSession
 
     /// <summary>The token that authorises requests to Epic's services.</summary>
     [JsonPropertyName("access_token")]
-    public string AccessToken { get; set; }
+    public string? AccessToken { get; set; }
 
     /// <summary>When <see cref="AccessToken"/> stops working.</summary>
     [JsonPropertyName("expires_at")]
@@ -39,7 +39,7 @@ public sealed record EpicSession
 
     /// <summary>The credential that gets a new access token without signing in again.</summary>
     [JsonPropertyName("refresh_token")]
-    public string RefreshToken { get; set; }
+    public string? RefreshToken { get; set; }
 
     /// <summary>When <see cref="RefreshToken"/> stops working; after that the user signs in again.</summary>
     [JsonPropertyName("refresh_expires_at")]
@@ -47,11 +47,11 @@ public sealed record EpicSession
 
     /// <summary>The Epic account's id, which a saved library is keyed by.</summary>
     [JsonPropertyName("account_id")]
-    public string AccountId { get; set; }
+    public string? AccountId { get; set; }
 
     /// <summary>The account's name, for the rail.</summary>
     [JsonPropertyName("displayName")]
-    public string DisplayName { get; set; }
+    public string? DisplayName { get; set; }
 
     /// <summary>
     /// Whether <see cref="AccessToken"/> can be used now, with a minute of slack so a token is

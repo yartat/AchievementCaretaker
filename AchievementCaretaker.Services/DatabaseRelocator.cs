@@ -23,12 +23,16 @@ public sealed class DatabaseRelocator : IDatabaseRelocator
     private readonly IDbConnection _connection;
     private readonly DatabaseState _state;
 
+    /// <summary>Makes the relocator over the scope's connection.</summary>
+    /// <param name="connection">The connection, closed before the files are moved.</param>
+    /// <param name="state">Where the database is; pointed at the new place once it has moved.</param>
     public DatabaseRelocator(IDbConnection connection, DatabaseState state)
     {
         _connection = connection;
         _state = state;
     }
 
+    /// <inheritdoc />
     public void MoveTo(string destination)
     {
         lock (_connection)

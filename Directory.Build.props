@@ -1,0 +1,50 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project>
+
+  <PropertyGroup>
+    <TestSdk>18.11.0</TestSdk>
+    <MoqLib>4.21.0</MoqLib>
+    <Net10x>10.0.*</Net10x>
+    <FluentAssertions>7.2.*</FluentAssertions>
+    <xunitv3>4.0.2</xunitv3>
+    <xUnitRunner>4.0.1</xUnitRunner>
+    <CommandLine>2.0.14</CommandLine>
+    <Dapper>2.1.89</Dapper>
+    <SqlLite>3.0.5</SqlLite>
+    <GrpcServer>2.84.0</GrpcServer>
+    <Grpc>2.84.0</Grpc>
+    <Protobuf>3.36.2</Protobuf>
+    <Avalonia>12.1.4</Avalonia>
+    <AvaloniaDataGrid>12.1.2</AvaloniaDataGrid>
+    <AvaloniaWebView>12.1.1</AvaloniaWebView>
+    <AvaloniaItemsRepeater>12.0.0</AvaloniaItemsRepeater>
+    <AvaloniaUIDiagnosticsSupport>2.2.3</AvaloniaUIDiagnosticsSupport>
+    <CommunityToolkitMvvm>8.4.2</CommunityToolkitMvvm>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Version>2.1.1</Version>
+    <AssemblyVersion>2.1.1.0</AssemblyVersion>
+    <FileVersion>2.1.1.0</FileVersion>
+    <Company>Yaroslav V Tatarenko</Company>
+    <Authors>Yaroslav V Tatarenko</Authors>
+    <Copyright>Copyright © 2026 Yaroslav V Tatarenko.</Copyright>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Platforms>x86;AnyCPU</Platforms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <RepositoryUrl>https://github.com/yartat/AchievementCaretaker/</RepositoryUrl>
+    <RepositoryType>Git</RepositoryType>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)'=='Release'">
+    <Optimize>True</Optimize>
+  </PropertyGroup>
+
+</Project>

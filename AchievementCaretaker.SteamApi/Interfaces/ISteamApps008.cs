@@ -33,35 +33,69 @@ using System.Runtime.InteropServices;
 
 namespace AchievementCaretaker.SteamApi.Interfaces;
 
+/// <summary>
+/// The vtable of Steam's <c>ISteamApps</c> interface, version 008: one slot per virtual method, in declaration order.
+/// </summary>
+/// <remarks>
+/// The order of the fields is an ABI contract with Steam's client library. Never reorder, insert or remove one.
+/// </remarks>
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct ISteamApps008
 {
+    /// <summary>Slot of <c>ISteamApps::IsSubscribed</c>.</summary>
     public IntPtr IsSubscribed;
+    /// <summary>Slot of <c>ISteamApps::IsLowViolence</c>.</summary>
     public IntPtr IsLowViolence;
+    /// <summary>Slot of <c>ISteamApps::IsCybercafe</c>.</summary>
     public IntPtr IsCybercafe;
+    /// <summary>Slot of <c>ISteamApps::IsVACBanned</c>.</summary>
     public IntPtr IsVACBanned;
+    /// <summary>Slot of <c>ISteamApps::GetCurrentGameLanguage</c>.</summary>
     public IntPtr GetCurrentGameLanguage;
+    /// <summary>Slot of <c>ISteamApps::GetAvailableGameLanguages</c>.</summary>
     public IntPtr GetAvailableGameLanguages;
+    /// <summary>Slot of <c>ISteamApps::IsSubscribedApp</c>.</summary>
     public IntPtr IsSubscribedApp;
+    /// <summary>Slot of <c>ISteamApps::IsDlcInstalled</c>.</summary>
     public IntPtr IsDlcInstalled;
+    /// <summary>Slot of <c>ISteamApps::GetEarliestPurchaseUnixTime</c>.</summary>
     public IntPtr GetEarliestPurchaseUnixTime;
+    /// <summary>Slot of <c>ISteamApps::IsSubscribedFromFreeWeekend</c>.</summary>
     public IntPtr IsSubscribedFromFreeWeekend;
+    /// <summary>Slot of <c>ISteamApps::GetDLCCount</c>.</summary>
     public IntPtr GetDLCCount;
+    /// <summary>Slot of <c>ISteamApps::GetDLCDataByIndex</c>.</summary>
     public IntPtr GetDLCDataByIndex;
+    /// <summary>Slot of <c>ISteamApps::InstallDLC</c>.</summary>
     public IntPtr InstallDLC;
+    /// <summary>Slot of <c>ISteamApps::UninstallDLC</c>.</summary>
     public IntPtr UninstallDLC;
+    /// <summary>Slot of <c>ISteamApps::RequestAppProofOfPurchaseKey</c>.</summary>
     public IntPtr RequestAppProofOfPurchaseKey;
+    /// <summary>Slot of <c>ISteamApps::GetCurrentBetaName</c>.</summary>
     public IntPtr GetCurrentBetaName;
+    /// <summary>Slot of <c>ISteamApps::MarkContentCorrupt</c>.</summary>
     public IntPtr MarkContentCorrupt;
+    /// <summary>Slot of <c>ISteamApps::GetInstalledDepots</c>.</summary>
     public IntPtr GetInstalledDepots;
+    /// <summary>Slot of <c>ISteamApps::GetAppInstallDir</c>.</summary>
     public IntPtr GetAppInstallDir;
+    /// <summary>Slot of <c>ISteamApps::IsAppInstalled</c>.</summary>
     public IntPtr IsAppInstalled;
+    /// <summary>Slot of <c>ISteamApps::GetAppOwner</c>.</summary>
     public IntPtr GetAppOwner;
+    /// <summary>Slot of <c>ISteamApps::GetLaunchQueryParam</c>.</summary>
     public IntPtr GetLaunchQueryParam;
+    /// <summary>Slot of <c>ISteamApps::GetDlcDownloadProgress</c>.</summary>
     public IntPtr GetDlcDownloadProgress;
+    /// <summary>Slot of <c>ISteamApps::GetAppBuildId</c>.</summary>
     public IntPtr GetAppBuildId;
+    /// <summary>Slot of <c>ISteamApps::RequestAllProofOfPurchaseKeys</c>.</summary>
     public IntPtr RequestAllProofOfPurchaseKeys;
+    /// <summary>Slot of <c>ISteamApps::GetFileDetails</c>.</summary>
     public IntPtr GetFileDetails;
+    /// <summary>Slot of <c>ISteamApps::GetLaunchCommandLine</c>.</summary>
     public IntPtr GetLaunchCommandLine;
+    /// <summary>Slot of <c>ISteamApps::IsSubscribedFromFamilySharing</c>.</summary>
     public IntPtr IsSubscribedFromFamilySharing;
 }

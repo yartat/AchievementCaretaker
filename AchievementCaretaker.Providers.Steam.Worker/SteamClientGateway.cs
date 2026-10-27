@@ -49,18 +49,22 @@ public sealed class SteamClientGateway : ISteamAppGateway
 
     private readonly object _gate = new();
     private readonly Client _client;
-    private readonly SteamAppIdFile _appIdFile;
+    private readonly SteamAppIdFile? _appIdFile;
     private readonly int? _processId;
-    private LibraryStats _libraryStats;
-    private Task _userStats;
+    private LibraryStats? _libraryStats;
+    private Task? _userStats;
 
+    /// <inheritdoc />
     public long AppId { get; }
 
+    /// <inheritdoc />
     public string Language { get; }
 
+    /// <inheritdoc />
     public ulong SteamId { get; }
 
     /// <summary>Connects to Steam as the given app. Throws <see cref="ClientInitializeException"/> if it cannot.</summary>
+    /// <param name="appId">The app id to act as; 0 for the library as a whole.</param>
     public SteamClientGateway(long appId)
     {
         AppId = appId;
@@ -70,7 +74,7 @@ public sealed class SteamClientGateway : ISteamAppGateway
         try
         {
             _client.Initialize(appId);
-            Language = _client.SteamApps008.GetCurrentGameLanguage();
+            Language = _client.SteamApps008.GetCurrentGameLanguage() ?? "english";
             SteamId = _client.SteamUser.GetSteamId();
             _processId = SteamPlatform.GetRunningClientProcessId();
         }
@@ -82,6 +86,7 @@ public sealed class SteamClientGateway : ISteamAppGateway
         }
     }
 
+    /// <inheritdoc />
     public Task EnsureUserStatsAsync(CancellationToken cancellationToken)
     {
         lock (_gate)
@@ -130,14 +135,22 @@ public sealed class SteamClientGateway : ISteamAppGateway
         }
     }
 
-    public KeyValue LoadSchema()
+    /// <inheritdoc />
+    public KeyValue? LoadSchema()
     {
+        var installPath = AchievementCaretaker.SteamApi.Steam.GetInstallPath();
+        if (installPath == null)
+        {
+            return null;
+        }
+
         var path = Path.Combine(
-            AchievementCaretaker.SteamApi.Steam.GetInstallPath(), "appcache", "stats",
+            installPath, "appcache", "stats",
             string.Create(CultureInfo.InvariantCulture, $"UserGameStatsSchema_{AppId}.bin"));
         return File.Exists(path) == true ? KeyValue.LoadAsBinary(path) : null;
     }
 
+    /// <inheritdoc />
     public bool TryGetAchievement(string id, out bool unlocked, out uint unlockTime)
     {
         lock (_gate)
@@ -146,6 +159,7 @@ public sealed class SteamClientGateway : ISteamAppGateway
         }
     }
 
+    /// <inheritdoc />
     public bool SetAchievement(string id, bool unlocked)
     {
         lock (_gate)
@@ -154,6 +168,7 @@ public sealed class SteamClientGateway : ISteamAppGateway
         }
     }
 
+    /// <inheritdoc />
     public bool TryGetIntStat(string id, out int value)
     {
         lock (_gate)
@@ -162,6 +177,7 @@ public sealed class SteamClientGateway : ISteamAppGateway
         }
     }
 
+    /// <inheritdoc />
     public bool TryGetFloatStat(string id, out float value)
     {
         lock (_gate)
@@ -170,6 +186,7 @@ public sealed class SteamClientGateway : ISteamAppGateway
         }
     }
 
+    /// <inheritdoc />
     public bool SetIntStat(string id, int value)
     {
         lock (_gate)
@@ -178,6 +195,7 @@ public sealed class SteamClientGateway : ISteamAppGateway
         }
     }
 
+    /// <inheritdoc />
     public bool SetFloatStat(string id, float value)
     {
         lock (_gate)
@@ -186,6 +204,7 @@ public sealed class SteamClientGateway : ISteamAppGateway
         }
     }
 
+    /// <inheritdoc />
     public bool ResetAllStats(bool includeAchievements)
     {
         lock (_gate)
@@ -194,6 +213,7 @@ public sealed class SteamClientGateway : ISteamAppGateway
         }
     }
 
+    /// <inheritdoc />
     public bool StoreStats()
     {
         lock (_gate)
@@ -202,6 +222,7 @@ public sealed class SteamClientGateway : ISteamAppGateway
         }
     }
 
+    /// <summary>Disconnects from Steam and removes the app id file.</summary>
     public void Dispose()
     {
         lock (_gate)
@@ -213,6 +234,7 @@ public sealed class SteamClientGateway : ISteamAppGateway
 
     #region Library
 
+    /// <inheritdoc />
     public bool IsSubscribed(uint appId)
     {
         lock (_gate)
@@ -221,7 +243,8 @@ public sealed class SteamClientGateway : ISteamAppGateway
         }
     }
 
-    public string GetAppData(uint appId, string key)
+    /// <inheritdoc />
+    public string? GetAppData(uint appId, string key)
     {
         lock (_gate)
         {
@@ -229,12 +252,14 @@ public sealed class SteamClientGateway : ISteamAppGateway
         }
     }
 
+    /// <inheritdoc />
     public GameStats? GetCachedStats(uint appId)
     {
         _libraryStats ??= LibraryStats.Create(SteamId);
         return _libraryStats?.TryGet(appId);
     }
 
+    /// <inheritdoc />
     public bool IsSteamStillRunning()
     {
         // With no process id on record there is no way to tell, and a connection that exists is

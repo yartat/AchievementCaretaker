@@ -27,7 +27,7 @@ public interface ILibraryScanProvider : IStoreProvider
     /// </summary>
     Task<LibraryScan> ScanLibraryAsync(
         IReadOnlyCollection<LibraryCandidate> candidates,
-        IProgress<LibraryScanProgress> progress,
+        IProgress<LibraryScanProgress>? progress,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -38,5 +38,5 @@ public interface ILibraryScanProvider : IStoreProvider
     Task<string> GetAccountAsync(CancellationToken cancellationToken = default);
 
     /// <summary>The candidate as an owned game, or null when the account does not own it.</summary>
-    Task<StoreGame> FindOwnedAsync(LibraryCandidate candidate, CancellationToken cancellationToken = default);
+    Task<StoreGame?> FindOwnedAsync(LibraryCandidate candidate, CancellationToken cancellationToken = default);
 }

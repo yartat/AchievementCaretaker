@@ -42,6 +42,7 @@ namespace AchievementCaretaker.Providers.Steam;
 /// </summary>
 public interface ISteamAppGateway : IDisposable
 {
+    /// <summary>The app id this connection acts as; 0 for the library as a whole.</summary>
     long AppId { get; }
 
     /// <summary>The language Steam shows this game in, which is the one the schema is read in.</summary>
@@ -54,23 +55,46 @@ public interface ISteamAppGateway : IDisposable
     Task EnsureUserStatsAsync(CancellationToken cancellationToken);
 
     /// <summary>Steam's cached schema for this game, or null if it has none.</summary>
-    KeyValue LoadSchema();
+    KeyValue? LoadSchema();
 
     /// <summary>False when Steam does not know the achievement.</summary>
     bool TryGetAchievement(string id, out bool unlocked, out uint unlockTime);
 
+    /// <summary>Unlocks or locks an achievement. Nothing is saved until <see cref="StoreStats"/>.</summary>
+    /// <param name="id">The achievement's API name.</param>
+    /// <param name="unlocked">True to unlock it, false to lock it again.</param>
+    /// <returns>False when Steam refuses.</returns>
     bool SetAchievement(string id, bool unlocked);
 
+    /// <summary>Reads an integer statistic; false when Steam has no such one.</summary>
+    /// <param name="id">The statistic's API name.</param>
+    /// <param name="value">The value.</param>
     bool TryGetIntStat(string id, out int value);
 
+    /// <summary>Reads a floating-point statistic; false when Steam has no such one.</summary>
+    /// <param name="id">The statistic's API name.</param>
+    /// <param name="value">The value.</param>
     bool TryGetFloatStat(string id, out float value);
 
+    /// <summary>Sets an integer statistic. Nothing is saved until <see cref="StoreStats"/>.</summary>
+    /// <param name="id">The statistic's API name.</param>
+    /// <param name="value">The new value.</param>
+    /// <returns>False when Steam refuses.</returns>
     bool SetIntStat(string id, int value);
 
+    /// <summary>Sets a floating-point statistic. Nothing is saved until <see cref="StoreStats"/>.</summary>
+    /// <param name="id">The statistic's API name.</param>
+    /// <param name="value">The new value.</param>
+    /// <returns>False when Steam refuses.</returns>
     bool SetFloatStat(string id, float value);
 
+    /// <summary>Resets every statistic, and the achievements too if asked. Cannot be undone.</summary>
+    /// <param name="includeAchievements">True to lock every achievement as well.</param>
+    /// <returns>False when Steam refuses.</returns>
     bool ResetAllStats(bool includeAchievements);
 
+    /// <summary>Sends every change made so far to Steam.</summary>
+    /// <returns>False when Steam could not take them.</returns>
     bool StoreStats();
 
     #region Library (the helper started for app id 0)
@@ -82,7 +106,7 @@ public interface ISteamAppGateway : IDisposable
     bool IsSubscribed(uint appId);
 
     /// <summary>One of Steam's metadata keys for an app (<c>name</c>, <c>small_capsule/english</c>, ...), or null.</summary>
-    string GetAppData(uint appId, string key);
+    string? GetAppData(uint appId, string key);
 
     /// <summary>What Steam's own cache files say about a game: playtime and achievement counts. Null when they say nothing.</summary>
     GameStats? GetCachedStats(uint appId);

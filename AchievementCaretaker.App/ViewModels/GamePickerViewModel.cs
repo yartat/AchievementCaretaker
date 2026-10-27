@@ -91,7 +91,7 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
     public ObservableCollection<GameInfo> FilteredGames { get; } = new();
 
     [ObservableProperty]
-    private GameInfo _selectedGame;
+    private GameInfo? _selectedGame;
 
     [ObservableProperty]
     private string _statusText = "";
@@ -362,7 +362,7 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
     /// Asks the view to show the settings dialog; returns the accepted
     /// settings, or null if the user cancelled.
     /// </summary>
-    public event Func<AppSettings, Task<AppSettings>> SettingsRequested;
+    public event Func<AppSettings, Task<AppSettings?>>? SettingsRequested;
 
     [RelayCommand]
     private async Task OpenSettingsAsync()
@@ -522,7 +522,7 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
         set => SetFilter(ref _showJunk, value);
     }
 
-    private void SetFilter(ref bool field, bool value, [System.Runtime.CompilerServices.CallerMemberName] string name = null)
+    private void SetFilter(ref bool field, bool value, [System.Runtime.CompilerServices.CallerMemberName] string? name = null)
     {
         if (SetProperty(ref field, value, name) == true)
         {
@@ -534,7 +534,7 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
     /// Raised when something needs to be shown to the user; the view owns
     /// the actual dialog because the view model has no window to parent to.
     /// </summary>
-    public event Action<string> ErrorRaised;
+    public event Action<string>? ErrorRaised;
 
     public GamePickerViewModel(SteamConnector steam, ISteamLibraryService steamLibrary, IEnumerable<IStoreProvider> storeProviders, IEnumerable<IStoreAccount> storeAccounts, IGameRepository cache,
         IDatabaseRelocator relocator,
@@ -994,7 +994,7 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
             return;
         }
 
-        StoreGame game;
+        StoreGame? game;
         try
         {
             game = await _steamLibrary.FindOwnedAsync(id);
@@ -1050,7 +1050,7 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
     /// The capsule, from the disk cache if it is there and from the network if not (and then kept).
     /// Runs when the tile comes into view; null when there is none.
     /// </summary>
-    private async Task<Bitmap> LoadLogoAsync(GameInfo info, CancellationToken token)
+    private async Task<Bitmap?> LoadLogoAsync(GameInfo info, CancellationToken token)
     {
         var icons = _iconCache;
         var appId = info.Id;
@@ -1077,6 +1077,7 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
             {
                 await Task.Run(() => icons.Write(appId, data), token);
             }
+
             return bitmap;
         }
         catch (OperationCanceledException)
@@ -1095,7 +1096,7 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
     }
 
     /// <summary>Null for no data, and for data that is not an image: a truncated cache file means a re-download.</summary>
-    private static Bitmap Decode(byte[] data)
+    private static Bitmap? Decode(byte[]? data)
     {
         if (data == null)
         {

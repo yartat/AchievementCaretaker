@@ -32,7 +32,10 @@ using System;
 
 namespace AchievementCaretaker.SteamApi;
 
+/// <summary>A managed wrapper over one of Steam's C++ objects.</summary>
 public interface INativeWrapper
 {
+    /// <summary>Reads the object's vtable so its methods can be called.</summary>
+    /// <param name="objectAddress">The address of the C++ object.</param>
     void SetupFunctions(IntPtr objectAddress);
 }

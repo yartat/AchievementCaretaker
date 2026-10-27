@@ -34,7 +34,7 @@ public interface IStoreAchievementsService
     /// otherwise a sentence saying why not; some may have been made, so read again
     /// afterwards. Cancellation throws.
     /// </summary>
-    Task<string> CommitAsync(
+    Task<string?> CommitAsync(
         IStoreProvider provider,
         string gameKey,
         IReadOnlyCollection<KeyValuePair<string, bool>> changes,
@@ -50,7 +50,7 @@ public interface IStoreAchievementsService
     /// Sends achievement and statistic changes together, as one store. Returns null when all
     /// were sent, otherwise why not. Cancellation throws.
     /// </summary>
-    Task<string> CommitAsync(
+    Task<string?> CommitAsync(
         IStoreProvider provider,
         string gameKey,
         IReadOnlyCollection<KeyValuePair<string, bool>> achievements,
@@ -58,5 +58,5 @@ public interface IStoreAchievementsService
         CancellationToken cancellationToken);
 
     /// <summary>Resets the statistics, and the achievements too if asked. Returns null, or why not.</summary>
-    Task<string> ResetAsync(IStoreProvider provider, string gameKey, bool includeAchievements, CancellationToken cancellationToken);
+    Task<string?> ResetAsync(IStoreProvider provider, string gameKey, bool includeAchievements, CancellationToken cancellationToken);
 }

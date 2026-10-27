@@ -15,6 +15,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace AchievementCaretaker.Providers.Epic;
 
+/// <summary>Registration of the Epic Games provider.</summary>
 public static class EpicServiceCollectionExtensions
 {
     /// <summary>
@@ -22,6 +23,7 @@ public static class EpicServiceCollectionExtensions
     /// as an <see cref="IStoreProvider"/> and as an <see cref="IStoreAccount"/>: two roles of
     /// the one object, so the account signed in is the one the provider reads for.
     /// </summary>
+    /// <param name="services">The container being built.</param>
     /// <param name="homeDirectory">Where the session file lives: <c>epic.json</c> in it.</param>
     public static IServiceCollection AddEpicProvider(this IServiceCollection services, string homeDirectory)
     {

@@ -32,13 +32,17 @@ public interface IGameRepository
     bool IsAvailable { get; }
 
     /// <summary>Why it is not, or null.</summary>
-    string Error { get; }
+    string? Error { get; }
 
     /// <summary>The Steam account the library window showed last, or 0 if none yet.</summary>
     uint GetLastSteamAccount();
 
+    /// <summary>Remembers which Steam account the library window is showing.</summary>
+    /// <param name="account">The 32-bit Steam account id.</param>
     void SetLastSteamAccount(uint account);
 
+    /// <summary>One Steam account's saved games; empty when the database is not available.</summary>
+    /// <param name="account">The 32-bit Steam account id.</param>
     IReadOnlyList<CachedGame> LoadAll(uint account);
 
     /// <summary>
@@ -52,12 +56,17 @@ public interface IGameRepository
     /// existing ones updated. Other accounts' rows are not touched. One transaction, so a
     /// crash mid-sync cannot leave a half-written library behind.
     /// </summary>
+    /// <param name="account">The 32-bit Steam account id.</param>
+    /// <param name="games">The games the account owns, as the synchronization found them.</param>
     /// <param name="removeMissing">
     /// False adds and updates only. A synchronization that did not finish learned about the
     /// games it reached and nothing about the rest, so it must not delete them.
     /// </param>
     void Sync(uint account, IReadOnlyCollection<CachedGame> games, bool removeMissing = true);
 
+    /// <summary>One account's saved games at one store; empty when the database is not available.</summary>
+    /// <param name="provider">The store's id.</param>
+    /// <param name="account">The store's own id for the account.</param>
     IReadOnlyList<CachedStoreGame> LoadStoreGames(string provider, string account);
 
     /// <summary>

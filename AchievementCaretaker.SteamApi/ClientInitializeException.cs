@@ -31,21 +31,32 @@ using System;
 
 namespace AchievementCaretaker.SteamApi;
 
+/// <summary>Steam could not be reached: <see cref="Failure"/> says at which step.</summary>
 public class ClientInitializeException : Exception
 {
+    /// <summary>The step that failed.</summary>
     public readonly ClientInitializeFailure Failure;
 
+    /// <summary>A failure with no message of its own.</summary>
+    /// <param name="failure">The step that failed.</param>
     public ClientInitializeException(ClientInitializeFailure failure)
     {
         Failure = failure;
     }
 
+    /// <summary>A failure with a message.</summary>
+    /// <param name="failure">The step that failed.</param>
+    /// <param name="message">What went wrong.</param>
     public ClientInitializeException(ClientInitializeFailure failure, string message)
         : base(message)
     {
         Failure = failure;
     }
 
+    /// <summary>A failure with a message and its cause.</summary>
+    /// <param name="failure">The step that failed.</param>
+    /// <param name="message">What went wrong.</param>
+    /// <param name="innerException">The exception that caused it.</param>
     public ClientInitializeException(ClientInitializeFailure failure, string message, Exception innerException)
         : base(message, innerException)
     {

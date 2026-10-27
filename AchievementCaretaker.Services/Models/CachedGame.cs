@@ -46,13 +46,13 @@ public sealed record CachedGame
     public uint Id { get; init; }
 
     /// <summary>What kind of app it is ("normal", "demo", "mod", "junk").</summary>
-    public string Type { get; init; }
+    public string Type { get; init; } = "normal";
 
-    /// <summary>The name to show.</summary>
-    public string Name { get; init; }
+    /// <summary>The name to show; empty when Steam has not said what the game is called.</summary>
+    public string Name { get; init; } = "";
 
     /// <summary>The address of the capsule art, or null when none was found.</summary>
-    public string ImageUrl { get; init; }
+    public string? ImageUrl { get; init; }
 
     /// <summary>When the game was released, or null when Steam does not say.</summary>
     public DateTime? ReleaseDate { get; init; }

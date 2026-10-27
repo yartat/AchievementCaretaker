@@ -41,16 +41,16 @@ namespace AchievementCaretaker.Services.Models;
 public sealed record CachedStoreGame
 {
     /// <summary>The game's id within its store.</summary>
-    public string Id { get; init; }
+    public string Id { get; init; } = "";
 
     /// <summary>What the store's achievement service is addressed by (see <c>StoreGame.Key</c>).</summary>
-    public string Key { get; init; }
+    public string Key { get; init; } = "";
 
     /// <summary>The name to show.</summary>
-    public string Name { get; init; }
+    public string Name { get; init; } = "";
 
     /// <summary>The address of the capsule art, or null when the store has none.</summary>
-    public string ImageUrl { get; init; }
+    public string? ImageUrl { get; init; }
 
     /// <summary>How many achievements the game has, or -1 until they have been read.</summary>
     public int AchievementsTotal { get; init; } = -1;

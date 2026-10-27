@@ -33,8 +33,15 @@ using System.Runtime.InteropServices;
 
 namespace AchievementCaretaker.SteamApi.Interfaces;
 
+/// <summary>
+/// The vtable of Steam's <c>ISteamApps</c> interface, version 001: one slot per virtual method, in declaration order.
+/// </summary>
+/// <remarks>
+/// The order of the fields is an ABI contract with Steam's client library. Never reorder, insert or remove one.
+/// </remarks>
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct ISteamApps001
 {
+    /// <summary>Slot of <c>ISteamApps::GetAppData</c>.</summary>
     public IntPtr GetAppData;
 }

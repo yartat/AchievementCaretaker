@@ -38,7 +38,7 @@ public interface IStoreLibraryService
     /// Saves the owned list under the signed-in account, keeping the counts of games that
     /// are still owned. Returns null, or a sentence saying why it could not.
     /// </summary>
-    Task<string> SaveLibraryAsync(IStoreAccount account, IReadOnlyCollection<CachedStoreGame> games);
+    Task<string?> SaveLibraryAsync(IStoreAccount account, IReadOnlyCollection<CachedStoreGame> games);
 
     /// <summary>Saves counts read for the signed-in account. A cache that cannot be written costs only a reload.</summary>
     void SaveProgress(IStoreAccount account, IReadOnlyCollection<(string Id, int Earned, int Total)> results);
@@ -52,11 +52,12 @@ public interface IStoreLibraryService
     /// <param name="games">Game id and key.</param>
     /// <param name="gameRead">Told each game's id, earned and total.</param>
     /// <param name="stepped">Told how many games are finished (read or failed) so far.</param>
+    /// <param name="cancellationToken">The token to stop the run; what was read so far is kept.</param>
     Task<StoreProgressRun> LoadProgressAsync(
         IStoreProvider provider,
         IStoreAccount account,
         IReadOnlyCollection<(string Id, string Key)> games,
-        Action<string, int, int> gameRead,
-        Action<int> stepped,
+        Action<string, int, int>? gameRead,
+        Action<int>? stepped,
         CancellationToken cancellationToken);
 }

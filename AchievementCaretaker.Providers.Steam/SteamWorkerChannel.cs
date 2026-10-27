@@ -24,11 +24,14 @@ public sealed class SteamWorkerChannel : IDisposable
 {
     private readonly GrpcChannel _channel;
 
+    /// <summary>The gRPC client for the helper's service.</summary>
     public SteamWorker.SteamWorkerClient Client { get; }
 
     /// <summary>Metadata every call must carry.</summary>
     public Metadata Headers { get; }
 
+    /// <summary>Connects to a helper, trusting only the certificate the endpoint names.</summary>
+    /// <param name="endpoint">Where the helper listens, with its certificate's thumbprint and the token.</param>
     public SteamWorkerChannel(SteamWorkerEndpoint endpoint)
     {
         var expected = endpoint.Thumbprint;
@@ -44,5 +47,6 @@ public sealed class SteamWorkerChannel : IDisposable
         Headers = new Metadata { { SteamWorkerHandshake.TokenHeader, endpoint.Token } };
     }
 
+    /// <summary>Closes the connection.</summary>
     public void Dispose() => _channel.Dispose();
 }

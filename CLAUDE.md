@@ -1045,6 +1045,28 @@ Match the surrounding style; it is consistent and deliberate even where it is un
 
 `LangVersion` is `latest` in both projects.
 
+### Nullability and documentation
+
+Nullable reference types are on everywhere (tests included; `tools/ProviderProbe` opts out) and
+every non-test project writes an XML documentation file, so a public member without a `///`
+comment is a warning and therefore a build error in CI.
+
+- **Annotate what is true; do not suppress.** `?` means the value can really be absent: a store
+  with no image, a Steam key with no value, a native export that did not load. `!` and
+  `null!` are for late initialisation only (a field set before first use, a test fake) and a
+  one-line comment says why. Prefer a guard, a `?? throw` or a property pattern.
+- **Unknown stays null across boundaries.** `StoreGame.Title` is nullable: the helper sends an
+  empty string over gRPC and `SteamProvider` turns it back into `null`. Do not "fix" a
+  warning by turning null into `""`; a test pins it.
+- **A parameter is nullable if the code tolerates null.** `IProgress<LibraryScanProgress>? progress`
+  is called with `progress?.Report` and callers pass null.
+- **Document with `<summary>`, and `<param>` where a parameter is not obvious.** An
+  implementation of an interface member says `/// <inheritdoc />`. The vtable structs in
+  `Interfaces/` document each slot with the C++ method it stands for, in declaration order.
+- **A fake in a test follows the interface's nullability exactly**, or the build reports
+  CS8613/CS8767. Tests change only for that reason, never to make a warning go away by
+  weakening an assertion.
+
 One trap: `using static InvariantShorthand` puts a method named `_` in scope, so `_` is
 **not** available as a discard in files that import it. Name the variable instead.
 
@@ -1116,6 +1138,10 @@ candidate, and `Marshal.GetDelegateForFunctionPointer` is annotated `RequiresDyn
 ## Known issues
 
 A clean build is **0 warnings, 0 errors** on both `AnyCPU` and `x86`. Keep it that way.
+That includes the two checks that produce the most noise: nullable reference types
+(`Directory.Build.props`) and XML documentation (`Directory.Build.targets`, every non-test
+project), both enforced by CI with `-p:TreatWarningsAsErrors=true`. See **Nullability and
+documentation** under Conventions.
 
 - **`Wrappers/SteamClient018.cs`** — `GetSteamUtils004` requests `"SteamUtils004"` but
   still marshals the result as `ISteamUtils005`. Upstream SAM requests `"SteamUtils005"`.
@@ -1242,7 +1268,7 @@ before implementing, then make the smallest change that fits the surrounding sty
   `dotnet-skills:package-management` (use `dotnet add`/`remove`, never hand-edit the XML)
 - Public surface of `AchievementCaretaker.SteamApi` if it is ever versioned →
   `dotnet-skills:csharp-api-design`
-- Enabling nullable reference types → `dotnet-skills:csharp-nullable-reference-types`
+- Nullable reference types (enabled solution-wide) → `dotnet-skills:csharp-nullable-reference-types`
 - Struct layout and allocation in the hot marshalling path →
   `dotnet-skills:csharp-type-design-performance`
 - Replacing the KeyValues parser or adding any serialization →

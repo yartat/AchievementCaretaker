@@ -16,6 +16,7 @@ namespace AchievementCaretaker.Services;
 /// <summary>The <see cref="IStoreSessionService"/>. Stateless.</summary>
 public sealed class StoreSessionService : IStoreSessionService
 {
+    /// <inheritdoc />
     public async Task<StoreSignInResult> SignInAsync(
         IStoreAccount account, string pasted, CancellationToken cancellationToken)
     {
@@ -43,14 +44,17 @@ public sealed class StoreSessionService : IStoreSessionService
         }
     }
 
+    /// <inheritdoc />
     public void SignOut(IStoreAccount account) => account.SignOut();
 
+    /// <inheritdoc />
     public StoreConfirmation ConfirmSignOut(IStoreAccount account) => new(
         "Sign out",
         $"Sign out of {account.DisplayName}{(account.AccountName == null ? "" : " as " + account.AccountName)}? " +
         "Its games and achievement counts stay saved on this computer and come back when you sign in again. " +
         $"Nothing changes on {account.DisplayName}.");
 
+    /// <inheritdoc />
     public StoreConfirmation ConfirmSwitchAccount(IStoreAccount account) => new(
         "Switch account",
         $"Sign in to a different {account.DisplayName} account? Its games and achievements replace " +
@@ -58,6 +62,7 @@ public sealed class StoreSessionService : IStoreSessionService
         "What is saved for each account stays on this computer, and the current account stays signed in " +
         "until the new sign-in succeeds.");
 
+    /// <inheritdoc />
     public string SessionExpiredMessage(IStoreAccount account) =>
         $"Your {account.DisplayName} session has expired. Sign in again.";
 }

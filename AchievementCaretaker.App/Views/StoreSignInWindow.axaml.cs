@@ -31,7 +31,8 @@ public partial class StoreSignInWindow : Window
     /// </summary>
     private static readonly TimeSpan _startTimeout = TimeSpan.FromSeconds(8);
 
-    private readonly IStoreAccount _account;
+    // Only the constructor the XAML loader uses leaves it unset, and that window is never shown.
+    private readonly IStoreAccount _account = null!;
     private bool _browserStarted;
     private bool _finished;
 
@@ -66,11 +67,11 @@ public partial class StoreSignInWindow : Window
     internal static async System.Threading.Tasks.Task<BrowserSignInResult> RunAsync(Window owner, IStoreAccount account)
     {
         StoreSignInWindow window = new(account);
-        var pasted = await window.ShowDialog<string>(owner);
+        var pasted = await window.ShowDialog<string?>(owner);
         return new(pasted, window.BrowserUnavailable);
     }
 
-    private static void OnEnvironmentRequested(object sender, WebViewEnvironmentRequestedEventArgs e)
+    private static void OnEnvironmentRequested(object? sender, WebViewEnvironmentRequestedEventArgs e)
     {
         // Nothing from this window may outlive it: a second account has to be able
         // to sign in, and the page must not log the previous one straight back in.
@@ -88,7 +89,7 @@ public partial class StoreSignInWindow : Window
         }
     }
 
-    private void OnOpened(object sender, EventArgs e)
+    private void OnOpened(object? sender, EventArgs e)
     {
         Browser.Source = new Uri(_account.SignInUrl);
 
@@ -101,17 +102,17 @@ public partial class StoreSignInWindow : Window
         }, _startTimeout);
     }
 
-    private void OnNavigationStarted(object sender, WebViewNavigationStartingEventArgs e)
+    private void OnNavigationStarted(object? sender, WebViewNavigationStartingEventArgs e)
     {
         if (_account.GetSignInResultKind(e.Request) == SignInResultKind.Address)
         {
             // The redirect target is not a page worth loading: the address is the answer.
             e.Cancel = true;
-            Finish(e.Request.ToString());
+            Finish(e.Request?.ToString());
         }
     }
 
-    private async void OnNavigationCompleted(object sender, WebViewNavigationCompletedEventArgs e)
+    private async void OnNavigationCompleted(object? sender, WebViewNavigationCompletedEventArgs e)
     {
         _browserStarted = true;
         if (_finished == true || e.IsSuccess == false)
@@ -122,7 +123,7 @@ public partial class StoreSignInWindow : Window
         switch (_account.GetSignInResultKind(e.Request))
         {
             case SignInResultKind.Address:
-                Finish(e.Request.ToString());
+                Finish(e.Request?.ToString());
                 break;
 
             case SignInResultKind.PageText:
@@ -142,7 +143,7 @@ public partial class StoreSignInWindow : Window
     /// A script's result may come back as a JSON string literal, quotes and
     /// escapes included, which would hide the document the provider looks for.
     /// </summary>
-    private static string DecodeScriptResult(string result)
+    private static string? DecodeScriptResult(string? result)
     {
         if (string.IsNullOrEmpty(result) == false && result.StartsWith('"') == true)
         {
@@ -157,7 +158,7 @@ public partial class StoreSignInWindow : Window
         return result;
     }
 
-    private void Finish(string result)
+    private void Finish(string? result)
     {
         if (_finished == true)
         {

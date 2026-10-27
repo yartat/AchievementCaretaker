@@ -28,8 +28,12 @@ public interface IStoreSessionService
     /// <summary>Drops the session. Nothing saved for the account is touched.</summary>
     void SignOut(IStoreAccount account);
 
+    /// <summary>The question to put to the user before signing out.</summary>
+    /// <param name="account">The account that would be signed out.</param>
     StoreConfirmation ConfirmSignOut(IStoreAccount account);
 
+    /// <summary>The question to put to the user before signing in as someone else.</summary>
+    /// <param name="account">The account that is signed in now.</param>
     StoreConfirmation ConfirmSwitchAccount(IStoreAccount account);
 
     /// <summary>What to say when a request finds the session no longer valid.</summary>

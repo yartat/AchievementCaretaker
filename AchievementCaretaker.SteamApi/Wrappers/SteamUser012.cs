@@ -34,6 +34,7 @@ using AchievementCaretaker.SteamApi.Interfaces;
 
 namespace AchievementCaretaker.SteamApi.Wrappers;
 
+/// <summary>Steam's <c>ISteamUser</c> interface, version 012: who is logged in.</summary>
 public class SteamUser012 : NativeWrapper<ISteamUser012>
 {
     #region IsLoggedIn
@@ -41,6 +42,7 @@ public class SteamUser012 : NativeWrapper<ISteamUser012>
     [return: MarshalAs(UnmanagedType.I1)]
     private delegate bool NativeLoggedOn(IntPtr self);
 
+    /// <summary>Whether a user is logged in to the Steam client.</summary>
     public bool IsLoggedIn()
     {
         return Call<bool, NativeLoggedOn>(Functions.LoggedOn, ObjectAddress);
@@ -68,9 +70,11 @@ public class SteamUser012 : NativeWrapper<ISteamUser012>
     // Cached here rather than through GetFunction: the base class keys its
     // delegate cache on the function pointer alone, so two delegate types
     // sharing one vtable slot would collide.
-    private NativeGetSteamIdIndirect _getSteamIdIndirect;
-    private NativeGetSteamIdDirect _getSteamIdDirect;
+    private NativeGetSteamIdIndirect? _getSteamIdIndirect;
+    private NativeGetSteamIdDirect? _getSteamIdDirect;
 
+    /// <summary>The logged-in user's 64-bit SteamID.</summary>
+    /// <returns>The SteamID, or 0 when nobody is logged in.</returns>
     public ulong GetSteamId()
     {
         if (OperatingSystem.IsWindows())

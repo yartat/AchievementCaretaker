@@ -30,13 +30,27 @@
 
 namespace AchievementCaretaker.SteamApi.Types;
 
+/// <summary>The kind of an entry in an app's statistics schema.</summary>
 public enum UserStatType
 {
+    /// <summary>Not a valid type.</summary>
     Invalid = 0,
+
+    /// <summary>A 32-bit integer statistic.</summary>
     Integer = 1,
+
+    /// <summary>Another name for <see cref="Integer"/>, as older schemas write it.</summary>
     Int = Integer,
+
+    /// <summary>A floating-point statistic.</summary>
     Float = 2,
+
+    /// <summary>An average of a value over time.</summary>
     AverageRate = 3,
+
+    /// <summary>A block of achievements.</summary>
     Achievements = 4,
+
+    /// <summary>A group of achievements that unlock together.</summary>
     GroupAchievements = 5,
 }

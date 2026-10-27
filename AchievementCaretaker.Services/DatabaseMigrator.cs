@@ -32,6 +32,10 @@ public sealed class DatabaseMigrator : IDatabaseMigrator
     private readonly IDbCommand _command;
     private readonly DatabaseState _state;
 
+    /// <summary>Makes the migrator over the scope's connection and command.</summary>
+    /// <param name="connection">The connection the tables are made through.</param>
+    /// <param name="command">The command the statements are run with.</param>
+    /// <param name="state">Where the database is; told why it could not be prepared if it cannot.</param>
     public DatabaseMigrator(IDbConnection connection, IDbCommand command, DatabaseState state)
     {
         _connection = connection;
@@ -39,6 +43,7 @@ public sealed class DatabaseMigrator : IDatabaseMigrator
         _state = state;
     }
 
+    /// <inheritdoc />
     public void Migrate()
     {
         var directory = Path.GetDirectoryName(_state.Path);

@@ -14,4 +14,4 @@ namespace AchievementCaretaker.Services.Models;
 /// <param name="Library">The owned list, or null when the read did not work.</param>
 /// <param name="SessionExpired">The store refused the session: the account must sign in again.</param>
 /// <param name="Failure">A sentence for the user when the read did not work for another reason.</param>
-public sealed record StoreLibraryRefresh(IReadOnlyList<StoreGame> Library, bool SessionExpired, string Failure);
+public sealed record StoreLibraryRefresh(IReadOnlyList<StoreGame>? Library, bool SessionExpired, string? Failure);

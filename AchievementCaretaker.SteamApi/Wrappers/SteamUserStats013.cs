@@ -34,6 +34,10 @@ using AchievementCaretaker.SteamApi.Interfaces;
 
 namespace AchievementCaretaker.SteamApi.Wrappers;
 
+/// <summary>
+/// Steam's <c>ISteamUserStats</c> interface, version 013: a user's achievements and statistics
+/// for the app the process was initialised with.
+/// </summary>
 public class SteamUserStats013 : NativeWrapper<ISteamUserStats013>
 {
     /// <summary>
@@ -52,6 +56,10 @@ public class SteamUserStats013 : NativeWrapper<ISteamUserStats013>
     [return: MarshalAs(UnmanagedType.I1)]
     private delegate bool NativeGetStatInt(IntPtr self, IntPtr name, out int data);
 
+    /// <summary>Reads an integer statistic.</summary>
+    /// <param name="name">The statistic's API name.</param>
+    /// <param name="value">The value.</param>
+    /// <returns>False when there is no such integer statistic.</returns>
     public bool GetStatValue(string name, out int value)
     {
         using (var nativeName = NativeStrings.StringToStringHandle(name))
@@ -67,6 +75,10 @@ public class SteamUserStats013 : NativeWrapper<ISteamUserStats013>
     [return: MarshalAs(UnmanagedType.I1)]
     private delegate bool NativeGetStatFloat(IntPtr self, IntPtr name, out float data);
 
+    /// <summary>Reads a floating-point statistic.</summary>
+    /// <param name="name">The statistic's API name.</param>
+    /// <param name="value">The value.</param>
+    /// <returns>False when there is no such floating-point statistic.</returns>
     public bool GetStatValue(string name, out float value)
     {
         using (var nativeName = NativeStrings.StringToStringHandle(name))
@@ -82,6 +94,10 @@ public class SteamUserStats013 : NativeWrapper<ISteamUserStats013>
     [return: MarshalAs(UnmanagedType.I1)]
     private delegate bool NativeSetStatInt(IntPtr self, IntPtr name, int data);
 
+    /// <summary>Sets an integer statistic. Nothing is saved until <see cref="StoreStats"/>.</summary>
+    /// <param name="name">The statistic's API name.</param>
+    /// <param name="value">The new value.</param>
+    /// <returns>False when Steam refuses it.</returns>
     public bool SetStatValue(string name, int value)
     {
         using (var nativeName = NativeStrings.StringToStringHandle(name))
@@ -100,6 +116,10 @@ public class SteamUserStats013 : NativeWrapper<ISteamUserStats013>
     [return: MarshalAs(UnmanagedType.I1)]
     private delegate bool NativeSetStatFloat(IntPtr self, IntPtr name, float data);
 
+    /// <summary>Sets a floating-point statistic. Nothing is saved until <see cref="StoreStats"/>.</summary>
+    /// <param name="name">The statistic's API name.</param>
+    /// <param name="value">The new value.</param>
+    /// <returns>False when Steam refuses it.</returns>
     public bool SetStatValue(string name, float value)
     {
         using (var nativeName = NativeStrings.StringToStringHandle(name))
@@ -121,6 +141,10 @@ public class SteamUserStats013 : NativeWrapper<ISteamUserStats013>
         IntPtr name,
         [MarshalAs(UnmanagedType.I1)] out bool isAchieved);
 
+    /// <summary>Whether an achievement is unlocked.</summary>
+    /// <param name="name">The achievement's API name.</param>
+    /// <param name="isAchieved">True when it is unlocked.</param>
+    /// <returns>False when there is no such achievement.</returns>
     public bool GetAchievement(string name, out bool isAchieved)
     {
         using (var nativeName = NativeStrings.StringToStringHandle(name))
@@ -140,6 +164,10 @@ public class SteamUserStats013 : NativeWrapper<ISteamUserStats013>
     [return: MarshalAs(UnmanagedType.I1)]
     private delegate bool NativeClearAchievement(IntPtr self, IntPtr name);
 
+    /// <summary>Unlocks or locks an achievement. Nothing is saved until <see cref="StoreStats"/>.</summary>
+    /// <param name="name">The achievement's API name.</param>
+    /// <param name="state">True to unlock it, false to lock it again.</param>
+    /// <returns>False when Steam refuses it.</returns>
     public bool SetAchievement(string name, bool state)
     {
         using (var nativeName = NativeStrings.StringToStringHandle(name))
@@ -169,6 +197,11 @@ public class SteamUserStats013 : NativeWrapper<ISteamUserStats013>
         [MarshalAs(UnmanagedType.I1)] out bool isAchieved,
         out uint unlockTime);
 
+    /// <summary>Whether an achievement is unlocked, and when.</summary>
+    /// <param name="name">The achievement's API name.</param>
+    /// <param name="isAchieved">True when it is unlocked.</param>
+    /// <param name="unlockTime">When it was unlocked, in Unix seconds; 0 when it never was or Steam has no time.</param>
+    /// <returns>False when there is no such achievement.</returns>
     public bool GetAchievementAndUnlockTime(string name, out bool isAchieved, out uint unlockTime)
     {
         using (var nativeName = NativeStrings.StringToStringHandle(name))
@@ -184,6 +217,8 @@ public class SteamUserStats013 : NativeWrapper<ISteamUserStats013>
     [return: MarshalAs(UnmanagedType.I1)]
     private delegate bool NativeStoreStats(IntPtr self);
 
+    /// <summary>Sends every change made since the last call to Steam.</summary>
+    /// <returns>False when Steam could not take them.</returns>
     public bool StoreStats()
     {
         return Call<bool, NativeStoreStats>(Functions.StoreStats, ObjectAddress);
@@ -194,6 +229,9 @@ public class SteamUserStats013 : NativeWrapper<ISteamUserStats013>
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate int NativeGetAchievementIcon(IntPtr self, IntPtr name);
 
+    /// <summary>The handle of an achievement's icon, for <see cref="SteamUtils005.GetImageSize"/> and <see cref="SteamUtils005.GetImageRGBA"/>.</summary>
+    /// <param name="name">The achievement's API name.</param>
+    /// <returns>The handle, or 0 when the icon is not loaded yet.</returns>
     public int GetAchievementIcon(string name)
     {
         using (var nativeName = NativeStrings.StringToStringHandle(name))
@@ -210,7 +248,11 @@ public class SteamUserStats013 : NativeWrapper<ISteamUserStats013>
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate IntPtr NativeGetAchievementDisplayAttribute(IntPtr self, IntPtr name, IntPtr key);
 
-    public string GetAchievementDisplayAttribute(string name, string key)
+    /// <summary>One of an achievement's display attributes: <c>name</c>, <c>desc</c> or <c>hidden</c>.</summary>
+    /// <param name="name">The achievement's API name.</param>
+    /// <param name="key">The attribute wanted.</param>
+    /// <returns>The value, or null when Steam has none.</returns>
+    public string? GetAchievementDisplayAttribute(string name, string key)
     {
         using (var nativeName = NativeStrings.StringToStringHandle(name))
         using (var nativeKey = NativeStrings.StringToStringHandle(key))
@@ -229,6 +271,9 @@ public class SteamUserStats013 : NativeWrapper<ISteamUserStats013>
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     private delegate CallHandle NativeRequestUserStats(IntPtr self, ulong steamIdUser);
 
+    /// <summary>Asks Steam for a user's statistics and achievements. The answer is a <see cref="Callbacks.UserStatsReceived"/> callback.</summary>
+    /// <param name="steamIdUser">The user's 64-bit SteamID.</param>
+    /// <returns>The handle of the call, <see cref="CallHandle.Invalid"/> when it was not made.</returns>
     public CallHandle RequestUserStats(ulong steamIdUser)
     {
         return Call<CallHandle, NativeRequestUserStats>(Functions.RequestUserStats, ObjectAddress, steamIdUser);
@@ -240,6 +285,9 @@ public class SteamUserStats013 : NativeWrapper<ISteamUserStats013>
     [return: MarshalAs(UnmanagedType.I1)]
     private delegate bool NativeResetAllStats(IntPtr self, [MarshalAs(UnmanagedType.I1)] bool achievementsToo);
 
+    /// <summary>Resets every statistic, and the achievements too if asked. Cannot be undone.</summary>
+    /// <param name="achievementsToo">True to lock every achievement as well.</param>
+    /// <returns>False when Steam refuses.</returns>
     public bool ResetAllStats(bool achievementsToo)
     {
         return Call<bool, NativeResetAllStats>(

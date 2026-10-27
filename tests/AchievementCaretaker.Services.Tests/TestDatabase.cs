@@ -31,7 +31,7 @@ internal sealed class TestDatabase : IDisposable
 
     /// <param name="databasePath">Where the database goes; the default is a fresh file in the temporary folder.</param>
     /// <param name="migrate">Whether to prepare the database, as the application does at start.</param>
-    public TestDatabase(string databasePath = null, bool migrate = true)
+    public TestDatabase(string? databasePath = null, bool migrate = true)
     {
         System.IO.Directory.CreateDirectory(Directory);
         DatabasePath = databasePath ?? Path.Combine(Directory, "games.db");

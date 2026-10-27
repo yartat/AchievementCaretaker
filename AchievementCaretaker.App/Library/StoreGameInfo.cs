@@ -6,6 +6,7 @@
  */
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Globalization;
@@ -30,7 +31,7 @@ internal readonly record struct StoreProgress(int Earned, int Total);
 /// </remarks>
 internal sealed partial class StoreGameInfo : ObservableObject
 {
-    private string _name;
+    private string _name = "";
 
     public string Provider { get; }
 
@@ -39,7 +40,7 @@ internal sealed partial class StoreGameInfo : ObservableObject
     /// <summary>What <c>IStoreProvider.GetAchievementsAsync</c> is called with.</summary>
     public string Key { get; }
 
-    public string ImageUrl { get; set; }
+    public string? ImageUrl { get; set; }
 
     /// <summary>
     /// Reads the capsule when the tile comes into view (<c>LazyImage</c>). The bitmap is not kept
@@ -47,8 +48,10 @@ internal sealed partial class StoreGameInfo : ObservableObject
     /// Set again when the image address changes, which is what makes the tile ask again.
     /// </summary>
     [ObservableProperty]
-    private Func<CancellationToken, Task<Bitmap>> _logoLoader;
+    private Func<CancellationToken, Task<Bitmap?>>? _logoLoader;
 
+    /// <summary>The name to show; a blank one is replaced by the game's id.</summary>
+    [AllowNull]
     public string Name
     {
         get => _name;

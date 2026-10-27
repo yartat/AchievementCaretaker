@@ -21,8 +21,12 @@ namespace AchievementCaretaker.Providers.Steam;
 /// </summary>
 public interface ISteamAppBackend
 {
+    /// <summary>The game's achievements with the logged-in user's state, read from Steam now.</summary>
+    /// <param name="cancellationToken">The token to cancel the read.</param>
     Task<IReadOnlyList<StoreAchievement>> GetAchievementsAsync(CancellationToken cancellationToken);
 
+    /// <summary>The game's statistics with the logged-in user's values.</summary>
+    /// <param name="cancellationToken">The token to cancel the read.</param>
     Task<IReadOnlyList<StoreStat>> GetStatsAsync(CancellationToken cancellationToken);
 
     /// <summary>
@@ -34,17 +38,20 @@ public interface ISteamAppBackend
         IReadOnlyCollection<KeyValuePair<string, double>> statistics,
         CancellationToken cancellationToken);
 
+    /// <summary>Resets every statistic, and the achievements too if asked. Cannot be undone.</summary>
+    /// <param name="includeAchievements">True to lock every achievement as well.</param>
+    /// <param name="cancellationToken">The token to cancel the reset.</param>
     Task ResetAsync(bool includeAchievements, CancellationToken cancellationToken);
 
     /// <summary>Which of the candidates the account owns, with what Steam knows about each (the helper for app id 0).</summary>
     Task<LibraryScan> ScanLibraryAsync(
         IReadOnlyCollection<LibraryCandidate> candidates,
-        IProgress<LibraryScanProgress> progress,
+        IProgress<LibraryScanProgress>? progress,
         CancellationToken cancellationToken);
 
     /// <summary>The 32-bit account id Steam is logged in as.</summary>
     Task<string> GetAccountAsync(CancellationToken cancellationToken);
 
     /// <summary>The candidate as an owned game, or null when the account does not own it.</summary>
-    Task<StoreGame> FindOwnedAsync(LibraryCandidate candidate, CancellationToken cancellationToken);
+    Task<StoreGame?> FindOwnedAsync(LibraryCandidate candidate, CancellationToken cancellationToken);
 }

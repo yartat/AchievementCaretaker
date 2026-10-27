@@ -19,7 +19,7 @@ public sealed class StoreAchievementsServiceTests
 {
     private sealed class FakeProvider : IWritableStoreProvider
     {
-        public Exception Throw { get; set; }
+        public Exception? Throw { get; set; }
         public List<KeyValuePair<string, bool>> Written { get; } = new();
 
         public string Id => "fake";

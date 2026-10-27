@@ -33,11 +33,19 @@ using System.Runtime.InteropServices;
 
 namespace AchievementCaretaker.SteamApi.Types;
 
+/// <summary>A callback as <c>Steam_BGetCallback</c> hands it over: who it is for, which kind it is, and where its data is.</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct CallbackMessage
 {
+    /// <summary>The user the callback is for.</summary>
     public int User;
+
+    /// <summary>The callback's id, which says what <see cref="ParamPointer"/> points to.</summary>
     public int Id;
+
+    /// <summary>The address of the callback's data, valid until the callback is freed.</summary>
     public IntPtr ParamPointer;
+
+    /// <summary>The size of the data in bytes.</summary>
     public int ParamSize;
 }

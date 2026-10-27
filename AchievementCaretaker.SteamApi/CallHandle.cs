@@ -30,7 +30,9 @@
 
 namespace AchievementCaretaker.SteamApi;
 
+/// <summary>The handle of an asynchronous Steam call, which its callback answers.</summary>
 public enum CallHandle : ulong
 {
+    /// <summary>The call was not made.</summary>
     Invalid = 0,
 }

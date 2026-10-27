@@ -19,10 +19,17 @@ namespace AchievementCaretaker.Providers;
 public interface ISessionStore
 {
     /// <summary>Returns null when there is no usable session at <paramref name="path"/>.</summary>
-    T Load<T>(string path)
+    /// <param name="path">The path to the session file.</param>
+    /// <returns>The session, or null if there is none.</returns>
+    T? Load<T>(string path)
         where T : class;
 
+    /// <summary>Throws when there is no usable session at <paramref name="path"/>.</summary>
+    /// <param name="path">The path to the session file.</param>
+    /// <param name="session">The session to save.</param>
     void Save<T>(string path, T session);
 
+    /// <summary>Deletes the session at <paramref name="path"/>.</summary>
+    /// <param name="path">The path to the session file.</param>
     void Delete(string path);
 }

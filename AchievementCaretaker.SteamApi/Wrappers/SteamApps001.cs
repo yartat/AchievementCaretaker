@@ -34,6 +34,7 @@ using AchievementCaretaker.SteamApi.Interfaces;
 
 namespace AchievementCaretaker.SteamApi.Wrappers;
 
+/// <summary>Steam's <c>ISteamApps</c> interface, version 001: the store's data about an app.</summary>
 public class SteamApps001 : NativeWrapper<ISteamApps001>
 {
     #region GetAppData
@@ -46,7 +47,11 @@ public class SteamApps001 : NativeWrapper<ISteamApps001>
         IntPtr value,
         [In] int valueLength);
 
-    public string GetAppData(uint appId, string key)
+    /// <summary>One piece of Steam's data about an app, by key (<c>name</c>, <c>review_percentage</c>, <c>steam_release_date</c>, ...).</summary>
+    /// <param name="appId">The app id.</param>
+    /// <param name="key">The key of the data wanted.</param>
+    /// <returns>The value, or null when Steam has none under that key.</returns>
+    public string? GetAppData(uint appId, string key)
     {
         const int valueLength = 1024;
         var valuePointer = Marshal.AllocHGlobal(valueLength);

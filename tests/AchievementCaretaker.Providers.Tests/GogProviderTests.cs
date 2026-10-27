@@ -102,7 +102,7 @@ public sealed class GogProviderTests
         Assert.Contains("grant_type=authorization_code", token.Url);
         Assert.Contains($"code={Code}", token.Url);
         Assert.True(_sessions.Has(Path));
-        Assert.Equal("REFRESH", _sessions.Load<GogSession>(Path).RefreshToken);
+        Assert.Equal("REFRESH", _sessions.Load<GogSession>(Path)!.RefreshToken);
     }
 
     [Fact]
@@ -202,7 +202,7 @@ public sealed class GogProviderTests
         Assert.Contains("grant_type=refresh_token", request.Url);
         Assert.Contains("refresh_token=REFRESH", request.Url);
         var saved = _sessions.Load<GogSession>(Path);
-        Assert.Equal("NEW-REFRESH", saved.RefreshToken);
+        Assert.Equal("NEW-REFRESH", saved!.RefreshToken);
         Assert.Equal("NEW-ACCESS", saved.AccessToken);
         // The name is kept across a refresh: the token response has none.
         Assert.Equal("Ann", provider.AccountName);
@@ -217,7 +217,7 @@ public sealed class GogProviderTests
 
         await provider.EnsureSignedInAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal("REFRESH", _sessions.Load<GogSession>(Path).RefreshToken);
+        Assert.Equal("REFRESH", _sessions.Load<GogSession>(Path)!.RefreshToken);
     }
 
     [Fact]
@@ -493,12 +493,12 @@ public sealed class GogProviderTests
         Assert.All(posts, p => Assert.Equal("Bearer GAME-TOKEN", p.Authorization));
         var unlock = posts.Single(p => p.Url.EndsWith("/A1", StringComparison.Ordinal));
         var relock = posts.Single(p => p.Url.EndsWith("/A2", StringComparison.Ordinal));
-        Assert.Matches("^\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d\\+0000$", DateUnlocked(unlock.Body));
+        Assert.Matches("^\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d\\+0000$", DateUnlocked(unlock.Body!));
         Assert.Equal("{\"date_unlocked\":null}", relock.Body);
     }
 
     /// <summary>The <c>date_unlocked</c> the provider sent; the JSON writer escapes the plus sign, so the body is read, not matched.</summary>
-    private static string DateUnlocked(string body)
+    private static string? DateUnlocked(string body)
     {
         using var document = System.Text.Json.JsonDocument.Parse(body);
         return document.RootElement.GetProperty("date_unlocked").GetString();
@@ -514,8 +514,8 @@ public sealed class GogProviderTests
         await SignedIn().SetAchievementsAsync(
             "10", new[] { new KeyValuePair<string, bool>("A1", true) }, TestContext.Current.CancellationToken);
 
-        var stamp = DateUnlocked(_http.RequestsTo("/achievements/").Single().Body);
-        var when = DateTimeOffset.ParseExact(stamp, "yyyy-MM-dd'T'HH:mm:ss'+0000'", System.Globalization.CultureInfo.InvariantCulture,
+        var stamp = DateUnlocked(_http.RequestsTo("/achievements/").Single().Body!);
+        var when = DateTimeOffset.ParseExact(stamp!, "yyyy-MM-dd'T'HH:mm:ss'+0000'", System.Globalization.CultureInfo.InvariantCulture,
             System.Globalization.DateTimeStyles.AssumeUniversal);
         Assert.True(when < DateTimeOffset.UtcNow, "GOG refuses a date in the future");
     }
@@ -568,7 +568,7 @@ public sealed class GogProviderTests
         await provider.SetAchievementsAsync(
             "10", new[] { new KeyValuePair<string, bool>("A1", true) }, TestContext.Current.CancellationToken);
 
-        Assert.Equal("ACCESS", provider.Session.AccessToken);
+        Assert.Equal("ACCESS", provider.Session!.AccessToken);
         Assert.Equal("REFRESH", provider.Session.RefreshToken);
     }
 

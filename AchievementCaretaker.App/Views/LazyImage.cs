@@ -31,10 +31,11 @@ internal sealed class LazyImage : Image
     /// <summary>How far outside the viewport counts as in view, so the next row is ready before it scrolls in.</summary>
     private const double ViewMargin = 300;
 
-    public static readonly StyledProperty<Func<CancellationToken, Task<Bitmap>>> LoaderProperty =
-        AvaloniaProperty.Register<LazyImage, Func<CancellationToken, Task<Bitmap>>>(nameof(Loader));
+    /// <summary>The <see cref="Loader"/> property.</summary>
+    public static readonly StyledProperty<Func<CancellationToken, Task<Bitmap?>>?> LoaderProperty =
+        AvaloniaProperty.Register<LazyImage, Func<CancellationToken, Task<Bitmap?>>?>(nameof(Loader));
 
-    private CancellationTokenSource _load;
+    private CancellationTokenSource? _load;
     private bool _inView;
 
     static LazyImage()
@@ -43,7 +44,7 @@ internal sealed class LazyImage : Image
     }
 
     /// <summary>Gives the bitmap, or null when there is none. Runs when the image comes into view.</summary>
-    public Func<CancellationToken, Task<Bitmap>> Loader
+    public Func<CancellationToken, Task<Bitmap?>>? Loader
     {
         get => GetValue(LoaderProperty);
         set => SetValue(LoaderProperty, value);
@@ -63,7 +64,7 @@ internal sealed class LazyImage : Image
         base.OnDetachedFromVisualTree(e);
     }
 
-    private void OnEffectiveViewportChanged(object sender, EffectiveViewportChangedEventArgs e)
+    private void OnEffectiveViewportChanged(object? sender, EffectiveViewportChangedEventArgs e)
     {
         var area = new Rect(Bounds.Size);
         _inView = e.EffectiveViewport.Width > 0 &&
@@ -94,7 +95,7 @@ internal sealed class LazyImage : Image
         }
     }
 
-    private async Task LoadAsync(Func<CancellationToken, Task<Bitmap>> loader)
+    private async Task LoadAsync(Func<CancellationToken, Task<Bitmap?>> loader)
     {
         CancellationTokenSource mine = new();
         _load = mine;

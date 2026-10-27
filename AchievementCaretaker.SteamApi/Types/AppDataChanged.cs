@@ -32,9 +32,13 @@ using System.Runtime.InteropServices;
 
 namespace AchievementCaretaker.SteamApi.Types;
 
+/// <summary>The data of the <c>AppDataChanged</c> callback, laid out as Steam sends it.</summary>
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct AppDataChanged
 {
+    /// <summary>The app whose data changed.</summary>
     public uint Id;
+
+    /// <summary>Whether the update succeeded.</summary>
     public bool Result;
 }

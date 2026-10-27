@@ -32,9 +32,16 @@ using System;
 
 namespace AchievementCaretaker.SteamApi;
 
+/// <summary>A callback Steam delivers, found by its numeric id.</summary>
 public interface ICallback
 {
+    /// <summary>The id Steam gives this kind of callback.</summary>
     int Id { get; }
+
+    /// <summary>Whether it is one of the game-server callbacks rather than the client's.</summary>
     bool IsServer { get; }
+
+    /// <summary>Delivers the callback.</summary>
+    /// <param name="param">A pointer to the callback's data, valid for the call.</param>
     void Run(IntPtr param);
 }

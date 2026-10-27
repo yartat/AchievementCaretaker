@@ -116,7 +116,7 @@ public sealed class SteamAppBackendTests
     {
         public long AppId => 480;
         public string Language => "english";
-        public KeyValue Schema { get; set; } = SteamSchemaReaderTests.Schema("new");
+        public KeyValue? Schema { get; set; } = SteamSchemaReaderTests.Schema("new");
         public Dictionary<string, (bool Unlocked, uint Time)> State { get; } = new()
         {
             ["ACH_ONE"] = (true, 1_700_000_000),
@@ -158,7 +158,7 @@ public sealed class SteamAppBackendTests
             return Task.CompletedTask;
         }
 
-        public KeyValue LoadSchema() => Schema;
+        public KeyValue? LoadSchema() => Schema;
 
         public bool TryGetAchievement(string id, out bool unlocked, out uint unlockTime)
         {
@@ -182,7 +182,7 @@ public sealed class SteamAppBackendTests
 
         public ulong SteamId => 0;
         public bool IsSubscribed(uint appId) => false;
-        public string GetAppData(uint appId, string key) => null;
+        public string? GetAppData(uint appId, string key) => null;
         public GameStats? GetCachedStats(uint appId) => null;
         public bool IsSteamStillRunning() => true;
 
