@@ -19,7 +19,10 @@ namespace AchievementCaretaker.Services;
 public sealed class StoreAchievementsService : IStoreAchievementsService
 {
     /// <inheritdoc />
-    public bool CanModify(IStoreProvider provider) => provider is IWritableStoreProvider;
+    public bool CanModify(IStoreProvider provider) => provider is IWritableStoreProvider { CanWrite: true };
+
+    /// <inheritdoc />
+    public bool CanRelock(IStoreProvider provider) => provider is IWritableStoreProvider { CanRelock: true };
 
     /// <inheritdoc />
     public async Task<StoreAchievementsResult> LoadAsync(
@@ -47,7 +50,7 @@ public sealed class StoreAchievementsService : IStoreAchievementsService
         IReadOnlyCollection<KeyValuePair<string, bool>> changes,
         CancellationToken cancellationToken)
     {
-        if (provider is not IWritableStoreProvider writer)
+        if (provider is not IWritableStoreProvider { CanWrite: true } writer)
         {
             return $"{provider.DisplayName} achievements cannot be changed.";
         }

@@ -18,8 +18,10 @@ support (`AchievementCaretaker.SteamApi` and the Steam half of the application) 
 attribution is not decoration: it is a licence condition, and it must be preserved in those
 files' headers, the README, the release notes and `docs/ATTRIBUTION.md`. The GOG provider is
 based on [GOG Achievements Manager](https://github.com/timendum/gog_achievements) by
-Timendum. The Epic provider, the rest of the store code and the CI and packaging files are
-this project's own work. **Do not strip an attribution when editing a file, and give a new
+Timendum. The Ubisoft Connect provider is based on [UbiSlot](https://github.com/BalTor02/UbiSlot)
+by BalTor02, [Achievements](https://github.com/PSerban93/Achievements) by PSerban93, [galaxy-integration-uplay](https://github.com/melcom-creations/galaxy-integration-uplay) by melcom and [UplayKit](https://github.com/UplayDB/UplayKit) by UplayDB, all MIT
+(`docs/UBISOFT-RESEARCH.md`). The Epic provider, the rest of the store code and the CI and packaging
+files are this project's own work. **Do not strip an attribution when editing a file, and give a new
 file the header for what it actually derives from: see Conventions.**
 
 Caretaker diverges from SAM far enough to carry its own name: the two executables were
@@ -49,13 +51,14 @@ what would be committed, but do not run `git commit`, `git tag` or `git push` un
 |---|---|---|
 | `AchievementCaretaker.SteamApi` | `AchievementCaretaker.SteamApi.dll` (class library) | All native interop. Loads `steamclient.dll`, resolves vtables, marshals calls, pumps callbacks. Also owns the Valve KeyValues parsers (`KeyValue` binary, `TextKeyValue` text). |
 | `AchievementCaretaker.App` | `bin/AchievementCaretaker.exe` (WinExe) | The whole application: the library window, the achievements window (for every source, Steam included) and, started with `--steam-worker <appid>`, the hidden Steam helper, in one binary. |
-| `AchievementCaretaker.Providers.Abstractions` | class library | `IStoreProvider` (a store's library and achievements), `IStoreAccount` (signing in and out, and who is signed in), `IStore` (the id and name both share), `IWritableStoreProvider`, `IStatsStoreProvider` (statistics and reset; only Steam), `ISessionStore` and the models (`StoreGame`, `StoreAchievement` with its `Protected` flag, `StoreStat`, `ProviderException`, `SignInResultKind`). Interfaces and models only: no packages, no code that runs. |
+| `AchievementCaretaker.Providers.Abstractions` | class library | `IStoreProvider` (a store's library and achievements), `IStoreAccount` (signing in and out, and who is signed in), `ILocalStoreAccount` (an account that is found on this computer, not signed in to), `IStore` (the id and name both share), `IWritableStoreProvider`, `IStatsStoreProvider` (statistics and reset; only Steam), `ISessionStore` and the models (`StoreGame`, `StoreAchievement` with its `Protected` flag, `StoreStat`, `ProviderException`, `SignInResultKind`). Interfaces and models only: no packages, no code that runs. |
 | `AchievementCaretaker.Providers.Shared` | class library | What the store providers share: the session stores (`DpapiSessionStore`, `PlainSessionStore`), the `AddSessionStore` registration and `JsonHelpers`, public, with the packages they need. |
 | `AchievementCaretaker.Services` | class library | The logic behind the windows, with no UI and no Avalonia: the library database (`IGameRepository`/`GameRepository`, over a scoped `IDbConnection`, read and written with Dapper; `IDatabaseMigrator`, `IDatabaseRelocator`, `AddLibraryDatabase`) and the store services (`IStoreLibraryService`, `IStoreAchievementsService`, `IStoreSessionService`). |
 | `AchievementCaretaker.Providers.Steam` | class library | Steam as an `IStatsStoreProvider` (`SteamProvider`; achievements, statistics, a single commit for both, reset): every call starts a hidden helper for one app id and talks to it over gRPC on 127.0.0.1 with TLS (a certificate made per launch, pinned by thumbprint) and a per-launch token, both handed over on the helper's standard input. Holds the `.proto`, the handshake, the process launcher and `LibraryStats` (Steam's on-disk caches). The achievements window uses it for Steam games, and the library window for the Steam library (`ILibraryScanProvider`). |
 | `AchievementCaretaker.Providers.Steam.Worker` | class library | The helper's side: the Kestrel gRPC host, `SteamAppBackend` (schema + achievements + set/store through an `ISteamAppGateway`) and `SteamClientGateway` over `SteamApi.Client`. `AchievementCaretaker.exe --steam-worker <appid>` runs it (`Program.Main`, before Avalonia starts). |
 | `AchievementCaretaker.Providers.Epic` | class library | The Epic Games provider, read-only. Every unofficial Epic endpoint is in its `EpicProvider.cs`. |
 | `AchievementCaretaker.Providers.Gog` | class library | The GOG provider; it can also unlock and lock. Every unofficial GOG endpoint is in its `GogProvider.cs`. |
+| `AchievementCaretaker.Providers.Ubisoft` | class library | The Ubisoft Connect provider, from the launcher's own files on this computer (Windows): `OwnershipFile`, `GameConfigurations`, `SpoolFile`, `AchievementArchive` and `GameNames` read them, `UbisoftProvider` puts them together (its `.Online.cs` half signs in and reads the account from Ubisoft through `DemuxClient`/`UbisoftOnline`). Without a sign-in the only network use is Ubisoft's public CDN; signing in (optional) reads the account from Ubisoft over its session service and socket service. |
 
 `AchievementCaretaker.slnx` is the solution, in the **`.slnx`** format. There is no
 `.sln`; do not add one back. Its `Documentation` folder carries `README.md`, `CLAUDE.md`,
@@ -99,17 +102,91 @@ The rules:
   A helper is kept for 30 s after its last call so one editing session starts Steam once, and
   `GetAchievementsAsync` always starts a fresh one (a reload must see Steam's current state).
   Closing its standard input is what makes it exit, so a crashed application leaves none behind.
-- **Epic is read-only; GOG can write.** Epic: no unlocking, no re-locking, no EOS SDK, no
+- **Epic is read-only; GOG can write; Ubisoft can unlock.** Epic: no unlocking, no re-locking, no EOS SDK, no
   reading a game's client secret. Epic cannot re-lock an achievement anyway, and the tools that
   unlock inject into the game or need that secret. GOG: changing an achievement needs a token
   issued to the *game's* client, so `GogProvider.SetAchievementsAsync` reads the client secret
   from GOGDB's build record, **only when something is written**. Listing reads the client id
   and nothing else. The secret and the game token are never logged, kept on disk or put in an
   error message, and the account's own session is not touched by the game token. Writing is a
-  separate interface, `IWritableStoreProvider`, which only GOG implements; the achievements
+  separate interface, `IWritableStoreProvider`, which GOG and Ubisoft Connect implement; the achievements
   window shows the checkboxes and the Lock / Invert / Unlock buttons only for a provider that
   has it, and sends the pending changes with Commit, as Steam's does. Verified against a
   live GOG account (unlock and re-lock), unlike Steam's write path.
+- **Ubisoft Connect is found on this computer, and can unlock when signed in.** `UbisoftProvider` reads what the launcher
+  keeps: the ownership cache (`%LOCALAPPDATA%\Ubisoft Game Launcher\cache\ownership`, one file per user
+  named by a GUID), the configuration catalog (`...\cache\configuration\configurations`: names, pictures
+  and the achievement list's file name per product), the achievement archives
+  (`%PROGRAMDATA%\Ubisoft\Ubisoft Game Launcher\cache\achievements\<id>_<hash>`, zips, **found by the
+  `<id>_` prefix because the `.zip` is not always there**) and the spool (`...\spool\<user>\<id>.spool`,
+  what was earned *here*). The formats, and what a real machine has, are in `docs/UBISOFT-RESEARCH.md`;
+  read it before changing a parser. The rules that follow:
+  - **It is an `ILocalStoreAccount`**, an `IStoreAccount` that is found rather than signed in to: no
+    sign-in panel, no Switch account, no Sign out, `StoreLibraryViewModel` shows
+    `UnavailableMessage` with **Look again** when the launcher is not there. `IsSignedIn` and
+    `AccountId` (the user GUID) are asked of the file system every time, since the launcher changes
+    outside this process. Without the launcher's caches there is no library; the optional sign-in is the way
+    round that.
+  - **Signing in is optional, and Ubisoft's own page does it.** `IsSignedInOnline` (an `ILocalStoreAccount`
+    member) says Caretaker has a session (`~/.sac/ubisoft.json` through `ISessionStore`); then the library and
+    what is earned come from Ubisoft, else from the files. `IStoreAccount.SignInScript` is run by
+    `StoreSignInWindow` on the sign-in site's pages: the page leaves the session in its local storage and the
+    script moves it to `connect.ubisoft.com/change_domain/<session>`, which `GetSignInResultKind` recognises as an
+    `Address`. **Caretaker never reads a password or a field of the page, and never reads the launcher's own
+    stored credentials**; the web session is the page's, handed over in an address. The session is renewed with
+    its ticket, else with the remember-me ticket, and treated like the other stores' (never logged, printed or put
+    in a message). Signing out forgets only ours and falls back to the launcher. A `SignInHint` of "" means there
+    is nothing to paste from another browser, so an embedded browser that cannot start is an error, not a
+    fallback.
+  - **The socket service is hand-written and the server's version is used.** `DemuxClient` frames messages
+    (four bytes big endian), reads in a loop, matches responses by request id and service replies by connection,
+    one call at a time; `ProtoMessage` writes and reads by field number from the published definitions, with no
+    package. The client announces the `latest_version` the server gives, not a constant (UplayKit's 12922 was
+    already stale). The provider keeps one connection (so it is `IDisposable`), opens it again once if it drops,
+    and asks for the account's achievements with the user id and the platform `PC`. **The achievements service
+    is asked by the catalog block's `uplay.achievements_sync_id` (`ACK`), never the product id: by product id it
+    answers with an empty list and no error, which looks exactly like "nothing earned".** The library filters on
+    `owned`, game type and not locked by a subscription, and not on state (the launcher lists state 0 and 4
+    games). Verified against a real account (57 games; Valhalla 66 of 92, Odyssey 84 of 93, including
+    achievements earned on other computers); `FakeDemuxServer` only proves the client follows the definitions.
+  - **The only network is Ubisoft's public CDN** (`static3.cdn.ubi.com/orbit/uplay_launcher_3_0/assets/`):
+    the game's background picture (`StoreGame.ImageUrl`) and, when neither the launcher nor an earlier
+    download has the archive, the archive itself into `~/.sac/ubisoft/archives/<id>_<name>`. No sign-in,
+    no account identifier in a request. It goes through the named client `UbisoftProvider.HttpClientName`,
+    per request, like the other providers. **The listing downloads nothing**; opening a game and
+    **Load progress** do.
+  - **A game is an owned product that can be started** (`start_game` in its catalog block), named through
+    the block's localization table (`root.name` is often a key, not a name); the shipped
+    `Data/UplayGames.txt` is only the fallback for a product the catalog lacks. The ownership cache lists
+    a product under two ids, so games are joined by the catalog and listed once.
+  - **What is partial is shown as partial.** A catalog entry with no achievement list has an empty list
+    (that is "none"); a product the catalog does not know and with no archive throws `no_local_data`
+    and says why, never an empty list and never a list built from the spool alone (every achievement in
+    it is earned, so it would read as complete). "Not in the spool" means "not earned here". XP, rarity
+    and progress are `null`.
+  - **Ubisoft's endpoints are in `UbisoftProvider.cs` (the constants) and `UbisoftProvider.Online.cs`.** The
+    socket host is in `UbisoftConnector`, which a test replaces with a loopback server.
+  - **It registers only on Windows**, in `AddUbisoftProvider`, the one place that asks; elsewhere
+    there is no such source. Icons are copied out of the archives into `~/.sac/ubisoft/icons` and given
+    as `file:` addresses, which `StoreImageCache` reads where they are.
+  - **It can unlock, only when signed in, and an unlock is final.** `UbisoftProvider` is an
+    `IWritableStoreProvider` with `CanWrite` = `IsSignedInOnline` (the launcher's files are only read) and
+    `CanRelock` = false (both default to true on the interface, so GOG and Steam are unchanged). The service takes a
+    game's **whole** list of earned achievements, so `SetAchievementsAsync` reads it, sends it back with its times
+    plus the new ids (stamped now, in the unit the service uses: seconds), and **reads it again**, because the
+    service answers a write with an empty message whether it kept anything or not. It refuses a lock, an id the
+    game's list does not have, and an unsigned account before sending. The window follows `CanRelock`: no Lock or
+    Invert, achievements already earned are `Protected` (shown fixed), and `StoreAchievementsViewModel` asks once
+    before sending an unlock. Tried on a live account (Far Cry 5, "ARCADE Player"; the launcher showed it earned).
+    It changes a real account and UbiSlot warns of risk to it: **never write to a real account without the user
+    naming the achievement and saying go**, and say it cannot be undone. The launcher's local spool does not change
+    (the current launcher reads achievements from the network), so it cannot be used to check a write.
+  - **One socket connection per account at a time.** Ubisoft closes the service for an account signed in a second
+    time (the launcher, another Caretaker), so the provider closes its connection 20 s after its last use and an
+    ownership request only follows the list request. A second Caretaker running at once will fail with "Ubisoft
+    closed the service".
+  UbiSlot's own way of unlocking (the spool, through `uplay_r164.dll` and a session the launcher restarts the
+  process into) is deliberately not used.
 - **Every unofficial endpoint lives in its store's one `*Provider.cs`.** They are the
   stores' own and can change; keep them in one file each.
 - **A provider never holds an `HttpClient`.** It takes an `IHttpClientFactory` and asks for
@@ -120,7 +197,8 @@ The rules:
   `Add<Store>Provider` extension (`EpicServiceCollectionExtensions`, `GogServiceCollectionExtensions`),
   which is also what registers the provider, as an `IStoreProvider` and as an `IStoreAccount`
   (see **Adding a store**). A provider owns nothing that
-  needs disposing, so `IStoreProvider` is not `IDisposable`. The two provider assemblies
+  needs disposing, so `IStoreProvider` is not `IDisposable` (Ubisoft's keeps a socket and is `IDisposable` itself;
+  the container disposes it). The two provider assemblies
   reference `Microsoft.Extensions.Http` for this; `Abstractions` and `Shared` do not.
 - **A session file holds a refresh token**, a credential for the whole store account:
   `~/.sac/epic.json`, `~/.sac/gog.json`. They go through `ISessionStore`, which a provider
@@ -171,7 +249,8 @@ The rules:
   and the container hands out that one instance under both interfaces; a provider's calls throw
   `login_required` when the session is gone, they do not sign in. Steam is an `IStoreProvider`
   only: it has no sign-in of its own.
-- **Adding a store** means implementing `IStoreProvider` and `IStoreAccount` and registering it in
+- **Adding a store** means implementing `IStoreProvider` and `IStoreAccount` (or `ILocalStoreAccount`, for a
+  store read from this computer) and registering it in
   `ServiceRegistration.AddCaretaker` (with the `Add<Store>Provider` extension that goes with it)
   as both, the same instance. Everything that lists the stores asks the container for
   `IEnumerable<IStoreProvider>` and `IEnumerable<IStoreAccount>` and pairs them by `Id`
@@ -403,7 +482,9 @@ dotnet test --solution AchievementCaretaker.slnx -c Release
   and **the Epic and GOG providers against a played-out store** (`FakeStore`, an
   `IHttpClientFactory` answering from a table of routes; `MemorySessionStore`): sign-in, token
   refresh and rotation, the library with its paging and batching, achievements, and GOG's writes,
-  including that no secret or code ends up in an error message.
+  including that no secret or code ends up in an error message. **The Ubisoft provider and its
+  readers** run over a launcher folder the test lays out itself (`UbisoftFiles`: ownership, spool and
+  zip built to the real formats, so no Ubisoft Connect and no one's real file is needed).
 - A test that cannot run on this operating system **skips**, it does not pass: the DPAPI tests
   skip off Windows and the Unix-file-mode tests skip on Windows, so CI on Linux is what runs the
   latter. Platform-annotated APIs in a test need `[SupportedOSPlatform]` or
@@ -1022,6 +1103,12 @@ Match the surrounding style; it is consistent and deliberate even where it is un
   - *Based on GOG Achievements Manager* (`Gog/`): the Caretaker copyright, the "based on GOG
     Achievements Manager by Timendum" attribution with both upstream URLs, and a note that it
     reimplements the calls it makes: listing, and unlocking and re-locking.
+  - *Based on UbiSlot, Achievements and galaxy-integration-uplay* (`Ubisoft/`): the Caretaker copyright,
+    the "based on UbiSlot by BalTor02 (MIT)" and "based on Achievements by PSerban93 (MIT)" lines with
+    their URLs, and, in the files that read the catalog or the CDN, "based on galaxy-integration-uplay by
+    melcom (MIT)", and a note that it reads the same local launcher files. The licences are MIT and
+    their notices are in `docs/ATTRIBUTION.md`, which is where the shipped name list's credit
+    (NikitaGareev) is too.
   - *Everything else* (`Epic/`, the shared store code, the store windows and view models,
     `tools/`, CI and packaging): the Caretaker copyright, `See LICENSE in the repository
     root.`, and for `Epic/` a line saying it is written from the endpoints Legendary and

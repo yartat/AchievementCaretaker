@@ -13,6 +13,7 @@ using AchievementCaretaker.Providers;
 using AchievementCaretaker.Providers.Steam;
 using AchievementCaretaker.Providers.Epic;
 using AchievementCaretaker.Providers.Gog;
+using AchievementCaretaker.Providers.Ubisoft;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace AchievementCaretaker.App.Services;
@@ -49,6 +50,7 @@ internal static class ServiceRegistration
 
         services.AddEpicProvider(AppSettings.HomeDirectory);
         services.AddGogProvider(AppSettings.HomeDirectory);
+        services.AddUbisoftProvider(AppSettings.HomeDirectory);
 
         // The library database: a scoped connection and repository, made from the path in the
         // settings. It can be moved from the settings dialog, and it can fail to be prepared at

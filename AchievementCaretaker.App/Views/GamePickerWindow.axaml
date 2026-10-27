@@ -213,13 +213,17 @@
                     <Button Grid.Column="1" Padding="6,1" FontSize="11"
                             Background="Transparent" BorderThickness="0"
                             Foreground="{DynamicResource SamSecondaryTextBrush}"
-                            IsVisible="{Binding IsSignedIn}"
-                            ToolTip.Tip="Switch account or sign out">
+                            IsVisible="{Binding HasAccountMenu}"
+                            ToolTip.Tip="Account">
                       <TextBlock Text="⋯" FontSize="14" />
                       <Button.Flyout>
                         <MenuFlyout>
-                          <MenuItem Header="Switch account…" Command="{Binding SwitchAccountCommand}" />
-                          <MenuItem Header="Sign out…" Command="{Binding SignOutCommand}" />
+                          <MenuItem Header="Sign in…" Command="{Binding SignInWithBrowserCommand}"
+                                    IsVisible="{Binding IsLocalSignInOffered}" />
+                          <MenuItem Header="Switch account…" Command="{Binding SwitchAccountCommand}"
+                                    IsVisible="{Binding CanChangeAccount}" />
+                          <MenuItem Header="Sign out…" Command="{Binding SignOutCommand}"
+                                    IsVisible="{Binding CanChangeAccount}" />
                         </MenuFlyout>
                       </Button.Flyout>
                     </Button>
@@ -227,7 +231,7 @@
                             HorizontalAlignment="Left"
                             Background="Transparent" BorderThickness="0"
                             Foreground="{DynamicResource SamAccentTextBrush}"
-                            IsVisible="{Binding IsSignedOut}"
+                            IsVisible="{Binding IsRailSignInVisible}"
                             Command="{Binding SignInWithBrowserCommand}"
                             ToolTip.Tip="Sign in to this store">
                       <TextBlock Text="Sign in" FontSize="11" />
@@ -464,7 +468,7 @@
                     Command="{Binding SelectedStoreLibrary.LoadProgressCommand}"
                     IsEnabled="{Binding SelectedStoreLibrary.CanLoadProgress}"
                     IsVisible="{Binding !SelectedStoreLibrary.IsLoadingProgress}"
-                    ToolTip.Tip="Read the achievements of every game not read yet. This asks the store about each one, so it takes a while; it can be stopped, and what it has read is kept.">
+                    ToolTip.Tip="Read the achievements of every game not read yet (for Ubisoft Connect, of every game that has them, to bring the counts up to date). This asks the store about each one, so it takes a while; it can be stopped, and what it has read is kept.">
               <StackPanel Orientation="Horizontal" Spacing="6">
                 <PathIcon Data="{StaticResource DownloadIcon}" />
                 <TextBlock Text="Load progress" FontSize="12" VerticalAlignment="Center" />

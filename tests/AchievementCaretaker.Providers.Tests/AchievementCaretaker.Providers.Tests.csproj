@@ -17,6 +17,7 @@
     <ProjectReference Include="..\..\AchievementCaretaker.Providers.Shared\AchievementCaretaker.Providers.Shared.csproj" />
     <ProjectReference Include="..\..\AchievementCaretaker.Providers.Epic\AchievementCaretaker.Providers.Epic.csproj" />
     <ProjectReference Include="..\..\AchievementCaretaker.Providers.Gog\AchievementCaretaker.Providers.Gog.csproj" />
+    <ProjectReference Include="..\..\AchievementCaretaker.Providers.Ubisoft\AchievementCaretaker.Providers.Ubisoft.csproj" />
   </ItemGroup>
 
 </Project>

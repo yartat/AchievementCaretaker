@@ -20,6 +20,8 @@ public sealed class StoreAchievementsServiceTests
     private sealed class FakeProvider : IWritableStoreProvider
     {
         public Exception? Throw { get; set; }
+        public bool CanWrite { get; set; } = true;
+        public bool CanRelock { get; set; } = true;
         public List<KeyValuePair<string, bool>> Written { get; } = new();
 
         public string Id => "fake";
@@ -134,5 +136,26 @@ public sealed class StoreAchievementsServiceTests
     public void Only_a_writable_provider_can_modify()
     {
         Assert.True(_service.CanModify(new FakeProvider()));
+    }
+
+    [Fact]
+    public void A_provider_that_cannot_write_now_or_cannot_relock_says_so()
+    {
+        Assert.True(_service.CanRelock(new FakeProvider()));
+        Assert.False(_service.CanModify(new FakeProvider { CanWrite = false }));
+        Assert.True(_service.CanModify(new FakeProvider { CanRelock = false }));
+        Assert.False(_service.CanRelock(new FakeProvider { CanRelock = false }));
+    }
+
+    [Fact]
+    public async Task A_commit_to_a_provider_that_cannot_write_now_is_refused_without_calling_it()
+    {
+        var provider = new FakeProvider { CanWrite = false };
+
+        var failure = await _service.CommitAsync(
+            provider, "g", new[] { new KeyValuePair<string, bool>("a", true) }, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(failure);
+        Assert.Empty(provider.Written);
     }
 }

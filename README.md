@@ -2,8 +2,9 @@
 
 Achievement Caretaker is a lightweight, portable application for your game achievements.
 It edits achievements and statistics in **Steam**, and shows the library and achievements of
-your **Epic Games** and **GOG** accounts. Epic is read-only; GOG achievements can be
-unlocked and locked. Steam needs the
+your **Epic Games** and **GOG** accounts, and of **Ubisoft Connect** from the launcher installed on
+your computer (Windows). Epic is read-only; GOG achievements can be unlocked and locked, and
+Ubisoft Connect achievements can be unlocked (not locked again), when you are signed in. Steam needs the
 [Steam client](https://store.steampowered.com/about/), running and logged in, to refresh its
 library and to open a game's achievements; Epic Games and GOG need only a network connection
 and a sign-in. The library window opens without Steam, shows what it saved last time, and
@@ -11,7 +12,11 @@ starts refreshing as soon as Steam is available. See [Using the sources](#using-
 
 > **Steam support is based on [Steam Achievement Manager](https://github.com/gibbed/SteamAchievementManager)
 > (SAM) by Rick ([gibbed](https://github.com/gibbed)), and GOG support is based on
-> [GOG Achievements Manager](https://github.com/timendum/gog_achievements) by Timendum.**
+> [GOG Achievements Manager](https://github.com/timendum/gog_achievements) by Timendum, and
+> Ubisoft Connect support on [UbiSlot](https://github.com/BalTor02/UbiSlot) by BalTor02,
+> [Achievements](https://github.com/PSerban93/Achievements) by PSerban93,
+> [galaxy-integration-uplay](https://github.com/melcom-creations/galaxy-integration-uplay) by melcom and
+> [UplayKit](https://github.com/UplayDB/UplayKit) by UplayDB.**
 > The Steam code is an altered source version of SAM, distributed under the same zlib
 > license. SAM was released closed-source in 2008, saw its last major release in 2011, and
 > was opened later so that those interested could do as they like with it. See
@@ -113,7 +118,8 @@ changed in each release.
 ## Using the sources
 
 The library shows one source at a time. Pick it in the **Source** section of the left rail:
-Steam, Epic Games or GOG. Each has its own games, its own collections and its own sign-in.
+Steam, Epic Games, GOG or Ubisoft Connect. Each has its own games and its own collections;
+Epic and GOG have their own sign-in, and Ubisoft Connect is read from the launcher or, if you sign in, from Ubisoft (see below).
 Search, the Tiles / Content switch and sorting work the same way in all of them.
 
 ### Steam
@@ -199,6 +205,38 @@ Steam's editor, this changes your real account. Unlocking and re-locking were ch
 a live GOG account.
 
 If a session is refused later, Caretaker forgets it and shows the sign-in panel again.
+
+### Ubisoft Connect
+
+Windows only. There are two ways to read an account, and the second is optional:
+
+- **From the launcher on this computer.** Caretaker reads the files the Ubisoft Connect launcher keeps,
+  so there is nothing to sign in to: whoever is logged in to the launcher here is the account, shown in
+  the left panel as *this computer*. The launcher must be installed and have been logged in to at least
+  once; if it is not found the window says so, and you install it, log in, and press **Look again**.
+- **With your Ubisoft account.** Sign in with Ubisoft's own page, in a browser window inside
+  Caretaker (**Sign in** in the left panel; it needs the WebView2 runtime). Caretaker never sees your
+  password. It then reads your games and what you earned from Ubisoft, so the launcher is not needed,
+  and achievements earned on other computers show. Signing out returns to the launcher's files.
+
+- **Which games.** Owned products that are games, with the names and the wide background picture the
+  launcher's catalog (or, signed in, Ubisoft) gives them.
+- **Achievements.** Names, descriptions and icons come from the game's list. If the launcher has not
+  saved it, Caretaker downloads it from Ubisoft's public content server (the same file, no sign-in)
+  and keeps it. A game that has no list says so.
+- **What you earned.** From the launcher's own record, with dates, for games played on this computer; an
+  achievement not recorded there is shown as not earned, which cannot be told from earned on another
+  computer. Signed in, it is what Ubisoft has recorded for your account.
+- Counts appear in the library for games whose list is already on this computer; **Load progress**
+  reads the rest. There is no XP or rarity.
+
+**Unlocking.** Signed in with your Ubisoft account, a game's achievements window has checkboxes and a
+**Commit** button, and ticking an achievement and committing records it as earned on your account (the
+launcher shows it too). **It cannot be undone**: Ubisoft's service only takes what is earned, so there is
+no Lock or Invert, achievements already earned are shown as fixed, and Caretaker asks before it sends.
+It changes your real account, and UbiSlot, which Caretaker's Ubisoft support is based on, warns that this
+may carry risks for it; the first one was tried on a live account and the launcher showed it at once.
+Without a sign-in nothing can be changed. See [docs/UBISOFT-RESEARCH.md](docs/UBISOFT-RESEARCH.md).
 
 ## Building
 

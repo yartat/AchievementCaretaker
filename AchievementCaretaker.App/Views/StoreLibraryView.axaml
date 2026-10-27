@@ -36,8 +36,56 @@
        here has to stretch to the full width so the scrollbar stays at the edge. -->
   <Panel>
 
+    <!-- A store whose own client is read from this computer and was not found: there is nothing
+         to sign in to, only to install it, log in, and look again. -->
+    <Border IsVisible="{Binding IsLocalMissing}"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Width="440"
+            Padding="26"
+            CornerRadius="8"
+            Background="{DynamicResource SamPanelBrush}"
+            BorderBrush="{DynamicResource SamBorderBrush}"
+            BorderThickness="1">
+      <StackPanel Spacing="12">
+        <TextBlock Text="{Binding DisplayName}"
+                   FontSize="17"
+                   FontWeight="SemiBold"
+                   Foreground="{DynamicResource SamTextBrush}" />
+        <TextBlock Text="{Binding LocalMissingText}"
+                   FontSize="12"
+                   TextWrapping="Wrap"
+                   Foreground="{DynamicResource SamSecondaryTextBrush}" />
+        <Button HorizontalAlignment="Left"
+                Height="30"
+                Padding="16,0"
+                CornerRadius="5"
+                Background="{DynamicResource SamAccentBrush}"
+                Foreground="{DynamicResource SamOnAccentBrush}"
+                BorderThickness="0"
+                IsEnabled="{Binding !IsBusy}"
+                Command="{Binding LookAgainCommand}">
+          <TextBlock Text="Look again" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+        </Button>
+        <TextBlock Text="Without Ubisoft Connect on this computer, sign in with your Ubisoft account instead: Caretaker then reads your games and achievements from Ubisoft. It never sees your password."
+                   FontSize="11"
+                   TextWrapping="Wrap"
+                   IsVisible="{Binding CanSignInOnline}"
+                   Foreground="{DynamicResource SamMutedTextBrush}" />
+        <Button HorizontalAlignment="Left"
+                Height="30"
+                Padding="16,0"
+                CornerRadius="5"
+                IsVisible="{Binding CanSignInOnline}"
+                IsEnabled="{Binding !IsBusy}"
+                Command="{Binding SignInWithBrowserCommand}">
+          <TextBlock Text="Sign in to Ubisoft" FontSize="12" VerticalAlignment="Center" />
+        </Button>
+      </StackPanel>
+    </Border>
+
     <!-- Signed out: the one thing to do is sign in. -->
-    <Border IsVisible="{Binding IsSignedOut}"
+    <Border IsVisible="{Binding IsSignInVisible}"
             HorizontalAlignment="Center"
             VerticalAlignment="Center"
             Width="440"

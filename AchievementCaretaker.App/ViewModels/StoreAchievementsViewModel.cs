@@ -70,6 +70,15 @@ internal sealed partial class StoreAchievementsViewModel : ProgressViewModel
     /// </summary>
     public bool CanModify => _service.CanModify(_provider);
 
+    /// <summary>
+    /// Whether an unlocked achievement can be locked again, so Lock and Invert are shown. Ubisoft Connect only
+    /// records achievements: there an unlock is final, and is asked about before it is sent.
+    /// </summary>
+    public bool CanRelock => _service.CanRelock(_provider);
+
+    /// <summary>Lock and Invert are shown: the store can be changed, and what is unlocked can be locked again.</summary>
+    public bool ShowRelock => CanModify == true && CanRelock == true;
+
     /// <summary>Whether the store has statistics beside achievements (only Steam does).</summary>
     public bool HasStatistics => _service.HasStatistics(_provider);
 
@@ -385,6 +394,16 @@ internal sealed partial class StoreAchievementsViewModel : ProgressViewModel
             return;
         }
         var sent = changes.Count + statChanges.Count;
+
+        // What cannot be taken back is asked about, once, before it is sent.
+        if (CanRelock == false && changes.Count > 0 && ConfirmRequested != null &&
+            await ConfirmRequested(
+                "Unlock",
+                $"{changes.Count} achievement(s) will be recorded as earned on your {_provider.DisplayName} account. " +
+                "This cannot be undone. Continue?") == false)
+        {
+            return;
+        }
 
         SetCommitting(true);
         BeginProgress("Sending changes...");

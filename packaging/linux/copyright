@@ -5,7 +5,13 @@ Comment: Steam support in Achievement Caretaker is based on Steam Achievement
  Manager by Rick (gibbed), https://github.com/gibbed/SteamAchievementManager,
  and is an altered source version of it, plainly marked as such. GOG support
  is based on GOG Achievements Manager by Timendum,
- https://github.com/timendum/gog_achievements. See docs/ATTRIBUTION.md.
+ https://github.com/timendum/gog_achievements. Ubisoft Connect support is
+ based on UbiSlot by BalTor02, https://github.com/BalTor02/UbiSlot, on
+ Achievements by PSerban93, https://github.com/PSerban93/Achievements, and on
+ galaxy-integration-uplay by melcom,
+ https://github.com/melcom-creations/galaxy-integration-uplay, and on
+ UplayKit by UplayDB, https://github.com/UplayDB/UplayKit (all MIT). See
+ docs/ATTRIBUTION.md.
 
 Files: *
 Copyright: 2026 Yaroslav V Tatarenko

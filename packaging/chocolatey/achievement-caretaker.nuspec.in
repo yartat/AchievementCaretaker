@@ -30,7 +30,9 @@ Steam: the library, and the achievement and statistics editor. Steam must be run
 
 Epic Games and GOG: your libraries and achievements. Epic is read-only; GOG achievements can be unlocked and locked. Signing in happens on the store's own page, inside the application.
 
-Based on Steam Achievement Manager by Rick (gibbed), distributed under the zlib license, and on GOG Achievements Manager by Timendum. See the project's README for the full attribution.</description>
+Ubisoft Connect (Windows): read-only, from the files the launcher keeps on your computer; no sign-in.
+
+Based on Steam Achievement Manager by Rick (gibbed), distributed under the zlib license, on GOG Achievements Manager by Timendum, and on UbiSlot by BalTor02, Achievements by PSerban93, galaxy-integration-uplay by melcom and UplayKit by UplayDB (all MIT). See the project's README for the full attribution.</description>
     <releaseNotes>https://github.com/yartat/AchievementCaretaker/releases/tag/v@VERSION@</releaseNotes>
   </metadata>
   <files>

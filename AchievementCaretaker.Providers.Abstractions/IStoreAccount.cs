@@ -36,6 +36,14 @@ public interface IStoreAccount : IStore
     /// </summary>
     SignInResultKind GetSignInResultKind(Uri? address);
 
+    /// <summary>
+    /// A script the embedded sign-in browser runs on every page of <see cref="SignInUrl"/>'s site, for a
+    /// store that hands the result over in the page's storage instead of in an address. It ends by moving
+    /// the page to the address <see cref="GetSignInResultKind"/> recognises, which carries the result. Null
+    /// when the store ends its sign-in with an address of its own.
+    /// </summary>
+    string? SignInScript => null;
+
     /// <summary>True when a saved session exists that can still be refreshed.</summary>
     bool IsSignedIn { get; }
 

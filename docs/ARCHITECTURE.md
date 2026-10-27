@@ -3,7 +3,8 @@
 > Steam support in Achievement Caretaker is based on
 > [Steam Achievement Manager](https://github.com/gibbed/SteamAchievementManager) by Rick
 > (gibbed), and is an altered source version of it; GOG support is based on
-> [GOG Achievements Manager](https://github.com/timendum/gog_achievements) by Timendum.
+> [GOG Achievements Manager](https://github.com/timendum/gog_achievements) by Timendum;
+> Ubisoft Connect support is based on [UbiSlot](https://github.com/BalTor02/UbiSlot) by BalTor02, [Achievements](https://github.com/PSerban93/Achievements) by PSerban93, [galaxy-integration-uplay](https://github.com/melcom-creations/galaxy-integration-uplay) by melcom and [UplayKit](https://github.com/UplayDB/UplayKit) by UplayDB (all MIT).
 > The Steam interop layer described below is substantially SAM's work. See
 > [ATTRIBUTION.md](ATTRIBUTION.md).
 
@@ -20,6 +21,7 @@ greater length plus the rules a contributor or coding agent must not break.
 | `AchievementCaretaker.Providers.Shared` | class library | What the providers share: the session file (DPAPI) and JSON helpers. |
 | `AchievementCaretaker.Providers.Epic` | class library | The Epic Games provider over HTTPS, read-only. |
 | `AchievementCaretaker.Providers.Gog` | class library | The GOG provider over HTTPS; it can also unlock and lock. |
+| `AchievementCaretaker.Providers.Ubisoft` | class library | The Ubisoft Connect provider, read-only, from the files the launcher keeps on this computer (Windows only), with pictures and achievement lists from Ubisoft's public CDN: no sign-in. |
 | `AchievementCaretaker.Services` | class library | The logic behind the windows, with no UI: the SQLite caches and the store services (library, achievements, sign-in). |
 | `AchievementCaretaker.App` | `AchievementCaretaker.exe` | The whole application: the library window, the achievements window for every source (Steam included), and the hidden Steam helper (`--steam-worker`). |
 
@@ -284,7 +286,7 @@ with four workers.
 The library window can show an Epic Games or GOG library beside Steam's: the owned games, and each
 game's achievements with the signed-in player's progress. Epic is read-only. GOG's achievements can also be unlocked and re-locked: the
 achievements window has the Steam editor's checkboxes, Lock / Invert / Unlock buttons and
-Uncommitted bar, and Commit sends the changes through `IWritableStoreProvider`, which only GOG
+Uncommitted bar, and Commit sends the changes through `IWritableStoreProvider`, which GOG and Ubisoft Connect (signed in, unlock only)
 implements. How the two stores' endpoints work is in [EPIC-RESEARCH.md](EPIC-RESEARCH.md)
 and [GOG-RESEARCH.md](GOG-RESEARCH.md); this is how the application uses them.
 
@@ -326,6 +328,61 @@ and [GOG-RESEARCH.md](GOG-RESEARCH.md); this is how the application uses them.
   cancelled. Signing in starts that run by itself, so a new account fills in without a click and
   an account that is already known costs almost nothing. Until a game has been read its meter
   is absent rather than empty.
+
+## Ubisoft Connect
+
+Ubisoft Connect is a source like the others, but **found on this computer**: `UbisoftProvider` reads the
+launcher's ownership cache (which products the account owns), its configuration catalog (what they are
+called and which pictures and achievement list belong to them), its achievement archives (names,
+descriptions, icons) and its spool (what was earned on this computer, and when). It is an
+`IStoreProvider` and an `ILocalStoreAccount`, an `IStoreAccount` that is found rather than signed in
+to: the launcher's user is the account, there is no sign-in panel, Switch account or Sign out, and when
+the launcher is not there the window says so and offers **Look again**. It registers only on Windows,
+in one place (`AddUbisoftProvider`), so elsewhere there is no such source.
+
+The only network use is Ubisoft's public CDN (`static3.cdn.ubi.com`), which needs no sign-in: the
+background picture of a game (the library's `ImageUrl`) and, for a game whose archive the launcher has
+not saved, the archive itself, named by the catalog and kept in `~/.sac/ubisoft/archives`. The provider
+takes an `IHttpClientFactory` and asks for its named client per request, like Epic and GOG. The library
+listing downloads nothing; **Load progress** and opening a game do.
+
+What the files hold is partial and is shown as such: a game is an owned product whose catalog block can
+be started (`start_game`), named through the block's localization table, with the shipped name list as a
+fallback; a game the catalog gives no list for has an empty one, a game the catalog does not know has an
+error that says so, and "not earned" means "not earned here". Icons are taken out of the archives into
+`~/.sac/ubisoft/icons` and shown from there (`file:` addresses in `StoreImageCache`). The formats and
+what was found on a real machine are in [UBISOFT-RESEARCH.md](UBISOFT-RESEARCH.md).
+
+### Signing in to Ubisoft (optional)
+
+`UbisoftProvider` is an `ILocalStoreAccount` that can also be signed in to (`IsSignedInOnline`). The
+sign-in is Ubisoft's own page (`connect.ubisoft.com/login`) in `StoreSignInWindow`, which runs the
+account's `SignInScript` on that site's pages: the page leaves the session in its local storage, and the
+script moves the page to `connect.ubisoft.com/change_domain/<session>`, the address
+`GetSignInResultKind` recognises as `Address`. The window never reads the page's fields. The provider
+checks the session with Ubisoft's session service (`UbisoftProvider.Online.cs`), keeps it through
+`ISessionStore` (`~/.sac/ubisoft.json`, DPAPI) and renews it with its ticket, else with the remember-me
+ticket. Both partial files of the provider hold Ubisoft's endpoints.
+
+A signed-in account is read over Ubisoft's socket service (`DemuxClient`, `UbisoftOnline`): TLS to
+`dmx.upc.ubisoft.com`, four-byte big-endian length-prefixed protocol buffers, written by hand by field number
+(`ProtoMessage`) so there is no package. A connection announces the protocol version the server says is
+current, signs in with the ticket, and opens `ownership_service` (the owned products, each with its catalog
+block, which `GameConfigurations.Parse` reads exactly as it reads the launcher's) and `ach_frontend` (what the
+account has earned, by product id). The names, pictures and achievement lists still come from the catalog
+block and the public CDN. Calls take turns on one connection, which is opened again once if it has dropped and
+is closed 20 seconds after its last use: Ubisoft lets an account be signed in to the service once at a time, so a
+connection left open would turn the launcher away and be turned away itself. The ownership service closes
+itself on any request before its list has been asked for, so that is always the first. The provider is
+`IDisposable`, which the container honours.
+
+A signed-in account can also **unlock**: `UbisoftProvider` is an `IWritableStoreProvider` with `CanWrite` true
+only when signed in (the launcher's files are only read) and `CanRelock` false. `ach_frontend` takes a game's whole
+list of earned achievements, so `SetAchievementsAsync` reads what is earned, sends it back with its times and the new
+ones stamped now, and reads it again to see that the service kept them (it answers a write with an empty message
+either way). An unlock cannot be undone, so the window shows no Lock or Invert, shows what is earned as fixed
+(`StoreAchievement.Protected`), and asks once before sending (`CanRelock` on the achievements service, a
+confirmation in `StoreAchievementsViewModel`).
 
 ## Services and tests
 
