@@ -228,3 +228,34 @@ jobs:
         run: |
           set -euo pipefail
           bash packaging/chocolatey/build.sh "$VERSION" --out dist/chocolatey --push
+
+  # The APT repository lives on Cloudsmith, which signs it with its own key. It runs
+  # after the release exists so a failed upload never blocks the GitHub release, and
+  # only on a tag. CLOUDSMITH_API_KEY is a secret; CLOUDSMITH_OWNER and
+  # CLOUDSMITH_REPOSITORY may be repository variables or secrets.
+  apt:
+    needs: [version, release]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: deb
+          path: artifacts/deb
+
+      - name: Install the Cloudsmith CLI
+        run: pip install --quiet cloudsmith-cli
+
+      - name: Publish the package to the APT repository
+        env:
+          CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
+          CLOUDSMITH_OWNER: ${{ vars.CLOUDSMITH_OWNER || secrets.CLOUDSMITH_OWNER }}
+          CLOUDSMITH_REPOSITORY: ${{ vars.CLOUDSMITH_REPOSITORY || secrets.CLOUDSMITH_REPOSITORY }}
+        run: |
+          set -euo pipefail
+          bash packaging/apt/publish.sh artifacts/deb/*.deb

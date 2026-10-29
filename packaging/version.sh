@@ -12,8 +12,7 @@
 # version with a "~dev" suffix, which sorts *before* the release in both dpkg
 # and semver order, so a development build can never look newer than a release.
 #
-# Reads GitLab's and GitHub's tag variables both, so one script and one version
-# gate serve both pipelines.
+# Reads GitHub Actions' tag variables (GITHUB_REF_TYPE, GITHUB_REF_NAME).
 
 set -euo pipefail
 
@@ -25,8 +24,8 @@ project_version() {
         "$root/Directory.Build.props" | head -1
 }
 
-tag="${CI_COMMIT_TAG:-}"
-if [ -z "$tag" ] && [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+tag=""
+if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
     tag="${GITHUB_REF_NAME:-}"
 fi
 
@@ -37,7 +36,7 @@ if [ -n "$tag" ]; then
     # direct call dies with "Permission denied" and exit 126.
     bash "$here/check-version.sh" "$version" >&2
 else
-    build="${CI_PIPELINE_IID:-${GITHUB_RUN_NUMBER:-0}}"
+    build="${GITHUB_RUN_NUMBER:-0}"
     version="$(project_version)~dev${build}"
 fi
 

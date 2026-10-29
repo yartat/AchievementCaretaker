@@ -155,12 +155,11 @@ cleanly on a bare Debian 13.
 
 ## Continuous delivery
 
-The repository carries pipelines for **both** GitHub Actions and GitLab CI. They build the
-same five artifacts from the same scripts under `packaging/`, and either can be deleted if
-only one forge is used.
+The repository carries GitHub Actions pipelines. They build the same five artifacts from the
+scripts under `packaging/`, which hold the logic, so the YAML stays a thin wrapper.
 
-Everything is cross-built on Linux — no Windows runner is needed — and both pipelines
-share the version gate below.
+Everything is cross-built on Linux — no Windows runner is needed (only the Chocolatey push
+uses one) — and the pipelines share the version gate below.
 
 **Pushing a tag `vX.Y.Z` is the whole release process.** It produces:
 
@@ -182,7 +181,7 @@ than a larger download. Debug symbols are stripped, which is about a third of th
 | Workflow | Runs on | Does |
 |---|---|---|
 | `.github/workflows/ci.yml` | pushes to a branch, pull requests | builds with warnings as errors, publishes both Windows targets and checks their architecture, builds the `.deb` |
-| `.github/workflows/release.yml` | a `v*.*.*` tag, or `workflow_dispatch` | builds the three artifacts and attaches them to a GitHub release; then, on a tag only, pushes the Chocolatey package (`chocolatey` job, Windows runner, needs the `CHOCO_API_KEY` secret) |
+| `.github/workflows/release.yml` | a `v*.*.*` tag, or `workflow_dispatch` | builds the three artifacts and attaches them to a GitHub release; then, on a tag only, pushes the Chocolatey package (`chocolatey` job, Windows runner, needs the `CHOCO_API_KEY` secret) and uploads the `.deb` to the APT repository (`apt` job, needs the `CLOUDSMITH_API_KEY` secret and the `CLOUDSMITH_OWNER` and `CLOUDSMITH_REPOSITORY` values, as variables or secrets) |
 
 The `.NET` SDK comes from `actions/setup-dotnet` with `global-json-file: global.json`, so
 the pinned SDK version is honoured rather than restated. `workflow_dispatch` builds
@@ -192,16 +191,6 @@ to exercise the packaging without tagging.
 The release job is the only one granted `contents: write`, and it uses the preinstalled
 `gh` CLI rather than a third-party action. Action versions are floating major tags
 (`@v4`); pin them to commit SHAs if you want the stricter supply-chain posture.
-
-### GitLab CI
-
-`.gitlab-ci.yml` uses the `mcr.microsoft.com/dotnet/sdk:10.0` image, which must carry an SDK
-at least as new as `global.json` asks for or restore fails before anything else does; the
-build job prints `dotnet --version` first so that is visible in the log.
-
-Artifacts are uploaded to the project's generic package registry and the release links point
-there rather than at job artifacts, because job artifacts expire and a release link that
-404s a month later is worse than no link.
 
 There is no arm64 job, on purpose — see the platform table in the
 [README](../README.md#platform-support).
@@ -292,13 +281,31 @@ The hashes are of the files the release serves, so publish the release first. On
 packaging/chocolatey/build.sh <version> --push`. A new hash is a new package, so rebuild after
 any change to a release asset.
 
+### The APT repository
+
+The `.deb` is also published to an APT repository on [Cloudsmith](https://cloudsmith.io), which signs the
+repository with its own key, so no GPG key is kept here. `packaging/apt/publish.sh <file.deb>` uploads the
+package (for any distribution and version: it is self-contained and depends on no runtime package) with the
+Cloudsmith CLI, which reads `CLOUDSMITH_API_KEY` itself. The repository is `CLOUDSMITH_OWNER`/`CLOUDSMITH_REPOSITORY`.
+
+One-time setup, by the maintainer:
+
+1. Create an open-source repository on Cloudsmith (a `deb` repository is created with it).
+2. Create an API key for a service account or user with write access to it.
+3. In the GitHub repository, add the secret `CLOUDSMITH_API_KEY` and `CLOUDSMITH_OWNER` and
+   `CLOUDSMITH_REPOSITORY` (variables or secrets both work). Prefer a GitHub Environment limited to `v*.*.*` tags for the secret.
+
+The `apt` job of `release.yml` then runs after the release exists, on a tag only. A failed upload does not
+block the GitHub release; run the script by hand to retry (`--republish` makes a re-run replace the file).
+Users add the repository with the setup script Cloudsmith generates for it
+(`https://dl.cloudsmith.io/public/<owner>/<repository>/setup.deb.sh`), then `sudo apt install achievement-caretaker`.
+
 ### Building the packages without tagging
 
 On GitHub, run the **Release** workflow by hand (`workflow_dispatch`) **from a branch**: it
 builds all three artifacts and uploads them as workflow artifacts, and the release step is
 skipped because `github.ref_type` is not `tag`. Dispatching it against a *tag* does publish
-a release - the condition is on the ref, not on the event. On GitLab both package jobs are `when: manual` on branches and upload
-nothing unless a tag is set. Locally:
+a release - the condition is on the ref, not on the event. Locally:
 
 ```bash
 dotnet publish AchievementCaretaker.App/AchievementCaretaker.App.csproj   -c Release -r linux-x64 --self-contained true -o out/linux-x64

@@ -46,11 +46,30 @@ app ID; that still starts the library and the app ID is ignored.
 | `…-win-x64-setup.exe` | 64-bit Windows, and you want it in the Start menu |
 | `…-win-x64-portable.zip` | 64-bit Windows, no installation — unzip and run |
 | `…-win-x86-setup.exe` / `…-win-x86-portable.zip` | 32-bit Windows |
-| `…_amd64.deb` | Debian or Ubuntu: `sudo apt install ./…deb` |
+| `…_amd64.deb` | Debian or Ubuntu: `sudo apt install ./…deb`, or from the APT repository below |
+| [Chocolatey](https://community.chocolatey.org/packages/achievement-caretaker) | Windows, from an elevated prompt: `choco install achievement-caretaker` |
 
 Every download bundles the .NET runtime, so there is nothing to install first. The Windows
 installer is per-user: it needs no administrator, and uninstalling leaves your settings and
 ratings in `~/.sac` alone.
+
+The Chocolatey package installs the **portable** build (the 64-bit or the 32-bit zip, whichever your
+machine needs) and checks its SHA-256 hash before unpacking, and adds a Start menu shortcut. Upgrade it with
+`choco upgrade achievement-caretaker`.
+
+### APT repository (Debian and Ubuntu, amd64)
+
+The package is also published in an APT repository, hosted on [Cloudsmith](https://cloudsmith.io/~yartat/repos/achievement-caretaker/),
+so it is installed and updated like any other package. The repository is signed; the first command adds its
+key and source, so read the script first if you prefer (`…/setup.deb.sh`).
+
+```bash
+curl -1sLf 'https://dl.cloudsmith.io/public/yartat/achievement-caretaker/setup.deb.sh' | sudo -E bash
+sudo apt install achievement-caretaker
+```
+
+Update with `sudo apt update && sudo apt upgrade`. The package carries the .NET runtime; apt only adds a few system
+libraries (`libice6`, `libsm6`, `libxrandr2` and the like) that a minimal install may lack.
 
 ## Requirements
 
@@ -97,13 +116,34 @@ the same time; one you had pointed somewhere else is left alone.
 | File | What it holds | Movable |
 |---|---|---|
 | `settings.json` | where the database and icons are kept, and the chosen theme | no — it is read to find the others |
-| `ratings.json` | your own like/dislike per game | no |
-| `games.db` | owned games, their statistics, and each game's achievements | yes, from **Settings** |
-| `icons/` | capsule art and achievement icons | yes, from **Settings** |
+| `ratings.json` | your own like/dislike per game (Steam) | no |
+| `epic.json`, `gog.json`, `ubisoft.json` | the sign-in to Epic Games, GOG and (if you signed in) Ubisoft Connect | no |
+| `games.db` | the owned games of every account of every source, with their progress and statistics | yes, from **Settings** |
+| `icons/` | capsule art and achievement icons; the other stores' art is in `icons/store/<store>/` | yes, from **Settings** |
+| `ubisoft/` | Ubisoft Connect achievement icons and the achievement lists downloaded from Ubisoft's public content server | no |
 
-All of it is a cache or a local preference: delete any of it and Caretaker rebuilds it from
-Steam on the next run, losing only your like/dislike ratings. **Nothing here is ever sent to
-Steam.**
+**The sign-in files are credentials, not cache.** Each holds a token that stands for the whole store
+account, so on Windows it is encrypted with DPAPI (readable only by your Windows user), and on Linux and
+macOS it is written readable by you alone. Caretaker never sees or stores a password: you sign in on the store's own
+page. Deleting one signs you out of that store (your saved library stays); keep these files private and out of
+backups you share.
+
+Everything else is a cache or a local preference: delete it and Caretaker rebuilds it on the next run, losing only
+your like/dislike ratings. Libraries are saved per account, so signing out or switching accounts deletes nothing,
+and signing back in finds the games and progress as they were. **Nothing here is ever sent to Steam.**
+
+### Settings
+
+The **Settings** button at the bottom of the library window's left rail opens a dialog with three things:
+
+- **Theme** — Follow system, Light or Dark. It is previewed as you choose and kept only when you press **Save**;
+  **Cancel** puts the old one back.
+- **Game database** and **Icon cache folder** — where `games.db` and `icons/` live (**Browse…** to pick).
+  Saving a new location moves the existing data there, and if the move fails the data stays where it was. Both are
+  shared by every source. **Restore defaults** fills in the default locations under `~/.sac` and Follow system (nothing is moved until you press **Save**).
+
+Your choices are written to `settings.json` only once you change something; without the file, the defaults
+above apply.
 
 Your like/dislike is *not* your Steam review — Steam keeps review recommendations
 server-side and does not expose them locally. If you are coming from SAM, an existing

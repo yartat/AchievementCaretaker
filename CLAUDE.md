@@ -1263,20 +1263,20 @@ documentation** under Conventions.
 
 ## Packaging and CI
 
-A `vX.Y.Z` tag releases two Windows zips and one `.deb`, all cross-built on Linux. There
-are pipelines for **both** forges and they drive the same scripts:
-`.github/workflows/{ci,release}.yml` attaches the artifacts to a GitHub release;
-`.gitlab-ci.yml` uploads them to the generic package registry and links them from a GitLab
-release. Delete whichever forge is not used. `packaging/` holds the shared half:
+A `vX.Y.Z` tag releases two Windows installers, two portable zips and one `.deb`, all cross-built on
+Linux. The pipelines are GitHub Actions only (`.github/workflows/{ci,release}.yml`): `release.yml`
+attaches the artifacts to a GitHub release, then pushes the Chocolatey package and uploads the `.deb` to the
+APT repository. There is no GitLab pipeline any more. `packaging/` holds the logic:
 
 | File | Does |
 |---|---|
-| `packaging/version.sh` | prints `VERSION=…`: the tag version, or the project version with a `~dev` suffix off a tag. Reads GitLab's and GitHub's tag variables both |
+| `packaging/version.sh` | prints `VERSION=…`: the tag version, or the project version with a `~dev` suffix off a tag. Reads GitHub's tag variables (`GITHUB_REF_TYPE`, `GITHUB_REF_NAME`) |
 | `packaging/check-version.sh` | fails unless the tag, `Directory.Build.props`, both window titles and the release-notes heading agree |
 | `packaging/check-pe-arch.sh` | asserts a published Windows bundle is all one architecture |
 | `packaging/windows/build-installer.sh` | drives NSIS to build the per-user Windows installer |
 | `packaging/windows/installer.nsi` | the installer itself |
 | `packaging/linux/build-deb.sh` | builds the `.deb` from a self-contained publish |
+| `packaging/apt/publish.sh` | uploads the `.deb` to the Cloudsmith APT repository (`CLOUDSMITH_API_KEY`, `CLOUDSMITH_OWNER`, `CLOUDSMITH_REPOSITORY`); Cloudsmith signs the repository, so no GPG key is kept here |
 | `packaging/linux/control.in`, `*.desktop`, `copyright` | the package metadata |
 | `packaging/chocolatey/build.sh` | the Chocolatey package from a published release (portable zips, SHA-256); `--push` sends it, with `CHOCO_API_KEY` |
 | `packaging/winget/build.sh` | the winget manifests (version, locale, installer) from a published release (NSIS setup.exe, SHA-256); nothing is submitted |
@@ -1310,9 +1310,9 @@ Five things there are load-bearing:
   checkout gets mode 644. It never reproduced locally, because Git Bash treats everything as
   executable. The `.sh` files are also marked `100755` in the index now, but the `bash`
   prefix is the part that has to hold.
-- **Anything added to one pipeline belongs in `packaging/`, not in the YAML.** The two
-  forges are meant to stay thin wrappers over the same scripts; logic that lives in only one
-  of them is logic the other silently lacks.
+- **Anything added to a pipeline belongs in `packaging/`, not in the YAML.** The workflows are
+  meant to stay thin wrappers over scripts a maintainer can run by hand, so a step can be
+  tried locally and moved to another CI without a rewrite.
 - **`version.sh` is not piped into `tee`.** It was, and that masked its exit status behind
   `tee`'s, so a version mismatch would have released anyway.
 
