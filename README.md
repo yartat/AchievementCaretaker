@@ -47,6 +47,7 @@ app ID; that still starts the library and the app ID is ignored.
 | `…-win-x64-portable.zip` | 64-bit Windows, no installation — unzip and run |
 | `…-win-x86-setup.exe` / `…-win-x86-portable.zip` | 32-bit Windows |
 | `…_amd64.deb` | Debian or Ubuntu: `sudo apt install ./…deb`, or from the APT repository below |
+| `…-osx-x64.zip` / `…-osx-arm64.zip` | macOS, see below — **not yet tested on a Mac** |
 | [Chocolatey](https://community.chocolatey.org/packages/achievement-caretaker) | Windows, from an elevated prompt: `choco install achievement-caretaker` |
 
 Every download bundles the .NET runtime, so there is nothing to install first. The Windows
@@ -70,6 +71,22 @@ sudo apt install achievement-caretaker
 
 Update with `sudo apt update && sudo apt upgrade`. The package carries the .NET runtime; apt only adds a few system
 libraries (`libice6`, `libsm6`, `libxrandr2` and the like) that a minimal install may lack.
+
+### macOS
+
+The zip holds `Achievement Caretaker.app`: unzip it and move it to Applications. **This build has not been run on a
+Mac yet**, so treat it as a preview and please report what you find. It is signed ad hoc, not with an Apple Developer
+ID and not notarized, so macOS will refuse the first start ("cannot be opened because the developer cannot be
+verified"). Allow it once in **System Settings → Privacy & Security → Open Anyway**, or from a terminal:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Achievement Caretaker.app"
+```
+
+Which one to take: Valve ships a Steam client library for Intel (x86_64) only, so **for Steam use the `osx-x64` app on
+every Mac**; on Apple Silicon it runs through Rosetta 2, like the Steam client itself. The `osx-arm64` app runs natively
+on Apple Silicon but cannot talk to Steam, so it serves Epic Games and GOG only. Ubisoft Connect is Windows only. It
+needs macOS 12 or later (the .NET runtime inside it is built for 12; Microsoft supports .NET 10 officially on macOS 15 and later).
 
 ## Requirements
 
@@ -95,8 +112,8 @@ Steam client on any platform.
 | `win-x64` | Supported and tested |
 | `win-x86` | Supported and tested |
 | `linux-x64` | Supported and tested (Debian 13) |
-| `osx-x64` | Should work; not yet tested |
-| `win-arm64`, `linux-arm64`, `osx-arm64` | Built, but **cannot talk to Steam** |
+| `osx-x64` | Built and shipped; **not yet tested on a Mac** |
+| `win-arm64`, `linux-arm64`, `osx-arm64` | Built, but **cannot talk to Steam** (`osx-arm64` is shipped for the other stores) |
 
 **On an Arm machine, download the x64 build.** Windows on Arm and Apple Silicon's Rosetta 2
 will run it, and they are already emulating the Steam client itself. The arm64 bundles are

@@ -22,6 +22,7 @@ A feature release: Ubisoft Connect as a fourth source, and Steam's achievements 
 - **Ubisoft Connect** (Windows), read from the launcher's files or, if you sign in, from Ubisoft, with unlocking.
 - **One achievements window for every store**, Steam included, with a Statistics tab for Steam.
 - **Far lower memory use** in the library: capsule art is loaded only for tiles on screen.
+- **A macOS app, as a preview** (`osx-x64` and `osx-arm64`). It has **not been run on a Mac yet**; see the downloads.
 
 ### Added
 
@@ -107,6 +108,7 @@ A feature release: Ubisoft Connect as a fourth source, and Steam's achievements 
 
 - **Resetting statistics** has not been run against Steam, because it cannot be undone.
 - macOS and the 32-bit Steam client.
+- **The macOS app**: it is assembled, signed ad hoc and checked for architecture by the build, but nobody has run it on a Mac, so start-up, finding Steam and the embedded sign-in browser are unconfirmed.
 - Ubisoft Connect on a machine where the launcher is not installed, and a second Caretaker running at the same
   time as the first (Ubisoft allows one connection per account).
 
@@ -122,7 +124,8 @@ running copy. Settings, ratings, caches and saved libraries in `~/.sac` are kept
 |---|---|
 | 64-bit Windows | `achievement-caretaker-2.2.0-win-x64-setup.exe` to install, or `…-win-x64-portable.zip` to unzip and run |
 | 32-bit Windows | `…-win-x86-setup.exe` or `…-win-x86-portable.zip` |
-| Debian or Ubuntu (amd64) | `achievement-caretaker_2.2.0_amd64.deb` — `sudo apt install ./achievement-caretaker_2.2.0_amd64.deb` |
+| Debian or Ubuntu (amd64) | `achievement-caretaker_2.2.0_amd64.deb` — `sudo apt install ./achievement-caretaker_2.2.0_amd64.deb`, or from the APT repository (see the README) |
+| macOS (preview) | `achievement-caretaker-2.2.0-osx-x64.zip` for Steam (and on Intel Macs), `…-osx-arm64.zip` for Epic and GOG on Apple Silicon. Unsigned: allow it once in System Settings → Privacy & Security. **Untested on a Mac.** |
 | Windows on Arm | the x64 download — Valve ships no ARM build of the Steam client, and Windows emulates both |
 
 Every download bundles the .NET runtime.

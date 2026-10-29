@@ -11,6 +11,8 @@
 #   achievement-caretaker-1.2.3-win-x86-setup.exe
 #   achievement-caretaker-1.2.3-win-x86-portable.zip
 #   achievement-caretaker_1.2.3_amd64.deb
+#   achievement-caretaker-1.2.3-osx-x64.zip            macOS app (Intel, and Apple Silicon through Rosetta 2)
+#   achievement-caretaker-1.2.3-osx-arm64.zip          macOS app (Apple Silicon)
 #
 # Every one of them is self-contained: the .NET runtime is inside, so nothing
 # has to be installed first. That is what makes the portable build portable,
@@ -175,8 +177,48 @@ jobs:
           path: dist/*.deb
           retention-days: 7
 
+  macos:
+    needs: version
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        include:
+          - rid: osx-x64
+            arch: x64
+          - rid: osx-arm64
+            arch: arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      # Built on a Mac because the app has to be code-signed (ad hoc: an unsigned arm64
+      # binary does not run at all) and zipped with ditto, which keep the bundle intact.
+      # Valve ships only an x86_64 Steam client library, so Steam works through Rosetta 2
+      # on Apple Silicon with the osx-x64 app; the osx-arm64 app serves the other stores.
+      - name: Publish, check and package the app
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          dotnet publish AchievementCaretaker.App/AchievementCaretaker.App.csproj \
+            -c Release -r "${{ matrix.rid }}" --self-contained true -o "out/${{ matrix.rid }}"
+          bash packaging/check-macho-arch.sh "out/${{ matrix.rid }}" "${{ matrix.rid }}"
+          bash packaging/check-policy.sh "out/${{ matrix.rid }}"
+          bash packaging/macos/build-app.sh \
+            --publish-dir "out/${{ matrix.rid }}" --version "$VERSION" --arch "${{ matrix.arch }}" --output dist
+          ls -lh dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.rid }}
+          path: dist/*
+          retention-days: 7
+
   release:
-    needs: [version, windows, deb]
+    needs: [version, windows, deb, macos]
     if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     # A job-level permissions block replaces the set rather than adding to it:
@@ -204,7 +246,9 @@ jobs:
             --notes-file artifacts/release-notes/release-notes.md \
             artifacts/win-x64/* \
             artifacts/win-x86/* \
-            artifacts/deb/*.deb
+            artifacts/deb/*.deb \
+            artifacts/osx-x64/* \
+            artifacts/osx-arm64/*
 
   # Chocolatey is Windows-only: choco pack and push run on the Windows runner, from
   # the same script a maintainer runs by hand. It runs after the release exists,

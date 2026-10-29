@@ -155,11 +155,11 @@ cleanly on a bare Debian 13.
 
 ## Continuous delivery
 
-The repository carries GitHub Actions pipelines. They build the same five artifacts from the
+The repository carries GitHub Actions pipelines. They build the same seven artifacts from the
 scripts under `packaging/`, which hold the logic, so the YAML stays a thin wrapper.
 
-Everything is cross-built on Linux — no Windows runner is needed (only the Chocolatey push
-uses one) — and the pipelines share the version gate below.
+Everything is cross-built on Linux — no Windows runner is needed — except the macOS apps, which are built on a macOS
+runner (they need `codesign`), and the Chocolatey push, which uses a Windows one. The pipelines share the version gate below.
 
 **Pushing a tag `vX.Y.Z` is the whole release process.** It produces:
 
@@ -170,8 +170,10 @@ uses one) — and the pipelines share the version gate below.
 | `achievement-caretaker-X.Y.Z-win-x86-setup.exe` | Windows installer, 32-bit |
 | `achievement-caretaker-X.Y.Z-win-x86-portable.zip` | unzip and run, 32-bit |
 | `achievement-caretaker_X.Y.Z_amd64.deb` | Debian/Ubuntu package |
+| `achievement-caretaker-X.Y.Z-osx-x64.zip` | macOS app, Intel (and Apple Silicon through Rosetta 2) |
+| `achievement-caretaker-X.Y.Z-osx-arm64.zip` | macOS app, Apple Silicon |
 
-**All five are self-contained** — the .NET runtime is inside, so nothing has to be
+**All seven are self-contained** — the .NET runtime is inside, so nothing has to be
 installed first. For the portable archive that is the whole point; for the installer it is
 because an installer that finishes and then reports a missing runtime is a worse first run
 than a larger download. Debug symbols are stripped, which is about a third of the tree.
@@ -181,7 +183,7 @@ than a larger download. Debug symbols are stripped, which is about a third of th
 | Workflow | Runs on | Does |
 |---|---|---|
 | `.github/workflows/ci.yml` | pushes to a branch, pull requests | builds with warnings as errors, publishes both Windows targets and checks their architecture, builds the `.deb` |
-| `.github/workflows/release.yml` | a `v*.*.*` tag, or `workflow_dispatch` | builds the three artifacts and attaches them to a GitHub release; then, on a tag only, pushes the Chocolatey package (`chocolatey` job, Windows runner, needs the `CHOCO_API_KEY` secret) and uploads the `.deb` to the APT repository (`apt` job, needs the `CLOUDSMITH_API_KEY` secret and the `CLOUDSMITH_OWNER` and `CLOUDSMITH_REPOSITORY` values, as variables or secrets) |
+| `.github/workflows/release.yml` | a `v*.*.*` tag, or `workflow_dispatch` | builds the seven artifacts and attaches them to a GitHub release; then, on a tag only, pushes the Chocolatey package (`chocolatey` job, Windows runner, needs the `CHOCO_API_KEY` secret) and uploads the `.deb` to the APT repository (`apt` job, needs the `CLOUDSMITH_API_KEY` secret and the `CLOUDSMITH_OWNER` and `CLOUDSMITH_REPOSITORY` values, as variables or secrets) |
 
 The `.NET` SDK comes from `actions/setup-dotnet` with `global-json-file: global.json`, so
 the pinned SDK version is honoured rather than restated. `workflow_dispatch` builds
@@ -300,10 +302,35 @@ block the GitHub release; run the script by hand to retry (`--republish` makes a
 Users add the repository with the setup script Cloudsmith generates for it
 (`https://dl.cloudsmith.io/public/<owner>/<repository>/setup.deb.sh`), then `sudo apt install achievement-caretaker`.
 
+### The macOS app
+
+`packaging/macos/build-app.sh --publish-dir <dir> --version X.Y.Z --arch <x64|arm64>` assembles
+`Achievement Caretaker.app` from a self-contained `osx-x64` or `osx-arm64` publish and zips it with `ditto`
+(`achievement-caretaker-X.Y.Z-osx-<arch>.zip`). The whole publish directory goes into `Contents/MacOS`; `Info.plist` is
+made from `packaging/macos/Info.plist.in` (minimum macOS 12, which is what the runtime's binaries are built for; bundle id `io.github.yartat.achievement-caretaker`); the
+icon is built from the application's `.ico` with `sips` and `iconutil` (up to 256 px, so it is soft at the largest
+sizes; a failure there is reported but does not stop the build).
+
+`packaging/check-macho-arch.sh <dir> <osx-x64|osx-arm64>` is the counterpart of `check-pe-arch.sh`: it reads the
+Mach-O headers and fails if the apphost or a native library lacks the architecture asked for. Some libraries
+(`libSkiaSharp`, `libHarfBuzzSharp`, `libAvaloniaNative`) are universal binaries and pass for either.
+
+Both run on a macOS runner (`macos` job of `ci.yml` and `release.yml`), because `codesign` and `ditto` are needed:
+**an arm64 binary with no signature at all is killed by the kernel**, so the app is signed **ad hoc**
+(`codesign -s -`). That is not a Developer ID signature and the app is **not notarized**, so Gatekeeper asks the user to
+allow the first start (see the README). Signing and notarizing properly needs an Apple Developer ID (a paid
+membership), a certificate and an app-specific password as secrets, and `xcrun notarytool`; none of that is set up.
+
+**The macOS app has never been run on a Mac.** The jobs prove it is assembled, signed and of the right
+architecture, not that it starts, finds Steam (the candidate paths in `SteamPlatform.GetUnixInstallCandidates` are written
+from Steam's documented layout) or signs in to a store in its WKWebView. That is why there is no Homebrew cask yet.
+Valve ships Steam's client library for x86_64 only, so Steam works only from the `osx-x64` app (through Rosetta 2 on
+Apple Silicon); the `osx-arm64` app serves Epic and GOG.
+
 ### Building the packages without tagging
 
 On GitHub, run the **Release** workflow by hand (`workflow_dispatch`) **from a branch**: it
-builds all three artifacts and uploads them as workflow artifacts, and the release step is
+builds all the artifacts and uploads them as workflow artifacts, and the release step is
 skipped because `github.ref_type` is not `tag`. Dispatching it against a *tag* does publish
 a release - the condition is on the ref, not on the event. Locally:
 

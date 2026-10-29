@@ -380,10 +380,10 @@ architecture must match, and Valve only ships x86/x64 builds.
 | `win-x64` | `steamclient64.dll` | **Verified** |
 | `win-x86` | `steamclient.dll` | **Verified** |
 | `linux-x64` | `linux64/steamclient.so` | **Verified** against live Steam (Debian 13, WSL2) |
-| `osx-x64` | `steamclient.dylib` | Builds; **untested** |
+| `osx-x64` | `steamclient.dylib` | Shipped (a signed-ad-hoc `.app` zip); **never run on a Mac** |
 | `win-arm64` | none — Valve ships no ARM client | Builds, cannot load Steam |
 | `linux-arm64` | none | Builds, cannot load Steam |
-| `osx-arm64` | none | Builds, cannot load Steam |
+| `osx-arm64` | none | Shipped (a signed-ad-hoc `.app` zip) for the other stores; cannot load Steam |
 
 The ARM64 bundles exist so the build matrix is complete, and
 `SteamPlatform.IsArchitectureSupported` makes them fail at startup with an explanation
@@ -1263,8 +1263,8 @@ documentation** under Conventions.
 
 ## Packaging and CI
 
-A `vX.Y.Z` tag releases two Windows installers, two portable zips and one `.deb`, all cross-built on
-Linux. The pipelines are GitHub Actions only (`.github/workflows/{ci,release}.yml`): `release.yml`
+A `vX.Y.Z` tag releases two Windows installers, two portable zips, one `.deb` and two macOS `.app` zips. All but the
+macOS ones are cross-built on Linux; the macOS apps are built on a macOS runner (they need `codesign`). The pipelines are GitHub Actions only (`.github/workflows/{ci,release}.yml`): `release.yml`
 attaches the artifacts to a GitHub release, then pushes the Chocolatey package and uploads the `.deb` to the
 APT repository. There is no GitLab pipeline any more. `packaging/` holds the logic:
 
@@ -1273,6 +1273,9 @@ APT repository. There is no GitLab pipeline any more. `packaging/` holds the log
 | `packaging/version.sh` | prints `VERSION=…`: the tag version, or the project version with a `~dev` suffix off a tag. Reads GitHub's tag variables (`GITHUB_REF_TYPE`, `GITHUB_REF_NAME`) |
 | `packaging/check-version.sh` | fails unless the tag, `Directory.Build.props`, both window titles and the release-notes heading agree |
 | `packaging/check-pe-arch.sh` | asserts a published Windows bundle is all one architecture |
+| `packaging/check-macho-arch.sh` | the same for a published macOS bundle: reads the Mach-O headers (thin and universal) |
+| `packaging/macos/build-app.sh` | builds `Achievement Caretaker.app` from a self-contained osx publish, signs it ad hoc and zips it with `ditto`; needs a Mac (`codesign`, `ditto`, `sips`, `iconutil`) |
+| `packaging/macos/Info.plist.in` | the bundle's `Info.plist`, with `@VERSION@` filled in |
 | `packaging/windows/build-installer.sh` | drives NSIS to build the per-user Windows installer |
 | `packaging/windows/installer.nsi` | the installer itself |
 | `packaging/linux/build-deb.sh` | builds the `.deb` from a self-contained publish |

@@ -85,3 +85,35 @@ jobs:
             --version "$VERSION" \
             --output dist \
             --homepage "${{ github.server_url }}/${{ github.repository }}"
+
+  # The macOS app is built on a macOS runner because it needs codesign (an arm64 binary with no
+  # signature is killed by the kernel), ditto, sips and iconutil. It proves the bundle is
+  # assembled and signed and that every native library is the right architecture. It does not
+  # prove the app starts: no Mac has run it yet.
+  macos:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        include:
+          - rid: osx-x64
+            arch: x64
+          - rid: osx-arm64
+            arch: arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Publish, check and package the app
+        run: |
+          set -euo pipefail
+          VERSION="$(bash packaging/version.sh)"
+          VERSION="${VERSION#VERSION=}"
+          dotnet publish AchievementCaretaker.App/AchievementCaretaker.App.csproj \
+            -c Release -r "${{ matrix.rid }}" --self-contained true -o "out/${{ matrix.rid }}" >/dev/null
+          bash packaging/check-macho-arch.sh "out/${{ matrix.rid }}" "${{ matrix.rid }}"
+          bash packaging/check-policy.sh "out/${{ matrix.rid }}"
+          bash packaging/macos/build-app.sh \
+            --publish-dir "out/${{ matrix.rid }}" --version "$VERSION" --arch "${{ matrix.arch }}" --output dist
