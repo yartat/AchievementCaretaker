@@ -20,7 +20,7 @@
         Width="1020" Height="600"
         MinWidth="1000" MinHeight="420"
         Background="{DynamicResource SamWindowBrush}"
-        Title="Achievement Caretaker 2.1 | Pick a game... Any game...">
+        Title="Achievement Caretaker 2.2 | Pick a game... Any game...">
 
   <Window.Styles>
     <!-- Rail entries: collections above, inclusive type toggles below. The

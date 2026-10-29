@@ -23,9 +23,9 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <Version>2.1.1</Version>
-    <AssemblyVersion>2.1.1.0</AssemblyVersion>
-    <FileVersion>2.1.1.0</FileVersion>
+    <Version>2.2.0</Version>
+    <AssemblyVersion>2.2.0.0</AssemblyVersion>
+    <FileVersion>2.2.0.0</FileVersion>
     <Company>Yaroslav V Tatarenko</Company>
     <Authors>Yaroslav V Tatarenko</Authors>
     <Copyright>Copyright © 2026 Yaroslav V Tatarenko.</Copyright>

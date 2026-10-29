@@ -13,14 +13,22 @@ Achievement Manager 8.0.
 
 ---
 
-## Unreleased
+## 2.2.0 — 2026-10-29
+
+A feature release: Ubisoft Connect as a fourth source, and Steam's achievements now open in the same window as the other stores'.
+
+### Highlights
+
+- **Ubisoft Connect** (Windows), read from the launcher's files or, if you sign in, from Ubisoft, with unlocking.
+- **One achievements window for every store**, Steam included, with a Statistics tab for Steam.
+- **Far lower memory use** in the library: capsule art is loaded only for tiles on screen.
 
 ### Added
 
 - **Ubisoft Connect, as a fourth source** (Windows). Caretaker reads the files the Ubisoft Connect
   launcher keeps on your computer: the games it says are yours, what they are called, and the record of
-  what you earned on this computer, with dates. There is nothing to sign in to: whoever is logged in to
-  the launcher is the account, which has to be installed and logged in to once.
+  what you earned on this computer, with dates. By default there is nothing to sign in to: whoever is
+  logged in to the launcher is the account, which has to be installed and logged in to once.
   The launcher's own catalog gives the games their names and a background picture, and the
   achievement list of a game is downloaded from Ubisoft's public content server when the launcher has
   not saved it (on the machine this was tried on: 54 games with pictures, 28 with achievement lists,
@@ -70,6 +78,9 @@ Achievement Manager 8.0.
 - Passing an app id on the command line no longer opens an editor for that game: the library opens
   and the app id is ignored.
 - The helper adds ASP.NET's server libraries to the download (about 21 MB unpacked, 7 MB zipped).
+- **Internal:** nullable reference types and XML documentation are enabled in every project, and the build
+  is held at 0 warnings with warnings as errors; the version is declared once, in `Directory.Build.props`,
+  and package versions are centralised there. No change in behaviour.
 
 ### Fixed
 
@@ -96,6 +107,37 @@ Achievement Manager 8.0.
 
 - **Resetting statistics** has not been run against Steam, because it cannot be undone.
 - macOS and the 32-bit Steam client.
+- Ubisoft Connect on a machine where the launcher is not installed, and a second Caretaker running at the same
+  time as the first (Ubisoft allows one connection per account).
+
+### Upgrading from 2.1.1
+
+Install 2.2.0 over 2.1.1 as usual. Close Achievement Caretaker first, since the installer refuses to run over a
+running copy. Settings, ratings, caches and saved libraries in `~/.sac` are kept. The download is larger by about
+21 MB unpacked, because of the Steam helper's server libraries.
+
+### Downloads
+
+| If you are on | Take |
+|---|---|
+| 64-bit Windows | `achievement-caretaker-2.2.0-win-x64-setup.exe` to install, or `…-win-x64-portable.zip` to unzip and run |
+| 32-bit Windows | `…-win-x86-setup.exe` or `…-win-x86-portable.zip` |
+| Debian or Ubuntu (amd64) | `achievement-caretaker_2.2.0_amd64.deb` — `sudo apt install ./achievement-caretaker_2.2.0_amd64.deb` |
+| Windows on Arm | the x64 download — Valve ships no ARM build of the Steam client, and Windows emulates both |
+
+Every download bundles the .NET runtime.
+
+### Verified in this release
+
+| Check | Result |
+|---|---|
+| `dotnet build` on `AnyCPU` and `x86` with warnings as errors | 0 warnings, 0 errors |
+| `dotnet test` | all pass (a few skip off their operating system) |
+| Publish, architecture check and packaging of the Windows installers and the `.deb`, on Linux | pass |
+
+### Known issues
+
+Unchanged from 2.1.1, plus the ones under "Not verified" above.
 
 ---
 

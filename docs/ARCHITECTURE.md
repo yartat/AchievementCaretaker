@@ -21,7 +21,7 @@ greater length plus the rules a contributor or coding agent must not break.
 | `AchievementCaretaker.Providers.Shared` | class library | What the providers share: the session file (DPAPI) and JSON helpers. |
 | `AchievementCaretaker.Providers.Epic` | class library | The Epic Games provider over HTTPS, read-only. |
 | `AchievementCaretaker.Providers.Gog` | class library | The GOG provider over HTTPS; it can also unlock and lock. |
-| `AchievementCaretaker.Providers.Ubisoft` | class library | The Ubisoft Connect provider, read-only, from the files the launcher keeps on this computer (Windows only), with pictures and achievement lists from Ubisoft's public CDN: no sign-in. |
+| `AchievementCaretaker.Providers.Ubisoft` | class library | The Ubisoft Connect provider (Windows only): reads the files the launcher keeps on this computer, with pictures and achievement lists from Ubisoft's public CDN; an optional sign-in through Ubisoft's own page reads the account from Ubisoft and allows unlocking (never locking). |
 | `AchievementCaretaker.Services` | class library | The logic behind the windows, with no UI: the SQLite caches and the store services (library, achievements, sign-in). |
 | `AchievementCaretaker.App` | `AchievementCaretaker.exe` | The whole application: the library window, the achievements window for every source (Steam included), and the hidden Steam helper (`--steam-worker`). |
 

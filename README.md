@@ -112,7 +112,7 @@ time Caretaker runs.
 
 ## Versioning
 
-Current version: **2.1.1**. [docs/RELEASE-NOTES.md](docs/RELEASE-NOTES.md) records what
+Current version: **2.2.0**. [docs/RELEASE-NOTES.md](docs/RELEASE-NOTES.md) records what
 changed in each release.
 
 ## Using the sources
@@ -279,11 +279,25 @@ It reimplements the calls that tool makes to GOG's services, for listing, unlock
 re-locking, and its files say so. Epic Games support is written from the endpoints documented by the open-source
 launchers [Legendary](https://github.com/derrod/legendary) and Heroic.
 
+**Ubisoft Connect support is based on four open-source tools, all under the MIT licence:**
+
+| Project | Author | Licence | Used for |
+|---|---|---|---|
+| [UbiSlot](https://github.com/BalTor02/UbiSlot) | BalTor02 | MIT, © 2026 Balkrishna Toraskar | where the launcher keeps its ownership cache, achievement archives and spool; the shipped list of game names (a copy of UbiSlot's, whose ids it credits to NikitaGareev) |
+| [Achievements](https://github.com/PSerban93/Achievements) | PSerban93 | MIT, © 2025 JokerVerse | how the spool and the archives are read |
+| [galaxy-integration-uplay](https://github.com/melcom-creations/galaxy-integration-uplay) | melcom | MIT, © 2019 FriendsOfGalaxy and © 2026 melcom | the launcher's configuration catalog, Ubisoft's content server, and the sign-in session |
+| [UplayKit](https://github.com/UplayDB/UplayKit) and [Uplay-Protobufs](https://github.com/UplayDB/Uplay-Protobufs) | UplayDB | MIT, © 2022-2025 UplayDB | the socket protocol and the field numbers of its messages |
+
+The code is written for this project, not copied. MIT asks that the authors' copyright and permission
+notices travel with substantial portions of their work; they are reproduced in full in
+[docs/ATTRIBUTION.md](docs/ATTRIBUTION.md#the-ubisoft-connect-provider-is-based-on-ubislot-achievements-galaxy-integration-uplay-and-uplaykit).
+
 None of this is the original software of those authors, and it is not endorsed by or
 affiliated with them.
 
-Steam is a trademark of Valve Corporation, GOG is a trademark of GOG sp. z o.o., and Epic
-Games is a trademark of Epic Games, Inc. This project is not affiliated with any of them.
+Steam is a trademark of Valve Corporation, GOG is a trademark of GOG sp. z o.o., Epic
+Games is a trademark of Epic Games, Inc., and Ubisoft and Ubisoft Connect are trademarks of Ubisoft
+Entertainment. This project is not affiliated with any of them.
 
 The toolbar and status icons are vector geometries drawn for this project.
 
