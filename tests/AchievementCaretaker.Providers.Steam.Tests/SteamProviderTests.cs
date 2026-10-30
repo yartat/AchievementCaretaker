@@ -6,6 +6,7 @@
  */
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -310,11 +311,12 @@ public sealed class SteamProviderTests
     {
         var backend = new FakeBackend();
         await using var provider = new SteamProvider(new InProcessLauncher(backend));
-        List<LibraryScanProgress> progress = new();
+        // Progress<T> posts each report to the thread pool, so two reports can arrive at once: a List would lose one.
+        ConcurrentQueue<LibraryScanProgress> progress = new();
 
         var scan = await provider.ScanLibraryAsync(
             new[] { new LibraryCandidate("480", "normal"), new LibraryCandidate("7", "demo") },
-            new Progress<LibraryScanProgress>(progress.Add),
+            new Progress<LibraryScanProgress>(progress.Enqueue),
             TestContext.Current.CancellationToken);
 
         Assert.Equal("12345", scan.Account);
