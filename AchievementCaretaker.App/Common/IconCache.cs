@@ -32,6 +32,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using AchievementCaretaker.Services;
 
 namespace AchievementCaretaker.App.Common;
 
@@ -152,22 +153,6 @@ internal sealed class IconCache
     }
 
     /// <summary>
-    /// Recovers the app id a cached file belongs to: the whole stem for a
-    /// capsule, the part before the first underscore for an achievement
-    /// icon. False for anything this cache did not write.
-    /// </summary>
-    private static bool TryGetAppId(string file, out uint appId)
-    {
-        var name = System.IO.Path.GetFileNameWithoutExtension(file);
-        var separator = name.IndexOf('_');
-        if (separator > 0)
-        {
-            name = name[..separator];
-        }
-        return uint.TryParse(name, NumberStyles.None, CultureInfo.InvariantCulture, out appId);
-    }
-
-    /// <summary>
     /// Every file in <paramref name="directory"/> that this cache wrote,
     /// paired with the app id it belongs to. Files it did not write are
     /// skipped rather than touched — the cache directory is user-chosen and
@@ -181,7 +166,7 @@ internal sealed class IconCache
         }
         foreach (var file in Directory.GetFiles(directory))
         {
-            if (TryGetAppId(file, out var appId) == false)
+            if (IconCacheNames.TryGetAppId(file, out var appId) == false)
             {
                 continue;
             }
@@ -226,7 +211,8 @@ internal sealed class IconCache
         {
             try
             {
-                File.Move(file, System.IO.Path.Combine(destination, System.IO.Path.GetFileName(file)), true);
+                // Never over a file already there; that one stays, and so does ours.
+                File.Move(file, System.IO.Path.Combine(destination, System.IO.Path.GetFileName(file)), false);
             }
             catch (Exception)
             {

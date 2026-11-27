@@ -13,6 +13,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Media.Imaging;
+using AchievementCaretaker.Services;
 
 namespace AchievementCaretaker.App.Common;
 
@@ -52,6 +53,8 @@ internal sealed class StoreImageCache
 
     // Read each time: IconCache.MoveTo changes it when the user relocates the cache.
     private readonly IconCache _icons;
+
+    private static readonly string _localIcons = Path.Combine(AppSettings.HomeDirectory, "ubisoft", "icons");
 
     public StoreImageCache(IconCache icons, IHttpClientFactory http)
     {
@@ -116,9 +119,13 @@ internal sealed class StoreImageCache
 
         // A file on this computer (Ubisoft's icons, taken out of the archives) is read where it is: it
         // is already a file, so there is nothing to download and nothing to keep a second copy of.
-        if (Uri.TryCreate(url, UriKind.Absolute, out var address) == true && address.IsFile == true)
+        if (ImageUrlPolicy.TryGetLocalFile(provider, url, _localIcons, out var local) == true)
         {
-            return await DecodeGatedAsync(() => OpenLocal(address.LocalPath), decodeWidth, cancellationToken);
+            return await DecodeGatedAsync(() => OpenLocal(local), decodeWidth, cancellationToken);
+        }
+        if (ImageUrlPolicy.TryGetDownload(url, out var address) == false)
+        {
+            return null;
         }
 
         var cached = await DecodeGatedAsync(() => TryOpen(provider, url), decodeWidth, cancellationToken);
@@ -129,7 +136,7 @@ internal sealed class StoreImageCache
 
         try
         {
-            var data = await _http.CreateClient().GetByteArrayAsync(new Uri(url), cancellationToken);
+            var data = await _http.CreateClient().GetByteArrayAsync(address, cancellationToken);
             var bitmap = await DecodeGatedAsync(() => new MemoryStream(data, false), decodeWidth, cancellationToken);
             if (bitmap != null)
             {

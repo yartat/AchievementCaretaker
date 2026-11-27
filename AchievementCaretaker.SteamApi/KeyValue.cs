@@ -288,8 +288,18 @@ public class KeyValue
     /// </summary>
     /// <param name="input">Stream to read from.</param>
     /// <returns>Returns true if the key value pair is read successfully; otherwise, false.</returns>
-    public bool ReadAsBinary(Stream input)
+    public bool ReadAsBinary(Stream input) => ReadNode(input, 0) == true && input.Position == input.Length;
+
+    // Steam's own files nest a handful of levels. A limit, because overflowing the stack cannot be caught.
+    private const int MaximumDepth = 64;
+
+    // Whether the node was read. Only the root is also asked to have used the whole stream.
+    private bool ReadNode(Stream input, int depth)
     {
+        if (depth > MaximumDepth)
+        {
+            return false;
+        }
         Children = new();
         try
         {
@@ -312,7 +322,10 @@ public class KeyValue
                 {
                     case KeyValueType.None:
                     {
-                        current.ReadAsBinary(input);
+                        if (current.ReadNode(input, depth + 1) == false)
+                        {
+                            return false;
+                        }
                         break;
                     }
 
@@ -378,7 +391,7 @@ public class KeyValue
             }
 
             Valid = true;
-            return input.Position == input.Length;
+            return true;
         }
         catch (Exception)
         {

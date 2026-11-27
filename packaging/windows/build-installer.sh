@@ -59,6 +59,24 @@ root="$(cd "$here/../.." && pwd)"
 # and a "~dev" suffix on a development build has to come off entirely.
 version4="${version%%[-+~]*}.0"
 
+# The list of what is installed, which the uninstaller deletes one by one in a folder that
+# also holds files of the user's: files, then folders deepest first, Windows separators.
+# FileRead reads it in the system code page, so a name must be plain ASCII.
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+file_list="$work/installed-files.txt"
+(
+    cd "$publish_dir"
+    find . -type f | sed 's|^\./||' | LC_ALL=C sort
+    find . -mindepth 1 -type d | sed 's|^\./||' | awk -F/ '{ print NF "\t" $0 }' | LC_ALL=C sort -rn | cut -f2- | sed 's|$|/|'
+) > "$work/names"
+if LC_ALL=C grep -qE '[^ -~]|["$]' "$work/names"; then
+    echo "a published file name is not plain ASCII, or holds \" or \$:" >&2
+    LC_ALL=C grep -E '[^ -~]|["$]' "$work/names" >&2
+    exit 1
+fi
+tr '/' '\\' < "$work/names" | sed 's/$/\r/' > "$file_list"
+
 mkdir -p "$output_dir"
 outfile="$output_dir/achievement-caretaker-${version}-win-${arch}-setup.exe"
 
@@ -72,6 +90,7 @@ makensis -NOCD -V2 \
     "-DICON=$root/AchievementCaretaker.App/Resources/AchievementCaretaker.ico" \
     "-DLICENSE_FILE=$root/LICENSE.txt" \
     "-DHOMEPAGE=$homepage" \
+    "-DFILE_LIST=$file_list" \
     "-DOUTFILE=$(cd "$output_dir" && pwd)/$(basename "$outfile")" \
     "$here/installer.nsi"
 

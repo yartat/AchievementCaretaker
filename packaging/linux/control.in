@@ -7,13 +7,20 @@ Depends: libc6, libgcc-s1, libstdc++6, zlib1g, libgssapi-krb5-2, libssl3t64 | li
 Section: utils
 Priority: optional
 Homepage: @HOMEPAGE@
-Description: Manage Steam achievements and statistics
- Achievement Caretaker reads and writes achievements and statistics for
- the games in a Steam library. It shows the library with a completion meter per
- game, and opens a per-game editor for unlocking, locking and resetting.
+Description: Manage achievements and statistics for Steam, GOG and Epic Games
+ Achievement Caretaker shows your game library with a completion meter per game
+ and opens a per-game window for achievements.
  .
- It talks to the Steam client directly by loading steamclient.so in process, so
- the Steam client must be installed, running and logged in.
+  * Steam: unlock, lock and reset achievements and edit statistics. It talks to
+    the Steam client directly by loading steamclient.so in process, so the Steam
+    client must be installed, running and logged in. The library opens without
+    it and shows the games saved last time.
+  * GOG: unlock and lock achievements.
+  * Epic Games: view the library and achievements (read-only).
+ .
+ GOG and Epic sign-in happens on the store's own page, inside the application;
+ it never sees your password. Settings and saved libraries are kept in ~/.sac.
+ Ubisoft Connect is Windows only and is not available in this package.
  .
  This package is self-contained: it bundles the .NET runtime and does not need
  dotnet-runtime-10.0 from Microsoft's repository.

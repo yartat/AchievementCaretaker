@@ -57,11 +57,23 @@ internal sealed class FakeDemuxServer : IUbisoftConnector, IAsyncDisposable
 
     public int WriteCalls { get; private set; }
 
+    /// <summary>When set, an achievements request is answered only once this completes.</summary>
+    public TaskCompletionSource? Hold { get; set; }
+
+    /// <summary>Completes when a held request has arrived.</summary>
+    public TaskCompletionSource Held { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     /// <summary>The achievements the last write carried: (id, time).</summary>
     public List<(uint Id, ulong Time)> LastWrite { get; } = new();
 
     /// <summary>Answers a write as the service does, but keeps nothing.</summary>
     public bool IgnoreWrites { get; set; }
+
+    /// <summary>Takes the next write and then drops the connection instead of answering it.</summary>
+    public bool LoseNextWriteReply { get; set; }
+
+    /// <summary>What the service keeps of a written list, when not all of it.</summary>
+    public Func<(uint Id, ulong Time)[], (uint Id, ulong Time)[]>? Keeps { get; set; }
 
     public string? LastAchievementUser { get; private set; }
 
@@ -213,6 +225,11 @@ internal sealed class FakeDemuxServer : IUbisoftConnector, IAsyncDisposable
         else
         {
             AchievementCalls++;
+            if (Hold != null)
+            {
+                Held.TrySetResult();
+                Hold.Task.Wait(TimeSpan.FromSeconds(10));
+            }
             // Req { id, read_achievements_req { user_id, product { product_id, platform_id } } }
             var request = Parse(inner);
             var id = (ulong)request.First(f => f.Number == 1).Value;
@@ -231,7 +248,12 @@ internal sealed class FakeDemuxServer : IUbisoftConnector, IAsyncDisposable
                 LastWrite.AddRange(writtenEntries);
                 if (IgnoreWrites == false)
                 {
-                    Earned[key] = writtenEntries;
+                    Earned[key] = Keeps == null ? writtenEntries : Keeps(writtenEntries);
+                }
+                if (LoseNextWriteReply == true)
+                {
+                    LoseNextWriteReply = false;
+                    throw new IOException("The reply is lost.");
                 }
 
                 var written = Varint(1, id).Concat(Bytes(4, Array.Empty<byte>())).ToArray();

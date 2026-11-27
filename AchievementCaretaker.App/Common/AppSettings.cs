@@ -32,6 +32,7 @@ using System;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using AchievementCaretaker.Providers;
 
 namespace AchievementCaretaker.App.Common;
 
@@ -96,6 +97,21 @@ internal sealed class AppSettings
     /// Re-running it costs two directory probes and does nothing.
     /// </remarks>
     public static void EnsureMigrated()
+    {
+        MoveLegacyDirectory();
+        try
+        {
+            // Before anything else writes there: what it holds is the user's own.
+            PrivateDirectory.Create(HomeDirectory);
+            // One made by an earlier version is readable by everyone; this is our own folder.
+            PrivateDirectory.Tighten(HomeDirectory);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
+    private static void MoveLegacyDirectory()
     {
         try
         {
@@ -167,7 +183,7 @@ internal sealed class AppSettings
                 settings = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(SettingsPath));
             }
         }
-        catch (Exception)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException)
         {
             // A corrupt settings file falls back to defaults rather than
             // blocking startup.
@@ -190,13 +206,13 @@ internal sealed class AppSettings
     {
         try
         {
-            Directory.CreateDirectory(HomeDirectory);
-            File.WriteAllText(
+            PrivateDirectory.Create(HomeDirectory);
+            AtomicFile.WriteAllBytes(
                 SettingsPath,
-                JsonSerializer.Serialize(this, new JsonSerializerOptions() { WriteIndented = true }));
+                JsonSerializer.SerializeToUtf8Bytes(this, new JsonSerializerOptions() { WriteIndented = true }));
             return true;
         }
-        catch (Exception)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             return false;
         }

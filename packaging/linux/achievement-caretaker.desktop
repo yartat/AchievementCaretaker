@@ -12,12 +12,12 @@
 Type=Application
 Version=1.0
 Name=Achievement Caretaker
-GenericName=Steam achievement manager
-Comment=Manage achievements and statistics for games in your Steam library
+GenericName=Game achievement manager
+Comment=Manage achievements and statistics for your Steam, GOG and Epic Games libraries
 Exec=achievement-caretaker
 Icon=achievement-caretaker
 Terminal=false
 Categories=Game;
-Keywords=Steam;achievement;achievements;statistics;
+Keywords=Steam;GOG;Epic;achievement;achievements;statistics;games;
 StartupNotify=true
 StartupWMClass=AchievementCaretaker

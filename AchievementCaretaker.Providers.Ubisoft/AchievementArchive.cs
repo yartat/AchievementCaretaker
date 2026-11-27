@@ -44,6 +44,8 @@ public sealed class AchievementArchive : IDisposable
 {
     private const string LocalizationSuffix = "_loc.txt";
     private const string DefaultLocale = "en-US";
+    private const long LargestIcon = 16 * 1024 * 1024;
+    private const long LargestLocalization = 8 * 1024 * 1024;
 
     private readonly ZipArchive _zip;
     private readonly Dictionary<string, ZipArchiveEntry> _localizations = new(StringComparer.OrdinalIgnoreCase);
@@ -58,10 +60,16 @@ public sealed class AchievementArchive : IDisposable
             var name = entry.FullName;
             if (name.EndsWith(LocalizationSuffix, StringComparison.OrdinalIgnoreCase) == true)
             {
+                // A small archive can unpack to any size: an entry far over what is real is not one.
+                if (entry.Length > LargestLocalization)
+                {
+                    continue;
+                }
                 _localizations[name[..^LocalizationSuffix.Length]] = entry;
             }
             else if (name.EndsWith(".png", StringComparison.OrdinalIgnoreCase) == true &&
-                     uint.TryParse(name[..^4], NumberStyles.None, CultureInfo.InvariantCulture, out var id) == true)
+                     uint.TryParse(name[..^4], NumberStyles.None, CultureInfo.InvariantCulture, out var id) == true &&
+                     entry.Length <= LargestIcon)
             {
                 _icons[id] = entry;
             }
@@ -172,19 +180,27 @@ public sealed class AchievementArchive : IDisposable
             return Array.Empty<ArchiveAchievement>();
         }
 
-        using StreamReader reader = new(_localizations[resolved].Open());
         Dictionary<uint, ArchiveAchievement> byId = new();
-        string? line;
-        while ((line = reader.ReadLine()) != null)
+        try
         {
-            var parts = line.Split('\t');
-            if (parts.Length < 2 || uint.TryParse(parts[0].Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var id) == false)
+            using StreamReader reader = new(_localizations[resolved].Open());
+            string? line;
+            while ((line = reader.ReadLine()) != null)
             {
-                continue;
-            }
+                var parts = line.Split('\t');
+                if (parts.Length < 2 || uint.TryParse(parts[0].Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var id) == false)
+                {
+                    continue;
+                }
 
-            var description = parts.Length >= 3 ? string.Join('\t', parts.Skip(2)).Trim() : "";
-            byId[id] = new ArchiveAchievement(id, parts[1].Trim(), description);
+                var description = parts.Length >= 3 ? string.Join('\t', parts.Skip(2)).Trim() : "";
+                byId[id] = new ArchiveAchievement(id, parts[1].Trim(), description);
+            }
+        }
+        catch (InvalidDataException)
+        {
+            // A damaged entry, or one that holds more than the archive says: the runtime stops reading it.
+            return Array.Empty<ArchiveAchievement>();
         }
 
         return byId.Values.OrderBy(achievement => achievement.Id).ToList();

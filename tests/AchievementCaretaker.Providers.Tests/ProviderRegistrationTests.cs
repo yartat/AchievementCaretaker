@@ -112,6 +112,10 @@ public sealed class ProviderRegistrationTests : IDisposable
     [InlineData("epic", "https://www.epicgames.com/id/api/redirect?clientId=x&responseType=code", SignInResultKind.PageText)]
     [InlineData("epic", "https://www.epicgames.com/id/login", SignInResultKind.None)]
     [InlineData("epic", "https://example.com/id/api/redirect", SignInResultKind.None)]
+    [InlineData("epic", "https://evil-epicgames.com/id/api/redirect", SignInResultKind.None)]
+    [InlineData("epic", "https://epicgames.com/id/api/redirect", SignInResultKind.PageText)]
+    [InlineData("epic", "http://www.epicgames.com/id/api/redirect", SignInResultKind.None)]
+    [InlineData("gog", "http://embed.gog.com/on_login_success?code=abc", SignInResultKind.None)]
     public void The_sign_in_page_says_when_it_has_finished(string id, string address, SignInResultKind expected)
     {
         Assert.Equal(expected, Account(id).GetSignInResultKind(new Uri(address)));

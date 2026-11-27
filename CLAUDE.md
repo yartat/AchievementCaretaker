@@ -91,17 +91,20 @@ The rules:
   logged-in account and is how the application learns Steam is there). `GetLibraryAsync` is
   `NotSupported` on purpose: it is not a listing the account can ask for. `ISteamLibraryService`
   (Services) downloads the published list and fronts those three calls; `SteamConnector` (Services)
-  keeps asking every 3 s, after the machine has said Steam is installed and running
+  keeps asking, every 3 s at first and doubling to a minute while a running Steam keeps refusing
+  (each of those tries starts a helper; a new Steam process resets it), after the machine has said Steam is installed and running
   (`ISteamEnvironment`, so no helper is started for nothing), and watches the Steam process id
   (`SteamWatch`) once connected. A scan reports `Complete` only if Steam was still the same Steam when
   it ended; **only a complete scan may delete a game**, see The UI layer. The helper serves gRPC on
   `127.0.0.1` over TLS.
   The helper's certificate and a token are made per launch and handed to it on standard input,
   never on the command line, in the environment or on disk; the application accepts only the
-  certificate whose thumbprint it was told, and the helper refuses any call without the token.
+  certificate whose SHA-256 hash it was told, and the helper refuses any call without the token.
   A helper is kept for 30 s after its last call so one editing session starts Steam once, and
   `GetAchievementsAsync` always starts a fresh one (a reload must see Steam's current state).
   Closing its standard input is what makes it exit, so a crashed application leaves none behind.
+  Its **stdout and stderr are drained for as long as it runs** (`SteamWorkerProcessLauncher`, the last
+  8 KB of stderr kept for the error message): an unread pipe blocks the helper.
 - **Epic is read-only; GOG can write; Ubisoft can unlock.** Epic: no unlocking, no re-locking, no EOS SDK, no
   reading a game's client secret. Epic cannot re-lock an achievement anyway, and the tools that
   unlock inject into the game or need that secret. GOG: changing an achievement needs a token
@@ -177,7 +180,9 @@ The rules:
     service answers a write with an empty message whether it kept anything or not. It refuses a lock, an id the
     game's list does not have, and an unsigned account before sending. The window follows `CanRelock`: no Lock or
     Invert, achievements already earned are `Protected` (shown fixed), and `StoreAchievementsViewModel` asks once
-    before sending an unlock. Tried on a live account (Far Cry 5, "ARCADE Player"; the launcher showed it earned).
+    before sending an unlock. Read, write and read back are **one `WithOnlineAsync` turn**, and the check is that
+    every earlier id and every new one is still listed. A running game can still race it, which no client can
+    see, so the confirmation says to close the game. Tried on a live account (Far Cry 5, "ARCADE Player"; the launcher showed it earned).
     It changes a real account and UbiSlot warns of risk to it: **never write to a real account without the user
     naming the achievement and saying go**, and say it cannot be undone. The launcher's local spool does not change
     (the current launcher reads achievements from the network), so it cannot be used to check a write.
@@ -212,7 +217,13 @@ The rules:
   and writes it back encrypted: a sign-in made with an older version is kept.
   `ThrowIfEpicError` and `ThrowIfError` deliberately do not echo response bodies, and
   GOG's token request carries the code or refresh token in its URL, so that URL is never
-  part of a message either.
+  part of a message either. **Before any logging provider is added**, the GOG named client needs
+  `RemoveAllLoggers()` or URI redaction: `IHttpClientFactory` logs request addresses.
+- **Limits on what comes in.** Every named `HttpClient` sets `MaxResponseContentBufferSize` (stores and the
+  default client 32 MB, Ubisoft 64 MB); an archive entry over 16 MB (icon) or 8 MB (localization) is
+  ignored; `KeyValue` and `TextKeyValue` refuse more than 64 levels (a stack overflow cannot be caught);
+  the published game list is read with DTDs prohibited. A sign-in's end address must be `https` on the
+  store's own host, and the sign-in window shows the host (`SignInAddress`).
 - **Sign in with the store's own page.** Caretaker never reads a password and never reads
   another application's stored credentials. GOG Galaxy keeps its refresh token in the
   registry and the reference tools take it from there; this does not. The page is shown in a
@@ -279,6 +290,8 @@ SOURCE section; Steam is the default and is `SelectedStoreLibrary == null`, not 
   and they share their scope's connection, so every public repository member (and the relocator)
   locks on the connection. Because the repository is scoped, so is `IStoreLibraryService`, and the
   view model that uses them.
+- **Not every image address is read** (`ImageUrlPolicy`, Services): `file:` only for Ubisoft Connect and
+  only inside `~/.sac/ubisoft/icons`, never another computer's; everything else only over `https`.
 - **Store images live in `<icon cache>/store/<provider>/`, named by a hash of the URL**
   (`StoreImageCache`). The subfolder is what keeps `IconCache.Prune`, which parses app ids out
   of file names and only walks the top level, away from them. `IconCache.MoveTo` moves the
@@ -365,9 +378,10 @@ One C# rule this layout keeps tripping over: **a `using` directive imports a nam
 types but not its nested namespaces.** Anything that wants to qualify by folder needs a
 namespace alias (`using Foo = …App.Foo;`), not a plain using.
 
-Both projects target **`net10.0`** — plain, not `net10.0-windows`. The SDK version is
-pinned in `global.json`; do not remove it, or builds drift onto whatever preview SDK is
-installed.
+Both projects target **`net10.0`** — plain, not `net10.0-windows`. `global.json` names the lowest
+SDK (10.0.400) and rolls forward to a newer major one, so a machine with only a later SDK builds
+too; do not remove it. CI installs what the file names, so a newer local SDK can report warnings
+that CI does not.
 
 ## Platform support
 
@@ -933,9 +947,12 @@ about two processes. It still stays on: readers and the one writer overlap insid
 (the Steam library saves from a pool thread while the stores read). Do not "simplify" it away.
 
 **`IconCache.Prune` walks the whole directory** and deletes what belongs to a game that is no
-longer owned, recovering the app id from the file name (the whole stem for a capsule, `<appid>.img`).
-Files whose name yields no app id are left alone entirely — the directory is user-chosen and may
-not be ours — which is also what keeps it away from the `store/` subfolder.
+longer owned. **Only exact names count as the cache's** (`IconCacheNames`, in Services so it is tested):
+`<appid>.img` for a capsule and `<appid>_<40 hex digits>.jpg` for an achievement icon. The directory is
+user-chosen and may hold the user's own files, so anything else is neither deleted nor moved, and
+`MoveTo` never overwrites a file already at the destination. Do not loosen the rule to "starts with
+digits": that deleted files such as `2024_taxes.pdf`. It also keeps `Prune` away from the `store/`
+subfolder.
 
 Startup order matters and is deliberate:
 
@@ -956,6 +973,13 @@ what is not, so a crash mid-sync cannot leave a half-written library.
 
 Two details worth keeping:
 
+- **A move never replaces a file at the destination** (`games.db` or a sidecar: it throws), checkpoints
+  the write-ahead log first, and moves back what it moved when it fails. Whether names that differ in
+  case are one file is asked of the folders themselves, not guessed from the operating system.
+- **Files that matter are written with `AtomicFile`** (temporary file, flush, rename): sessions,
+  settings and ratings. The ratings file is read and written by `RatingFile` (Services): one that
+  cannot be read is copied to `ratings.json.corrupt-<hash of its content>` before anything is saved over it, and if
+  even that fails nothing is saved.
 - **Close the connection and clear the pools before moving the database.** SQLite's WAL leaves
   `-wal` and `-shm` sidecars open; `DatabaseRelocator.MoveTo` closes the scope's connection,
   calls `SqliteConnection.ClearAllPools()`, moves all three files, points `DatabaseState` and the
@@ -974,6 +998,11 @@ cache directory does.
 So `~/.sac` holds, by default, `settings.json`, `ratings.json`, `games.db` (plus its WAL
 sidecars) and `icons/`. Only the last two are relocatable; the first two are found by
 fixed path or nothing could be found at all.
+
+On Unix `~/.sac` is made `0700`, and one left `0755` by an earlier version is closed at start
+(`PrivateDirectory`, from `AppSettings.EnsureMigrated`); a folder the user chose keeps its mode. A session whose content cannot be understood is copied to `<name>.unreadable` (one copy; removed by
+the next save or sign-out, since it may hold a credential) before it counts as signed out; a file
+that is only locked is not copied.
 
 `settings.json` also carries `Theme`, serialized **by name** so the file stays readable and
 reordering `AppTheme` cannot silently change what an existing file means. An absent value
@@ -1022,6 +1051,12 @@ older one where `stat.type_int` (or `type`) is an integer. Keep both paths — u
 commits in SAM (`4f2b037`, `de8b710`) exist specifically to fix regressions here. Both are
 covered by tests. A statistic's or achievement's `permission` bits mark it protected (`& 2` for
 statistics, `& 3` for achievements); the helper refuses to set one.
+
+**A commit is checked whole before anything is set** (`SteamAppBackend`): known, not protected, finite,
+within `min`/`max`, `maxchange` and `incrementonly`, and nothing at all without a schema. A value set
+in the client and not stored would be written by the next store, so a setter that still fails, or a
+`StoreStats` that fails, has the changes set back to what they were (`undo_failed` names what would not go back) (there is no discard call, and no vtable slot is to be added
+for one).
 
 ### Threading
 
@@ -1278,6 +1313,8 @@ APT repository. There is no GitLab pipeline any more. `packaging/` holds the log
 | `packaging/macos/Info.plist.in` | the bundle's `Info.plist`, with `@VERSION@` filled in |
 | `packaging/windows/build-installer.sh` | drives NSIS to build the per-user Windows installer |
 | `packaging/windows/installer.nsi` | the installer itself |
+| `packaging/windows/test-installer.ps1` | silent installs and uninstalls under `%TEMP%` that check only installed files are removed; refuses to run where the application is installed |
+| `packaging/check-workflows.sh` | fails on an action not pinned to a hash, the tag name used outside `env:`, or an unpinned `pip install` |
 | `packaging/linux/build-deb.sh` | builds the `.deb` from a self-contained publish |
 | `packaging/apt/publish.sh` | uploads the `.deb` to the Cloudsmith APT repository (`CLOUDSMITH_API_KEY`, `CLOUDSMITH_OWNER`, `CLOUDSMITH_REPOSITORY`); Cloudsmith signs the repository, so no GPG key is kept here |
 | `packaging/linux/control.in`, `*.desktop`, `copyright` | the package metadata |
@@ -1303,9 +1340,19 @@ Five things there are load-bearing:
   portable, and the installer cannot fetch one.
 - **The Windows installer is per-user and its uninstaller must never touch `~/.sac`.**
   It installs into `%LOCALAPPDATA%\Programs\`, so no administrator and no Program Files
-  (x86) split; x64 and x86 share one location and one uninstall entry, and an install wipes
-  the directory first so no stale assemblies survive. Removing the application is not a
-  request to delete the user's ratings.
+  (x86) split; x64 and x86 share one location and one uninstall entry. Removing the application
+  is not a request to delete the user's ratings.
+- **The installer only ever removes a folder it owns.** The application always goes into a folder
+  named `AchievementCaretaker` (appended inside the install section, so a silent `/D=` gets it too).
+  A `.achievement-caretaker-install` marker is written when the folder was empty or already ours;
+  an upgrade wipes the folder (so no stale assemblies survive) only with the marker, or when it is
+  the registered folder of an install **with no `Layout` registry value** (2.2.0 and older wrote
+  neither) and holds `Uninstall.exe`. In a folder that is not marked, the upgrade and the
+  uninstaller delete exactly the files listed in `.achievement-caretaker-files` (generated by
+  `build-installer.sh`, which refuses a name that is not plain ASCII) and nothing else. Never go back
+  to "our exe is there, wipe it" or "it is the registered folder, wipe it": both deleted users'
+  files. The folder name reaches `cmd` only through an environment variable. **After any change to
+  the installer run `packaging/windows/test-installer.ps1`**; CI runs it too.
 - **The scripts are invoked as `bash script.sh`**, never executed directly, so nothing
   depends on the executable bit surviving in git. **This applies inside the scripts too.**
   `version.sh` called `check-version.sh` directly, and the first real GitHub run died with
@@ -1316,6 +1363,8 @@ Five things there are load-bearing:
 - **Anything added to a pipeline belongs in `packaging/`, not in the YAML.** The workflows are
   meant to stay thin wrappers over scripts a maintainer can run by hand, so a step can be
   tried locally and moved to another CI without a rewrite.
+- **Actions are pinned to commit hashes** (with the tag in a comment; Dependabot updates them), the
+  Cloudsmith CLI to a version, and a tag name reaches a script only through `env:`.
 - **`version.sh` is not piped into `tee`.** It was, and that masked its exit status behind
   `tee`'s, so a version mismatch would have released anyway.
 

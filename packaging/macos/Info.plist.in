@@ -18,6 +18,8 @@
   <string>@VERSION@</string>
   <key>CFBundleVersion</key>
   <string>@VERSION@</string>
+  <key>NSHumanReadableCopyright</key>
+  <string>Copyright © 2026 Yaroslav V Tatarenko. Steam support based on Steam Achievement Manager by Rick (gibbed); GOG support based on GOG Achievements Manager by Timendum.</string>
   <key>LSMinimumSystemVersion</key>
   <string>12.0</string>
   <key>LSApplicationCategoryType</key>

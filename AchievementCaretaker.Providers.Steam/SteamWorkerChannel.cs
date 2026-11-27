@@ -6,6 +6,8 @@
  */
 
 using System;
+using System.Text;
+using System.Security.Cryptography;
 using System.Net.Http;
 using System.Security.Cryptography.X509Certificates;
 using AchievementCaretaker.Providers.Steam.Protocol;
@@ -34,11 +36,12 @@ public sealed class SteamWorkerChannel : IDisposable
     /// <param name="endpoint">Where the helper listens, with its certificate's thumbprint and the token.</param>
     public SteamWorkerChannel(SteamWorkerEndpoint endpoint)
     {
-        var expected = endpoint.Thumbprint;
+        var expected = Encoding.ASCII.GetBytes(endpoint.CertificateHash.ToUpperInvariant());
         var handler = new SocketsHttpHandler();
         handler.SslOptions.RemoteCertificateValidationCallback = (_, certificate, _, _) =>
             certificate != null &&
-            string.Equals(new X509Certificate2(certificate).Thumbprint, expected, StringComparison.OrdinalIgnoreCase);
+            CryptographicOperations.FixedTimeEquals(
+                Encoding.ASCII.GetBytes(Convert.ToHexString(certificate.GetCertHash(HashAlgorithmName.SHA256))), expected);
 
         _channel = GrpcChannel.ForAddress(
             $"https://127.0.0.1:{endpoint.Port}",

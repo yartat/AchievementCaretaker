@@ -70,8 +70,8 @@ public sealed class SteamAppIdFile : IDisposable
     public static SteamAppIdFile Create(long appId)
     {
         var previous = Directory.GetCurrentDirectory();
-        var folder = Path.Combine(Path.GetTempPath(), "sac-steam-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(folder);
+        // Made for the user alone (0700 on Unix): the system temporary folder is shared.
+        var folder = Directory.CreateTempSubdirectory("sac-steam-").FullName;
         try
         {
             File.WriteAllText(Path.Combine(folder, "steam_appid.txt"), appId.ToString(CultureInfo.InvariantCulture));

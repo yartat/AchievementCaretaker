@@ -400,7 +400,7 @@ internal sealed partial class StoreAchievementsViewModel : ProgressViewModel
             await ConfirmRequested(
                 "Unlock",
                 $"{changes.Count} achievement(s) will be recorded as earned on your {_provider.DisplayName} account. " +
-                "This cannot be undone. Continue?") == false)
+                "This cannot be undone. Close the game first: an achievement it records at the same time can be lost. Continue?") == false)
         {
             return;
         }

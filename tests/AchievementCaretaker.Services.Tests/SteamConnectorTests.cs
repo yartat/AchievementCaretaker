@@ -6,6 +6,8 @@
  */
 
 using System;
+using System.Linq;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -23,9 +25,17 @@ public sealed class SteamConnectorTests
         public bool Installed { get; set; } = true;
         public int? ProcessId { get; set; } = 100;
 
+        /// <summary>The threads the process list was read on.</summary>
+        public ConcurrentQueue<int> ReadOn { get; } = new();
+
         public string? UnsupportedReason => Unsupported;
         public bool IsInstalled() => Installed;
-        public int? GetRunningProcessId() => ProcessId;
+
+        public int? GetRunningProcessId()
+        {
+            ReadOn.Enqueue(Environment.CurrentManagedThreadId);
+            return ProcessId;
+        }
     }
 
     private sealed class FakeLibrary : ISteamLibraryService
@@ -109,6 +119,118 @@ public sealed class SteamConnectorTests
 
         Assert.Equal(12345u, connector.Account);
         Assert.Null(connector.Reason);
+    }
+
+    [Fact]
+    public async Task A_steam_that_keeps_refusing_is_asked_less_and_less_often()
+    {
+        // The wait is counted in steps of the interval, so nothing here depends on the clock.
+        var steps = 0;
+        List<int> askedAt = new();
+        _library.Account = _ =>
+        {
+            lock (askedAt)
+            {
+                askedAt.Add(Volatile.Read(ref steps));
+            }
+            throw new ProviderException("no_user", "No account is logged in.");
+        };
+        using SteamConnector connector = new(_library, _environment, Tick, (_, token) =>
+        {
+            Interlocked.Increment(ref steps);
+            return Task.Delay(1, token);
+        });
+
+        connector.Start();
+        await UntilAsync(() => Volatile.Read(ref _library.Asked) >= 9);
+
+        int[] waited;
+        lock (askedAt)
+        {
+            waited = askedAt.Skip(1).Zip(askedAt, (next, before) => next - before).Take(7).ToArray();
+        }
+        Assert.Equal(new[] { 1, 2, 4, 8, 16, 20, 20 }, waited);
+    }
+
+    [Fact]
+    public async Task A_new_steam_process_is_asked_again_at_once()
+    {
+        var steps = 0;
+        var restartedAt = -1;
+        var reachedAt = -1;
+        _library.Account = _ =>
+        {
+            if (Volatile.Read(ref restartedAt) < 0)
+            {
+                throw new ProviderException("no_user", "No account is logged in.");
+            }
+            reachedAt = Volatile.Read(ref steps);
+            return "777";
+        };
+        using SteamConnector connector = new(_library, _environment, Tick, (_, token) =>
+        {
+            // In the middle of one of the long waits, Steam is restarted.
+            if (Interlocked.Increment(ref steps) == 40)
+            {
+                _environment.ProcessId = 200;
+                Volatile.Write(ref restartedAt, 40);
+            }
+            return Task.Delay(1, token);
+        });
+
+        connector.Start();
+        await UntilAsync(() => connector.IsConnected);
+
+        Assert.Equal(restartedAt, reachedAt);
+    }
+
+    /// <summary>One thread that runs what is posted to it, as a window's thread does.</summary>
+    private sealed class OneThread : SynchronizationContext, IDisposable
+    {
+        private readonly BlockingCollection<(SendOrPostCallback Callback, object? State)> _queue = new();
+        private readonly Thread _thread;
+
+        public OneThread()
+        {
+            _thread = new Thread(() =>
+            {
+                SetSynchronizationContext(this);
+                foreach (var (callback, state) in _queue.GetConsumingEnumerable())
+                {
+                    callback(state);
+                }
+            });
+            _thread.Start();
+        }
+
+        public int Id => _thread.ManagedThreadId;
+
+        public override void Post(SendOrPostCallback d, object? state)
+        {
+            if (_queue.IsAddingCompleted == false)
+            {
+                _queue.Add((d, state));
+            }
+        }
+
+        public void Dispose()
+        {
+            _queue.CompleteAdding();
+            _thread.Join();
+        }
+    }
+
+    [Fact]
+    public async Task The_process_list_is_never_read_on_the_thread_that_runs_the_window()
+    {
+        _library.Account = _ => throw new ProviderException("no_user", "No account is logged in.");
+        using OneThread window = new();
+        using var connector = Connector();
+
+        window.Post(_ => connector.Start(), null);
+        await UntilAsync(() => Volatile.Read(ref _library.Asked) >= 3);
+
+        Assert.DoesNotContain(window.Id, _environment.ReadOn);
     }
 
     [Fact]

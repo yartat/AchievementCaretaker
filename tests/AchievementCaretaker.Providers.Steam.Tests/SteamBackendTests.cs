@@ -125,6 +125,9 @@ public sealed class SteamAppBackendTests
         };
         public List<string> Calls { get; } = new();
         public bool FailSet { get; set; }
+        public string? FailSetOf { get; set; }
+        /// <summary>The achievement that takes a change once and then refuses to be changed back.</summary>
+        public string? FailUndoOf { get; set; }
         public bool FailStore { get; set; }
         public Dictionary<string, int> IntStats { get; } = new() { ["NUM_GAMES"] = 7 };
         public Dictionary<string, float> FloatStats { get; } = new() { ["DISTANCE"] = 1.5f };
@@ -170,8 +173,9 @@ public sealed class SteamAppBackendTests
 
         public bool SetAchievement(string id, bool unlocked)
         {
+            var again = Calls.Any(c => c.StartsWith($"set {id}=", StringComparison.Ordinal));
             Calls.Add($"set {id}={unlocked}");
-            return FailSet == false;
+            return FailSet == false && id != FailSetOf && (id != FailUndoOf || again == false);
         }
 
         public bool StoreStats()
@@ -260,6 +264,137 @@ public sealed class SteamAppBackendTests
 
         Assert.Equal("set_failed", error.ErrorCode);
         Assert.DoesNotContain("store", gateway.Calls);
+    }
+
+    private static readonly KeyValuePair<string, bool>[] _noAchievements = Array.Empty<KeyValuePair<string, bool>>();
+
+    private static async Task<ProviderException> Refused(
+        FakeGateway gateway, KeyValuePair<string, bool>[] achievements, params (string Id, double Value)[] statistics)
+    {
+        var error = await Assert.ThrowsAsync<ProviderException>(() => new SteamAppBackend(gateway).CommitAsync(
+            achievements,
+            statistics.Select(s => new KeyValuePair<string, double>(s.Id, s.Value)).ToArray(),
+            TestContext.Current.CancellationToken));
+        Assert.DoesNotContain("store", gateway.Calls);
+        return error;
+    }
+
+    private static void NothingWasSet(FakeGateway gateway) => Assert.Equal(new[] { "stats" }, gateway.Calls);
+
+    [Theory]
+    [InlineData(double.NaN, "invalid_value")]
+    [InlineData(double.PositiveInfinity, "invalid_value")]
+    [InlineData(3_000_000_000d, "invalid_value")]
+    [InlineData(1001, "out_of_range")]
+    [InlineData(-1, "out_of_range")]
+    [InlineData(6, "increment_only")]
+    public async Task A_bad_statistic_refuses_the_whole_commit_before_anything_is_set(double value, string code)
+    {
+        var gateway = new FakeGateway();
+
+        var error = await Refused(gateway, new[] { new KeyValuePair<string, bool>("ACH_TWO", true) }, ("NUM_GAMES", value));
+
+        Assert.Equal(code, error.ErrorCode);
+        NothingWasSet(gateway);
+    }
+
+    [Theory]
+    [InlineData("NOT_THERE", "unknown_stat")]
+    [InlineData("DISTANCE", "protected")]
+    public async Task A_statistic_that_may_not_be_set_stops_the_ones_before_it(string id, string code)
+    {
+        var gateway = new FakeGateway();
+
+        var error = await Refused(gateway, _noAchievements, ("NUM_GAMES", 40), (id, 1));
+
+        Assert.Equal(code, error.ErrorCode);
+        NothingWasSet(gateway);
+    }
+
+    [Theory]
+    [InlineData("ACH_NOT_THERE", "unknown_achievement")]
+    [InlineData("ACH_PROTECTED", "protected")]
+    public async Task An_achievement_that_may_not_be_set_stops_the_ones_before_it(string id, string code)
+    {
+        var gateway = new FakeGateway();
+
+        var error = await Refused(gateway, new[] { new KeyValuePair<string, bool>("ACH_TWO", true), new KeyValuePair<string, bool>(id, true) });
+
+        Assert.Equal(code, error.ErrorCode);
+        NothingWasSet(gateway);
+    }
+
+    [Fact]
+    public async Task Without_a_schema_no_achievement_is_changed()
+    {
+        var gateway = new FakeGateway { Schema = null };
+
+        var error = await Refused(gateway, new[] { new KeyValuePair<string, bool>("ACH_TWO", true) });
+
+        Assert.Equal("no_schema", error.ErrorCode);
+        NothingWasSet(gateway);
+    }
+
+    [Fact]
+    public async Task A_setter_that_fails_half_way_puts_back_what_was_already_set()
+    {
+        var gateway = new FakeGateway { FailSetOf = "ACH_ONE" };
+
+        var error = await Refused(
+            gateway, new[] { new KeyValuePair<string, bool>("ACH_TWO", true), new KeyValuePair<string, bool>("ACH_ONE", false) });
+
+        Assert.Equal("set_failed", error.ErrorCode);
+        // ACH_TWO was locked before the commit, so it is locked again; nothing is left to be stored later.
+        Assert.Equal(new[] { "stats", "set ACH_TWO=True", "set ACH_ONE=False", "set ACH_TWO=False" }, gateway.Calls);
+    }
+
+    [Fact]
+    public async Task A_statistic_may_not_move_further_at_once_than_the_schema_allows()
+    {
+        var gateway = new FakeGateway
+        {
+            Schema = Kv.Parse(Kv.Node(
+                "480",
+                Kv.Node("stats", Kv.Node("1", Kv.Str("name", "NUM_GAMES"), Kv.Str("type", "INT"), Kv.Int("maxchange", 5))))),
+        };
+
+        var error = await Refused(gateway, _noAchievements, ("NUM_GAMES", 13));
+
+        Assert.Equal("max_change", error.ErrorCode);
+        NothingWasSet(gateway);
+    }
+
+    [Fact]
+    public async Task A_store_that_fails_puts_every_change_back()
+    {
+        var gateway = new FakeGateway { FailStore = true };
+
+        var error = await Assert.ThrowsAsync<ProviderException>(() => new SteamAppBackend(gateway).CommitAsync(
+            new[] { new KeyValuePair<string, bool>("ACH_TWO", true) }, new[] { new KeyValuePair<string, double>("NUM_GAMES", 40) },
+            TestContext.Current.CancellationToken));
+
+        Assert.Equal("store_failed", error.ErrorCode);
+        // What was set and not stored would be written by the next store, ours or the game's.
+        Assert.Equal(
+            new[] { "stats", "set ACH_TWO=True", "int NUM_GAMES=40", "store", "int NUM_GAMES=7", "set ACH_TWO=False" },
+            gateway.Calls);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_value_that_cannot_be_put_back_is_said_so(bool storeFails)
+    {
+        // Either the store fails, or a later setter does; in both, ACH_TWO will not go back.
+        var gateway = new FakeGateway { FailUndoOf = "ACH_TWO", FailStore = storeFails, FailSetOf = storeFails ? null : "ACH_ONE" };
+
+        var error = await Assert.ThrowsAsync<ProviderException>(() => new SteamAppBackend(gateway).CommitAsync(
+            new[] { new KeyValuePair<string, bool>("ACH_TWO", true), new KeyValuePair<string, bool>("ACH_ONE", false) },
+            Array.Empty<KeyValuePair<string, double>>(),
+            TestContext.Current.CancellationToken));
+
+        Assert.Equal("undo_failed", error.ErrorCode);
+        Assert.Contains("ACH_TWO", error.Message);
     }
 
     [Fact]

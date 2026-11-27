@@ -263,4 +263,30 @@ internal sealed class TokenInterceptor : Interceptor
         Check(context);
         return continuation(request, context);
     }
+
+    // The base Interceptor passes the streaming kinds straight through, so each one is
+    // checked here too: a new streaming method must not open without the token.
+    public override Task ServerStreamingServerHandler<TRequest, TResponse>(
+        TRequest request, IServerStreamWriter<TResponse> responseStream, ServerCallContext context,
+        ServerStreamingServerMethod<TRequest, TResponse> continuation)
+    {
+        Check(context);
+        return continuation(request, responseStream, context);
+    }
+
+    public override Task<TResponse> ClientStreamingServerHandler<TRequest, TResponse>(
+        IAsyncStreamReader<TRequest> requestStream, ServerCallContext context,
+        ClientStreamingServerMethod<TRequest, TResponse> continuation)
+    {
+        Check(context);
+        return continuation(requestStream, context);
+    }
+
+    public override Task DuplexStreamingServerHandler<TRequest, TResponse>(
+        IAsyncStreamReader<TRequest> requestStream, IServerStreamWriter<TResponse> responseStream,
+        ServerCallContext context, DuplexStreamingServerMethod<TRequest, TResponse> continuation)
+    {
+        Check(context);
+        return continuation(requestStream, responseStream, context);
+    }
 }

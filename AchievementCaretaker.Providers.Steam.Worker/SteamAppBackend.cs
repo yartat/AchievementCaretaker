@@ -37,6 +37,7 @@ using System.Threading.Tasks;
 using AchievementCaretaker.Providers;
 using AchievementCaretaker.Providers.Models;
 using AchievementCaretaker.Providers.Steam.Models;
+using AchievementCaretaker.SteamApi;
 
 namespace AchievementCaretaker.Providers.Steam;
 
@@ -140,60 +141,158 @@ public sealed class SteamAppBackend : ISteamAppBackend
 
         await _gateway.EnsureUserStatsAsync(cancellationToken);
 
-        if (achievements.Count > 0)
-        {
-            var schema = _gateway.LoadSchema();
-            var protectedIds = schema == null
-                ? new HashSet<string>()
-                : SteamSchemaReader.ReadAchievements(schema, _gateway.AppId, _gateway.Language)
-                    .Where(d => (d.Permission & 3) != 0).Select(d => d.Id).ToHashSet();
-            foreach (var change in achievements)
-            {
-                if (protectedIds.Contains(change.Key) == true)
-                {
-                    throw new ProviderException(
-                        "protected", $"{change.Key} is protected by Steam; nothing has been stored.");
-                }
-                if (_gateway.SetAchievement(change.Key, change.Value) == false)
-                {
-                    throw new ProviderException(
-                        "set_failed", $"Steam would not change {change.Key}; nothing has been stored.");
-                }
-            }
-        }
+        var schema = _gateway.LoadSchema()
+            ?? throw new ProviderException("no_schema", "Steam has no schema cached for this game yet.");
 
-        if (statistics.Count > 0)
-        {
-            var schema = _gateway.LoadSchema()
-                ?? throw new ProviderException("no_schema", "Steam has no schema cached for this game yet.");
-            var definitions = SteamSchemaReader.ReadStats(schema, _gateway.AppId, _gateway.Language)
-                .ToDictionary(d => d.Id);
-            foreach (var change in statistics)
-            {
-                if (definitions.TryGetValue(change.Key, out var def) == false)
-                {
-                    throw new ProviderException("unknown_stat", $"{change.Key} is not a statistic of this game.");
-                }
-                if (def.Protected == true)
-                {
-                    throw new ProviderException(
-                        "protected", $"{change.Key} is protected by Steam; nothing has been stored.");
-                }
+        // Everything is checked before anything is set: a value set in the client and then not
+        // stored stays there, and the next store - ours or the game's - would write it.
+        var changes = PlanAchievements(schema, achievements).Concat(PlanStatistics(schema, statistics)).ToList();
 
-                var accepted = def.Kind == StoreStatKind.Integer
-                    ? _gateway.SetIntStat(change.Key, checked((int)Math.Round(change.Value)))
-                    : _gateway.SetFloatStat(change.Key, (float)change.Value);
-                if (accepted == false)
-                {
-                    throw new ProviderException(
-                        "set_failed", $"Steam would not change {change.Key}; nothing has been stored.");
-                }
+        for (var i = 0; i < changes.Count; i++)
+        {
+            if (changes[i].Apply() == false)
+            {
+                PutBack(changes, i);
+                throw new ProviderException(
+                    "set_failed", $"Steam would not change {changes[i].Id}; nothing has been stored.");
             }
         }
 
         if (_gateway.StoreStats() == false)
         {
+            PutBack(changes, changes.Count);
             throw new ProviderException("store_failed", "Steam would not store the changes.");
+        }
+    }
+
+    // Steam has no call to discard what was set and not stored, so the first `count` changes are set
+    // back, last first. What stays set would be written by the next store.
+    private static void PutBack(IReadOnlyList<PlannedChange> changes, int count)
+    {
+        List<string> stuck = new();
+        for (var i = count - 1; i >= 0; i--)
+        {
+            if (changes[i].Undo() == false)
+            {
+                stuck.Add(changes[i].Id);
+            }
+        }
+        if (stuck.Count > 0)
+        {
+            throw new ProviderException(
+                "undo_failed",
+                $"Steam would not store the changes, and would not take back {string.Join(", ", stuck)}: the game may still store " +
+                "those values. Restart Steam before playing.");
+        }
+    }
+
+    /// <summary>One change that has passed every check: how to make it, and how to take it back.</summary>
+    private sealed record PlannedChange(string Id, Func<bool> Apply, Func<bool> Undo);
+
+    private List<PlannedChange> PlanAchievements(KeyValue schema, IReadOnlyCollection<KeyValuePair<string, bool>> changes)
+    {
+        List<PlannedChange> planned = new();
+        if (changes.Count == 0)
+        {
+            return planned;
+        }
+
+        var definitions = SteamSchemaReader.ReadAchievements(schema, _gateway.AppId, _gateway.Language)
+            .ToDictionary(d => d.Id);
+        foreach (var change in changes)
+        {
+            var id = change.Key;
+            if (definitions.TryGetValue(id, out var definition) == false ||
+                _gateway.TryGetAchievement(id, out var before, out var time) == false)
+            {
+                throw new ProviderException("unknown_achievement", $"{id} is not an achievement of this game; nothing has been stored.");
+            }
+            if ((definition.Permission & 3) != 0)
+            {
+                throw new ProviderException("protected", $"{id} is protected by Steam; nothing has been stored.");
+            }
+            var value = change.Value;
+            planned.Add(new(id, () => _gateway.SetAchievement(id, value), () => _gateway.SetAchievement(id, before)));
+        }
+        return planned;
+    }
+
+    private List<PlannedChange> PlanStatistics(KeyValue schema, IReadOnlyCollection<KeyValuePair<string, double>> changes)
+    {
+        List<PlannedChange> planned = new();
+        if (changes.Count == 0)
+        {
+            return planned;
+        }
+
+        var definitions = SteamSchemaReader.ReadStats(schema, _gateway.AppId, _gateway.Language)
+            .ToDictionary(d => d.Id);
+        foreach (var change in changes)
+        {
+            var id = change.Key;
+            if (definitions.TryGetValue(id, out var definition) == false)
+            {
+                throw new ProviderException("unknown_stat", $"{id} is not a statistic of this game; nothing has been stored.");
+            }
+            if (definition.Protected == true)
+            {
+                throw new ProviderException("protected", $"{id} is protected by Steam; nothing has been stored.");
+            }
+            if (double.IsFinite(change.Value) == false)
+            {
+                throw Invalid(id);
+            }
+
+            if (definition.Kind == StoreStatKind.Integer)
+            {
+                var rounded = Math.Round(change.Value);
+                if (rounded < int.MinValue || rounded > int.MaxValue)
+                {
+                    throw Invalid(id);
+                }
+                if (_gateway.TryGetIntStat(id, out var before) == false)
+                {
+                    throw new ProviderException("unknown_stat", $"Steam does not know {id}; nothing has been stored.");
+                }
+                var value = (int)rounded;
+                CheckLimits(definition, before, value);
+                planned.Add(new(id, () => _gateway.SetIntStat(id, value), () => _gateway.SetIntStat(id, before)));
+            }
+            else
+            {
+                var value = (float)change.Value;
+                if (float.IsFinite(value) == false)
+                {
+                    throw Invalid(id);
+                }
+                if (_gateway.TryGetFloatStat(id, out var before) == false)
+                {
+                    throw new ProviderException("unknown_stat", $"Steam does not know {id}; nothing has been stored.");
+                }
+                CheckLimits(definition, before, value);
+                planned.Add(new(id, () => _gateway.SetFloatStat(id, value), () => _gateway.SetFloatStat(id, before)));
+            }
+        }
+        return planned;
+    }
+
+    private static ProviderException Invalid(string id) =>
+        new("invalid_value", $"The value for {id} is not a number Steam can hold; nothing has been stored.");
+
+    // The window checks the range too, but this process is the one that writes.
+    private static void CheckLimits(SteamStatDefinition definition, double before, double value)
+    {
+        if (value < definition.Min || value > definition.Max)
+        {
+            throw new ProviderException("out_of_range", $"The value for {definition.Id} is outside what the game allows; nothing has been stored.");
+        }
+        if (definition.IncrementOnly == true && value < before)
+        {
+            throw new ProviderException("increment_only", $"{definition.Id} can only grow; nothing has been stored.");
+        }
+        if (definition.MaxChange > 0 && Math.Abs(value - before) > definition.MaxChange)
+        {
+            throw new ProviderException("max_change", $"{definition.Id} cannot change by more than {definition.MaxChange.ToString(CultureInfo.InvariantCulture)} at once; nothing has been stored.");
         }
     }
 

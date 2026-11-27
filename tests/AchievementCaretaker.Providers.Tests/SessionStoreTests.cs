@@ -190,6 +190,37 @@ public sealed class SessionStoreTests : IDisposable
 
     [Fact]
     [UnsupportedOSPlatform("windows")]
+    public void Plain_makes_a_new_folder_and_its_file_the_users_own()
+    {
+        var path = Path.Combine(_directory, "home", "a.json");
+
+        Plain().Save(path, new Sample { RefreshToken = Token });
+
+        Assert.Equal(
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute,
+            File.GetUnixFileMode(Path.GetDirectoryName(path)!));
+        Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(path));
+        Assert.Single(Directory.GetFiles(Path.GetDirectoryName(path)!));
+    }
+
+    [Fact]
+    [UnsupportedOSPlatform("windows")]
+    public void Plain_never_writes_into_the_file_that_is_there()
+    {
+        var store = Plain();
+        var path = PathOf("a.json");
+        File.WriteAllText(path, "old content");
+        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        using var held = new StreamReader(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite));
+
+        store.Save(path, new Sample { RefreshToken = Token });
+
+        Assert.Equal("old content", held.ReadToEnd());
+        Assert.Equal(Token, store.Load<Sample>(path)?.RefreshToken);
+    }
+
+    [Fact]
+    [UnsupportedOSPlatform("windows")]
     public void Plain_round_trips_a_session_readable_by_the_user_only()
     {
         var store = Plain();

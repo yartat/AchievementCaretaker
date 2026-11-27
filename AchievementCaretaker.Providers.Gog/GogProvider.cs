@@ -115,6 +115,7 @@ public sealed class GogProvider : IWritableStoreProvider, IStoreAccount
     /// <inheritdoc />
     public SignInResultKind GetSignInResultKind(Uri? address) =>
         address != null &&
+        address.Scheme == Uri.UriSchemeHttps &&
         address.Host.Equals("embed.gog.com", StringComparison.OrdinalIgnoreCase) &&
         address.AbsolutePath.StartsWith("/on_login_success", StringComparison.OrdinalIgnoreCase) &&
         Regex.IsMatch(address.Query, @"[?&]code=[A-Za-z0-9_\-]+")
@@ -145,6 +146,8 @@ public sealed class GogProvider : IWritableStoreProvider, IStoreAccount
     /// <summary>What every request of the named client starts from; see <see cref="HttpClientName"/>.</summary>
     internal static void ConfigureHttpClient(HttpClient client)
     {
+        // An answer is buffered whole before it is read.
+        client.MaxResponseContentBufferSize = 32 * 1024 * 1024;
         client.Timeout = TimeSpan.FromSeconds(30);
         client.DefaultRequestHeaders.UserAgent.ParseAdd(
             "AchievementCaretaker (+https://github.com/yartat/AchievementCaretaker)");

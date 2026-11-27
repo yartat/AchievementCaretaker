@@ -44,6 +44,8 @@ public static class UbisoftServiceCollectionExtensions
         services.AddHttpClient(UbisoftProvider.HttpClientName, client =>
         {
             client.Timeout = TimeSpan.FromSeconds(30);
+            // The largest thing asked for is an achievement archive.
+            client.MaxResponseContentBufferSize = 64 * 1024 * 1024;
             client.DefaultRequestHeaders.UserAgent.ParseAdd("AchievementCaretaker");
         });
         services.AddSingleton(sp => new UbisoftProvider(

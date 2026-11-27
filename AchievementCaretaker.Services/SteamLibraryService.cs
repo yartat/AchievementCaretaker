@@ -48,7 +48,7 @@ public sealed class SteamLibraryService : ISteamLibraryService
             var bytes = await _http.CreateClient().GetByteArrayAsync(new Uri(PublishedListUrl), cancellationToken);
             return ParseGameList(bytes);
         }
-        catch (Exception e) when (cancellationToken.IsCancellationRequested == false && e is HttpRequestException or TaskCanceledException or XmlException)
+        catch (Exception e) when (cancellationToken.IsCancellationRequested == false && e is HttpRequestException or TaskCanceledException or XmlException or FormatException)
         {
             throw new ProviderException("list_unavailable", "The list of Steam games could not be downloaded: " + e.Message);
         }
@@ -71,14 +71,20 @@ public sealed class SteamLibraryService : ISteamLibraryService
     {
         List<LibraryCandidate> candidates = new();
         using MemoryStream stream = new(bytes, false);
-        XPathDocument document = new(stream);
+        // No DTD and nothing fetched from outside: the list needs neither.
+        using var reader = XmlReader.Create(stream, new XmlReaderSettings() { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null });
+        XPathDocument document = new(reader);
         var nodes = document.CreateNavigator().Select("/games/game");
         while (nodes.MoveNext() == true)
         {
             var current = nodes.Current!;
             var type = current.GetAttribute("type", "");
+            if (long.TryParse(current.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var id) == false)
+            {
+                continue;
+            }
             candidates.Add(new LibraryCandidate(
-                current.ValueAsLong.ToString(CultureInfo.InvariantCulture),
+                id.ToString(CultureInfo.InvariantCulture),
                 string.IsNullOrEmpty(type) == true ? "normal" : type));
         }
         return candidates;

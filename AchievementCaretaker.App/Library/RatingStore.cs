@@ -29,10 +29,9 @@
  */
 
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Text.Json;
 using AchievementCaretaker.App.Common;
+using AchievementCaretaker.Services;
 
 namespace AchievementCaretaker.App.Library;
 
@@ -56,13 +55,11 @@ internal sealed class RatingStore
         "SteamAchievementManager",
         "ratings.json");
 
-    private readonly string _path;
-    private readonly Dictionary<uint, OwnRating> _ratings;
+    private readonly RatingFile _file;
 
-    private RatingStore(string path, Dictionary<uint, OwnRating> ratings)
+    private RatingStore(RatingFile file)
     {
-        _path = path;
-        _ratings = ratings;
+        _file = file;
     }
 
     public static RatingStore Load()
@@ -72,36 +69,10 @@ internal sealed class RatingStore
         AppSettings.EnsureMigrated();
 
         var path = Path.Combine(AppSettings.HomeDirectory, "ratings.json");
-        var source = Migrate(path);
 
-        Dictionary<uint, OwnRating> ratings = new();
-        try
-        {
-            if (File.Exists(source) == true)
-            {
-                var parsed = JsonSerializer.Deserialize<Dictionary<string, int>>(File.ReadAllText(source));
-                if (parsed != null)
-                {
-                    foreach (var kv in parsed)
-                    {
-                        if (uint.TryParse(kv.Key, out var id) == true &&
-                            Enum.IsDefined(typeof(OwnRating), kv.Value) == true)
-                        {
-                            ratings[id] = (OwnRating)kv.Value;
-                        }
-                    }
-                }
-            }
-        }
-        catch (Exception)
-        {
-            // A corrupt or unreadable ratings file is not worth blocking
-            // startup over; it is a convenience, not user content.
-        }
-
-        // Always the new location, whatever they were read from: the next
-        // Set() lands there even if the move could not be done.
-        return new(path, ratings);
+        // Read from wherever they are, which is the old place if the move could not be done, and
+        // always saved to the new one.
+        return new(RatingFile.Load(Migrate(path), path));
     }
 
     /// <summary>
@@ -135,49 +106,10 @@ internal sealed class RatingStore
 
     public OwnRating Get(uint appId)
     {
-        return _ratings.TryGetValue(appId, out var rating) == true
-            ? rating
-            : OwnRating.None;
+        var rating = _file.Get(appId);
+        return Enum.IsDefined(typeof(OwnRating), rating) == true ? (OwnRating)rating : OwnRating.None;
     }
 
     /// <summary>Returns false if the change could not be persisted.</summary>
-    public bool Set(uint appId, OwnRating rating)
-    {
-        if (rating == OwnRating.None)
-        {
-            _ratings.Remove(appId);
-        }
-        else
-        {
-            _ratings[appId] = rating;
-        }
-        return Save();
-    }
-
-    private bool Save()
-    {
-        try
-        {
-            var directory = Path.GetDirectoryName(_path);
-            if (directory != null)
-            {
-                Directory.CreateDirectory(directory);
-            }
-
-            Dictionary<string, int> payload = new();
-            foreach (var kv in _ratings)
-            {
-                payload[kv.Key.ToString(System.Globalization.CultureInfo.InvariantCulture)] = (int)kv.Value;
-            }
-
-            File.WriteAllText(
-                _path,
-                JsonSerializer.Serialize(payload, new JsonSerializerOptions() { WriteIndented = true }));
-            return true;
-        }
-        catch (Exception)
-        {
-            return false;
-        }
-    }
+    public bool Set(uint appId, OwnRating rating) => _file.Set(appId, (int)rating);
 }

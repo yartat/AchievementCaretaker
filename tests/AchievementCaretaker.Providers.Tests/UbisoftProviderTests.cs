@@ -144,6 +144,7 @@ public sealed class UbisoftProviderTests : IAsyncDisposable
         Assert.Equal(SignInResultKind.Address, provider.GetSignInResultKind(new Uri(SignedInAddress)));
         Assert.Equal(SignInResultKind.None, provider.GetSignInResultKind(new Uri("https://connect.ubisoft.com/login?x=1")));
         Assert.Equal(SignInResultKind.None, provider.GetSignInResultKind(new Uri("https://evil.example/change_domain/x")));
+        Assert.Equal(SignInResultKind.None, provider.GetSignInResultKind(new Uri("http://connect.ubisoft.com/change_domain/x")));
         Assert.Equal(SignInResultKind.None, provider.GetSignInResultKind(null));
         Assert.StartsWith("https://connect.ubisoft.com/login", provider.SignInUrl);
         Assert.Contains("PRODloginData", provider.SignInScript);
@@ -522,6 +523,30 @@ public sealed class UbisoftProviderTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task A_write_that_loses_an_earlier_achievement_is_reported()
+    {
+        var provider = await WritableAsync();
+        // The new one is kept, the one earned before is not.
+        _demux.Keeps = written => written.Where(e => e.Id != 1u).ToArray();
+
+        var error = await Assert.ThrowsAsync<ProviderException>(() => provider.SetAchievementsAsync("920", Unlock("2"), TestContext.Current.CancellationToken));
+
+        Assert.Equal("not_recorded", error.ErrorCode);
+        Assert.Contains("earlier", error.Message);
+    }
+
+    [Fact]
+    public async Task A_write_that_keeps_only_some_of_the_new_ones_is_reported()
+    {
+        var provider = await WritableAsync();
+        _demux.Keeps = written => written.Where(e => e.Id != 3u).ToArray();
+
+        var error = await Assert.ThrowsAsync<ProviderException>(() => provider.SetAchievementsAsync("920", Unlock("2", "3"), TestContext.Current.CancellationToken));
+
+        Assert.Equal("not_recorded", error.ErrorCode);
+    }
+
+    [Fact]
     public async Task What_is_already_earned_is_not_written_again_and_is_shown_as_fixed()
     {
         var provider = await WritableAsync();
@@ -531,6 +556,117 @@ public sealed class UbisoftProviderTests : IAsyncDisposable
         Assert.Equal(0, _demux.WriteCalls);
         var list = await provider.GetAchievementsAsync("920", "en", TestContext.Current.CancellationToken);
         Assert.Equal(new[] { true, false, false }, list.Select(a => a.Protected));
+    }
+
+    [Fact]
+    public async Task Signing_out_waits_for_a_call_that_is_using_the_connection()
+    {
+        var provider = await WritableAsync();
+        var token = TestContext.Current.CancellationToken;
+        _demux.Hold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var reading = Task.Run(() => provider.GetAchievementsAsync("920", "en", token), token);
+        await _demux.Held.Task.WaitAsync(TimeSpan.FromSeconds(10), token);
+        var leaving = Task.Run(provider.SignOut, token);
+        await Task.Delay(300, token);
+        var leftEarly = leaving.IsCompleted;
+        _demux.Hold.SetResult();
+
+        await leaving.WaitAsync(TimeSpan.FromSeconds(10), token);
+        // The read either finished or found the account gone; it was not cut off in the middle.
+        var failure = await Record.ExceptionAsync(() => reading);
+        Assert.False(leftEarly, "The connection was closed under a call that was using it.");
+        Assert.True(failure == null || failure is ProviderException { ErrorCode: "login_required" }, failure?.ToString());
+    }
+
+    [Fact]
+    public async Task Signing_in_waits_for_a_call_that_is_using_the_connection()
+    {
+        var provider = await WritableAsync();
+        var token = TestContext.Current.CancellationToken;
+        _demux.Hold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var reading = Task.Run(() => provider.GetAchievementsAsync("920", "en", token), token);
+        await _demux.Held.Task.WaitAsync(TimeSpan.FromSeconds(10), token);
+        var signingIn = Task.Run(() => provider.SignInAsync(SignedInAddress, token), token);
+        await Task.Delay(500, token);
+        var doneEarly = signingIn.IsCompleted;
+        _demux.Hold.SetResult();
+
+        await signingIn.WaitAsync(TimeSpan.FromSeconds(10), token);
+        var list = await reading;
+        Assert.False(doneEarly, "The connection was closed under a call that was using it.");
+        Assert.NotEmpty(list);
+    }
+
+    // The write is applied, its reply lost, and the retry finds the new one already there.
+    [Fact]
+    public async Task A_write_whose_reply_was_lost_is_still_checked_for_what_it_lost()
+    {
+        var provider = await WritableAsync();
+        _demux.Keeps = written => written.Where(e => e.Id != 1u).ToArray();
+        _demux.LoseNextWriteReply = true;
+
+        var error = await Assert.ThrowsAsync<ProviderException>(
+            () => provider.SetAchievementsAsync("920", Unlock("2"), TestContext.Current.CancellationToken));
+
+        Assert.Equal("not_recorded", error.ErrorCode);
+    }
+
+    private async Task<UbisoftProvider> WithCdnArchive(Func<HttpResponseMessage> answer)
+    {
+        // The first route that matches answers, so this one goes in before the usual one.
+        _cdn.Route("/assets/abc123.zip", _ => answer());
+        return await WritableAsync();
+    }
+
+    [Fact]
+    public async Task A_download_that_times_out_is_a_network_error()
+    {
+        var provider = await WithCdnArchive(() => throw new TaskCanceledException("timed out"));
+
+        var error = await Assert.ThrowsAsync<ProviderException>(
+            () => provider.GetAchievementsAsync("920", "en", TestContext.Current.CancellationToken));
+
+        Assert.Equal("network", error.ErrorCode);
+    }
+
+    [Fact]
+    public async Task A_download_that_cannot_be_put_in_place_leaves_nothing_behind()
+    {
+        var provider = await WithCdnArchive(() => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(Archive()) });
+        Directory.CreateDirectory(Path.Combine(_files.DownloadDirectory, "920_abc123.zip"));
+
+        await Assert.ThrowsAsync<ProviderException>(
+            () => provider.GetAchievementsAsync("920", "en", TestContext.Current.CancellationToken));
+
+        Assert.Empty(Directory.GetFiles(_files.DownloadDirectory));
+    }
+
+    // An archive whose first icon cannot be unpacked: its compressed data starts with a block type that is none.
+    private static byte[] ArchiveWithADamagedIcon()
+    {
+        var bytes = UbisoftFiles.Archive(
+            new Dictionary<string, string> { ["en-US"] = "1\tFirst\tBegin\n" },
+            new Dictionary<string, byte[]> { ["1.png"] = Enumerable.Range(0, 4000).Select(i => (byte)(i * 7)).ToArray() });
+        var name = System.Text.Encoding.ASCII.GetBytes("1.png");
+        var at = bytes.AsSpan().IndexOf(name);
+        var extra = BitConverter.ToUInt16(bytes, at - 2);
+        bytes.AsSpan(at + name.Length + extra, 8).Fill(0xFF);
+        return bytes;
+    }
+
+    [Fact]
+    public async Task A_damaged_icon_costs_only_the_icon_and_leaves_no_file()
+    {
+        var provider = await WithCdnArchive(
+            () => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(ArchiveWithADamagedIcon()) });
+
+        var list = await provider.GetAchievementsAsync("920", "en", TestContext.Current.CancellationToken);
+
+        var first = Assert.Single(list);
+        Assert.Null(first.IconUrl);
+        Assert.Empty(Directory.GetFiles(_files.IconDirectory, "*", SearchOption.AllDirectories));
     }
 
     [Fact]
