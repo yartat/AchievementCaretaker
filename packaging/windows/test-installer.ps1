@@ -41,8 +41,12 @@ function Has([string]$path) { Test-Path -LiteralPath $path }
 
 function Only([string]$dir, [string[]]$names) {
     if (-not (Has $dir)) { return $false }
-    $left = @(Get-ChildItem -LiteralPath $dir -Force -Recurse | ForEach-Object { $_.FullName.Substring($dir.Length + 1) } | Sort-Object)
-    return ($left -join '|') -eq (($names | Sort-Object) -join '|')
+    # -Name gives paths relative to the folder. Cutting the folder off a full path does not work
+    # where %TEMP% is an 8.3 short name, as on a CI runner: the full path comes back long.
+    $left = @(Get-ChildItem -LiteralPath $dir -Force -Recurse -Name | Sort-Object)
+    $same = ($left -join '|') -eq (($names | Sort-Object) -join '|')
+    if (-not $same) { Write-Host "        left ($($left.Count)): $(($left | Select-Object -First 8) -join ', ')" }
+    return $same
 }
 
 try {
