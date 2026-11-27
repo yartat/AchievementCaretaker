@@ -15,7 +15,7 @@
     <authors>Yaroslav V Tatarenko</authors>
     <owners>Yaroslav V Tatarenko</owners>
     <projectUrl>https://github.com/yartat/AchievementCaretaker</projectUrl>
-    <iconUrl>https://raw.githubusercontent.com/yartat/AchievementCaretaker/main/packaging/chocolatey/icon.png</iconUrl>
+    <iconUrl>https://cdn.jsdelivr.net/gh/yartat/AchievementCaretaker@0c0fd1fb9cbfad729ed4a8547caaa77af098a436/packaging/chocolatey/icon.png</iconUrl>
     <packageSourceUrl>https://github.com/yartat/AchievementCaretaker/tree/main/packaging/chocolatey</packageSourceUrl>
     <bugTrackerUrl>https://github.com/yartat/AchievementCaretaker/issues</bugTrackerUrl>
     <docsUrl>https://github.com/yartat/AchievementCaretaker/blob/main/README.md</docsUrl>
