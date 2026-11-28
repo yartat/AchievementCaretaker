@@ -115,7 +115,9 @@ The rules:
   separate interface, `IWritableStoreProvider`, which GOG and Ubisoft Connect implement; the achievements
   window shows the checkboxes and the Lock / Invert / Unlock buttons only for a provider that
   has it, and sends the pending changes with Commit, as Steam's does. Verified against a
-  live GOG account (unlock and re-lock), unlike Steam's write path.
+  live GOG account (unlock and re-lock), unlike Steam's write path. Checked again after the 2.3.0
+  audit fixes (2026-11-28, on the project owner's main machine): unlocking, re-locking and unlocking again
+  an achievement of Deponia.
 - **Ubisoft Connect is found on this computer, and can unlock when signed in.** `UbisoftProvider` reads what the launcher
   keeps: the ownership cache (`%LOCALAPPDATA%\Ubisoft Game Launcher\cache\ownership`, one file per user
   named by a GUID), the configuration catalog (`...\cache\configuration\configurations`: names, pictures
@@ -182,7 +184,8 @@ The rules:
     Invert, achievements already earned are `Protected` (shown fixed), and `StoreAchievementsViewModel` asks once
     before sending an unlock. Read, write and read back are **one `WithOnlineAsync` turn**, and the check is that
     every earlier id and every new one is still listed. A running game can still race it, which no client can
-    see, so the confirmation says to close the game. Tried on a live account (Far Cry 5, "ARCADE Player"; the launcher showed it earned).
+    see, so the confirmation says to close the game. Tried on a live account (Far Cry 5, "ARCADE Player"; the launcher showed it earned). After the 2.3.0 audit fixes the project owner signed in and unlocked an achievement again, on a second
+    machine (2026-11-28).
     It changes a real account and UbiSlot warns of risk to it: **never write to a real account without the user
     naming the achievement and saying go**, and say it cannot be undone. The launcher's local spool does not change
     (the current launcher reads achievements from the network), so it cannot be used to check a write.
@@ -239,6 +242,9 @@ The rules:
   WebKitGTK): that failure reports nothing, the page just never loads. The WPE backend has no
   private-mode switch here, so on Linux with WPE a previous login may persist. The embedded
   sign-in was verified by the project owner against live Epic and GOG accounts (on Windows).
+  After the 2.3.0 audit fixes (an `https` end address on the store's own host, the host shown in the
+  window, sessions written atomically) the Epic, GOG and Ubisoft sign-ins were checked again on a second
+  machine (2026-11-28), and on Epic the achievement lists were read again (Load progress).
   Not exercised: Linux and macOS, the fallback with a missing WebView2 runtime, and switching
   between two real accounts.
 - **The account is always in the rail**, under its source: its name with a menu for
@@ -1249,6 +1255,11 @@ re-locking `ACH_WIN_ONE_GAME` on Spacewar, and writing and restoring one integer
 was read back as the new value and each restore as the original. Not exercised: `ResetAllStats`
 (it destroys data), a protected item against real Steam, macOS, and the 32-bit client.
 
+After the audit fixes of 2.3.0 (the token on every RPC kind, the SHA-256 pin, the drained helper
+pipes, the commit checked whole before anything is set), the project owner checked on Windows on
+2026-11-28 against the live account: the Steam library listing, a game's achievements window, and
+unlocking and re-locking an achievement of Beholder. Statistics were not written in that check.
+
 If the interop ever does misbehave, the modern replacement is C# function pointers
 (`delegate* unmanaged[Thiscall]<...>`), which Microsoft documents as "more efficient,
 easier to use correctly, and supported in all environments," and which also drops the
@@ -1352,7 +1363,8 @@ Five things there are load-bearing:
   `build-installer.sh`, which refuses a name that is not plain ASCII) and nothing else. Never go back
   to "our exe is there, wipe it" or "it is the registered folder, wipe it": both deleted users'
   files. The folder name reaches `cmd` only through an environment variable. **After any change to
-  the installer run `packaging/windows/test-installer.ps1`**; CI runs it too.
+  the installer run `packaging/windows/test-installer.ps1`**; CI runs it too. The 2.3.0 installer was also
+  checked by hand by the project owner on a second machine (2026-11-28).
 - **The scripts are invoked as `bash script.sh`**, never executed directly, so nothing
   depends on the executable bit surviving in git. **This applies inside the scripts too.**
   `version.sh` called `check-version.sh` directly, and the first real GitHub run died with
