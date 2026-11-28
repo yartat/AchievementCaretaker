@@ -13,6 +13,7 @@ using Avalonia.Platform;
 using Avalonia.Threading;
 using AchievementCaretaker.App.ViewModels;
 using AchievementCaretaker.Providers;
+using AchievementCaretaker.Services;
 using AchievementCaretaker.Providers.Models;
 
 namespace AchievementCaretaker.App.Views;
@@ -104,6 +105,7 @@ public partial class StoreSignInWindow : Window
 
     private void OnNavigationStarted(object? sender, WebViewNavigationStartingEventArgs e)
     {
+        Address.Text = SignInAddress.Describe(e.Request);
         if (_account.GetSignInResultKind(e.Request) == SignInResultKind.Address)
         {
             // The redirect target is not a page worth loading: the address is the answer.

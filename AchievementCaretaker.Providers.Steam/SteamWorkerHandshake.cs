@@ -46,15 +46,18 @@ public sealed record SteamWorkerHandshake(string PfxBase64, string Token)
     public X509Certificate2 LoadCertificate() =>
         X509CertificateLoader.LoadPkcs12(Convert.FromBase64String(PfxBase64), null, X509KeyStorageFlags.Exportable);
 
-    /// <summary>The certificate's thumbprint, which is all the application needs to recognise the helper.</summary>
-    public string Thumbprint
+    /// <summary>The certificate's SHA-256 hash, which is all the application needs to recognise the helper.</summary>
+    public string CertificateHash
     {
         get
         {
             using var certificate = LoadCertificate();
-            return certificate.Thumbprint;
+            return Convert.ToHexString(certificate.GetCertHash(HashAlgorithmName.SHA256));
         }
     }
+
+    // A record prints its properties: this one holds a private key and a token.
+    private bool PrintMembers(System.Text.StringBuilder builder) => false;
 
     /// <summary>The handshake as the single line the helper reads from its standard input.</summary>
     public string ToLine() => JsonSerializer.Serialize(this);

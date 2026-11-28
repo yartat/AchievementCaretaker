@@ -16,17 +16,23 @@ PackageUrl: https://github.com/yartat/AchievementCaretaker
 License: MIT and zlib
 LicenseUrl: https://github.com/yartat/AchievementCaretaker/blob/main/LICENSE.txt
 Copyright: Copyright (c) 2026 Yaroslav V Tatarenko
-ShortDescription: View and edit Steam achievements and statistics, and view Epic and GOG libraries and achievements.
-Description: >-
-  Achievement Caretaker is a portable desktop tool for the achievements and statistics of your games.
-  Steam: the library, and the achievement and statistics editor. Steam must be running and you must be logged in.
-  Epic Games and GOG: your libraries and achievements. Epic is read-only; GOG achievements can be unlocked and locked.
+ShortDescription: View and edit achievements and statistics for Steam, and view the libraries and achievements of Epic Games, GOG and Ubisoft Connect.
+Description: |-
+  Achievement Caretaker is a desktop tool for the achievements and statistics of your games, from one window.
+  Steam: your library with a completion meter per game, and an editor to unlock, lock and reset achievements and edit statistics. Steam must be running and you must be logged in; the library opens without it and shows the games saved last time.
+  GOG: your library and achievements; achievements can be unlocked and locked.
+  Epic Games: your library and achievements (read-only).
+  Ubisoft Connect: your library and achievements, read from the files the launcher keeps on your computer, or from Ubisoft if you sign in; with a sign-in an achievement can be unlocked (not locked again).
+  You sign in to GOG, Epic and Ubisoft on the store's own page, inside the application; the application never sees your password. Sign-in tokens are encrypted for your Windows user.
+  The installer is per-user and needs no administrator; settings and saved libraries are kept in your user profile when you uninstall.
 Tags:
-  - steam
   - achievements
-  - gog
-  - epic
+  - epic-games
   - games
+  - gog
+  - statistics
+  - steam
+  - ubisoft-connect
 ReleaseNotesUrl: https://github.com/yartat/AchievementCaretaker/releases/tag/v@VERSION@
 ManifestType: defaultLocale
 ManifestVersion: 1.12.0

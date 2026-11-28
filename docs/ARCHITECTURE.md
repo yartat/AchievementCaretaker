@@ -18,7 +18,7 @@ greater length plus the rules a contributor or coding agent must not break.
 |---|---|---|
 | `AchievementCaretaker.SteamApi` | class library | All native interop with Steam. No package references of any kind, and no UI dependency. |
 | `AchievementCaretaker.Providers.Abstractions` | class library | `IStoreProvider` (a store's library and achievements), `IStoreAccount` (signing in and out), `IWritableStoreProvider` and the models. Interfaces only; no packages. |
-| `AchievementCaretaker.Providers.Shared` | class library | What the providers share: the session file (DPAPI) and JSON helpers. |
+| `AchievementCaretaker.Providers.Shared` | class library | What the providers share: the session files (DPAPI), atomic file writes, private folders and JSON helpers. |
 | `AchievementCaretaker.Providers.Epic` | class library | The Epic Games provider over HTTPS, read-only. |
 | `AchievementCaretaker.Providers.Gog` | class library | The GOG provider over HTTPS; it can also unlock and lock. |
 | `AchievementCaretaker.Providers.Ubisoft` | class library | The Ubisoft Connect provider (Windows only): reads the files the launcher keeps on this computer, with pictures and achievement lists from Ubisoft's public CDN; an optional sign-in through Ubisoft's own page reads the account from Ubisoft and allows unlocking (never locking). |
@@ -248,10 +248,9 @@ constructor, so the window paints with content before any network or Steam work 
 background refresh then merges live data in rather than clearing and rebuilding, which would
 blank the window and re-download every image.
 
-The achievement icon file naming is load-bearing: `IconCache.Prune` recovers the app ID from
-the file name to delete art for games no longer owned by **any** saved account, and files whose
-name yields no app ID are left alone entirely, because the directory is user-chosen and may not
-be ours. The `store/` subfolder is outside its reach on purpose, and nothing prunes it.
+The icon cache's file naming is load-bearing: the directory is chosen by the user, so `IconCache.Prune`
+and `MoveTo` touch only names that match exactly what the cache writes (`IconCacheNames`:
+`<appid>.img`, `<appid>_<40 hex digits>.jpg`). Anything else in the folder is left alone.
 
 ## Pending changes in the achievements window
 

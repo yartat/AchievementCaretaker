@@ -1063,7 +1063,7 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
         }
 
         var url = info.ImageUrl;
-        if (string.IsNullOrEmpty(url) == true)
+        if (string.IsNullOrEmpty(url) == true || ImageUrlPolicy.TryGetDownload(url, out var address) == false)
         {
             return null;
         }
@@ -1071,7 +1071,7 @@ internal sealed partial class GamePickerViewModel : ProgressViewModel
         await _logoDownloads.WaitAsync(token);
         try
         {
-            var data = await _http.CreateClient().GetByteArrayAsync(new Uri(url), token);
+            var data = await _http.CreateClient().GetByteArrayAsync(address, token);
             var bitmap = await Task.Run(() => Decode(data), token);
             if (bitmap != null)
             {

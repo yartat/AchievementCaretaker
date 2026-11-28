@@ -46,6 +46,22 @@ public sealed class SteamAppIdFileTests
     }
 
     [Fact]
+    public void The_folder_is_the_users_own()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Skip("Windows has no such modes; the temporary folder is already per user.");
+            return;
+        }
+
+        using var file = SteamAppIdFile.Create(480);
+
+        Assert.Equal(
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute,
+            File.GetUnixFileMode(file.Folder));
+    }
+
+    [Fact]
     public void Disposing_twice_is_harmless()
     {
         var file = SteamAppIdFile.Create(480);

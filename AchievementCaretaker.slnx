@@ -28,6 +28,7 @@
     <File Path="docs/GOG-RESEARCH.md" />
     <File Path="docs/UBISOFT-RESEARCH.md" />
     <File Path="docs/RELEASE-NOTES.md" />
+    <File Path="docs/SECURITY-AUDIT.md" />
   </Folder>
   <Folder Name="/Providers/">
     <Project Path="AchievementCaretaker.Providers.Abstractions/AchievementCaretaker.Providers.Abstractions.csproj">

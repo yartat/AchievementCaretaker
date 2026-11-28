@@ -12,6 +12,7 @@ using System.IO.Pipes;
 using System.Threading;
 using System.Threading.Tasks;
 using AchievementCaretaker.Providers.Steam.Protocol;
+using Grpc.Core;
 using Xunit;
 using AchievementCaretaker.Providers.Models;
 using AchievementCaretaker.Providers.Steam.Models;
@@ -44,7 +45,7 @@ public sealed class SteamWorkerHostTests
 
         public Task<LibraryScan> ScanLibraryAsync(
             IReadOnlyCollection<LibraryCandidate> candidates, IProgress<LibraryScanProgress>? progress, CancellationToken cancellationToken) =>
-            throw new NotSupportedException();
+            Task.FromResult(new LibraryScan("42", Array.Empty<StoreGame>(), true));
 
         public Task<string> GetAccountAsync(CancellationToken cancellationToken) =>
             throw new NotSupportedException();
@@ -96,7 +97,7 @@ public sealed class SteamWorkerHostTests
         Assert.StartsWith("READY ", ready);
         var port = int.Parse(ready.AsSpan(6));
 
-        using SteamWorkerChannel channel = new(new SteamWorkerEndpoint(port, handshake.Thumbprint, handshake.Token));
+        using SteamWorkerChannel channel = new(new SteamWorkerEndpoint(port, handshake.CertificateHash, handshake.Token));
         var reply = await channel.Client.GetAchievementsAsync(
             new GetAchievementsRequest(), channel.Headers, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal("A", Assert.Single(reply.Achievements).Id);
@@ -104,6 +105,60 @@ public sealed class SteamWorkerHostTests
         // The application going away (or letting go) is how the helper learns to leave.
         pipes.Send.Close();
         await run.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_streaming_call_needs_the_token_too(bool rightToken)
+    {
+        using Pair pipes = new();
+        var handshake = SteamWorkerHandshake.Create();
+        var run = SteamWorkerHost.RunAsync(new OneAchievementBackend(), pipes.HelperInput, pipes.HelperOutput);
+
+        await pipes.Send.WriteLineAsync(handshake.ToLine());
+        var port = int.Parse((await pipes.Receive.ReadLineAsync(TestContext.Current.CancellationToken)).AsSpan(6));
+
+        var token = rightToken == true ? handshake.Token : "wrong";
+        using (SteamWorkerChannel channel = new(new SteamWorkerEndpoint(port, handshake.CertificateHash, token)))
+        {
+            using var call = channel.Client.ScanLibrary(
+                new ScanLibraryRequest(), channel.Headers, cancellationToken: TestContext.Current.CancellationToken);
+
+            if (rightToken == true)
+            {
+                Assert.True(await call.ResponseStream.MoveNext(TestContext.Current.CancellationToken));
+            }
+            else
+            {
+                var refused = await Assert.ThrowsAsync<RpcException>(
+                    () => call.ResponseStream.MoveNext(TestContext.Current.CancellationToken));
+                Assert.Equal(StatusCode.Unauthenticated, refused.StatusCode);
+            }
+        }
+
+        pipes.Send.Close();
+        await run.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public void The_handshake_does_not_print_its_key_or_its_token()
+    {
+        var handshake = SteamWorkerHandshake.Create();
+
+        var printed = handshake.ToString();
+
+        Assert.DoesNotContain(handshake.Token, printed);
+        Assert.DoesNotContain(handshake.PfxBase64[..32], printed);
+    }
+
+    [Fact]
+    public void The_helper_is_recognised_by_the_sha256_of_its_certificate()
+    {
+        var handshake = SteamWorkerHandshake.Create();
+        using var certificate = handshake.LoadCertificate();
+
+        Assert.Equal(Convert.ToHexString(certificate.GetCertHash(System.Security.Cryptography.HashAlgorithmName.SHA256)), handshake.CertificateHash);
     }
 
     [Fact]
@@ -116,7 +171,7 @@ public sealed class SteamWorkerHostTests
         await pipes.Send.WriteLineAsync(handshake.ToLine());
         var port = int.Parse((await pipes.Receive.ReadLineAsync(TestContext.Current.CancellationToken)).AsSpan(6));
 
-        using SteamWorkerChannel channel = new(new SteamWorkerEndpoint(port, handshake.Thumbprint, handshake.Token));
+        using SteamWorkerChannel channel = new(new SteamWorkerEndpoint(port, handshake.CertificateHash, handshake.Token));
         await channel.Client.ShutdownAsync(
             new ShutdownRequest(), channel.Headers, cancellationToken: TestContext.Current.CancellationToken);
 

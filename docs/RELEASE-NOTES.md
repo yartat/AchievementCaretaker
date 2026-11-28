@@ -13,6 +13,77 @@ Achievement Manager 8.0.
 
 ---
 
+## 2.3.0 — 2026-11-27
+
+A security and reliability release. It follows an audit of 2.2.0; **upgrading is recommended for everyone**.
+
+### Fixed — your files and data
+
+- The Windows installer installs into a folder of its own (`AchievementCaretaker` inside the one you choose), and
+  an upgrade or uninstall removes only what it installed, whatever else is in that folder.
+- Cleaning the icon cache touches only the files Caretaker wrote, whatever folder you chose for it, and moving
+  it never overwrites a file.
+- Moving the database never replaces a file at the destination, and a failed move leaves the database whole
+  where it was.
+- Ratings, settings and sign-in files are written so that a crash cannot leave half a file; a ratings or session
+  file that cannot be read is copied aside instead of being overwritten.
+
+### Fixed — security
+
+- The Steam helper requires its token on every call, is recognised by a SHA-256 hash of its certificate, and keeps
+  its temporary folder private.
+- Images are downloaded only over `https`; local image files are read only from Ubisoft Connect's own icon folder.
+- Sign-in is accepted only from the store's own host over `https`, and the sign-in window now shows which host the
+  page is on.
+- On Linux and macOS, `~/.sac` and the sign-in files are readable by you alone from the moment they are made.
+- Downloads, archive entries and Steam's cache files have size and nesting limits.
+- The release pipeline pins its actions and tools to exact versions.
+
+### Fixed — correctness
+
+- A Steam commit is checked whole before anything is changed: unknown, protected or out-of-range values, and a
+  missing schema, refuse it all, and a value Steam will not take is rolled back.
+- A Ubisoft unlock reads, writes and checks the list in one turn and reports an earlier achievement that is no
+  longer listed. **Close the game before unlocking**: one it records at the same moment can be lost.
+- The Steam helper can no longer hang on its own log output.
+- When Steam runs but refuses (nobody logged in), Caretaker asks less and less often, up to once a minute.
+
+### Upgrading from 2.2.0
+
+Install 2.3.0 over 2.2.0 as usual, with Achievement Caretaker closed. Settings, ratings, caches and saved
+libraries in `~/.sac` are kept. If you had installed into a folder of your own that was not named
+`AchievementCaretaker`, the new version goes into a subfolder of it and the old program files are left there;
+delete them by hand. **Do not run an old uninstaller left in such a folder.**
+
+### Downloads
+
+| If you are on | Take |
+|---|---|
+| 64-bit Windows | `achievement-caretaker-2.3.0-win-x64-setup.exe` to install, or `…-win-x64-portable.zip` to unzip and run |
+| 32-bit Windows | `…-win-x86-setup.exe` or `…-win-x86-portable.zip` |
+| Debian or Ubuntu (amd64) | `achievement-caretaker_2.3.0_amd64.deb`, or from the APT repository (see the README) |
+| macOS (preview) | `achievement-caretaker-2.3.0-osx-x64.zip` or `…-osx-arm64.zip`. Unsigned and **untested on a Mac**. |
+| Windows on Arm | the x64 download |
+
+Every download bundles the .NET runtime.
+
+### Verified
+
+| Check | Result |
+|---|---|
+| `dotnet build` on `AnyCPU` and `x86` with warnings as errors | 0 warnings, 0 errors |
+| `dotnet test` on Windows and on Debian | all pass (a few skip off their operating system) |
+| Windows installer, silent installs and uninstalls in temporary folders | as described above |
+| Signing in to Ubisoft Connect and unlocking an achievement, on a live account | works |
+| The sign-in window with the Epic Games and GOG pages | works |
+
+### Not verified
+
+- The changes to Steam writing and to the helper's output handling were not tried against a live Steam.
+- The macOS app.
+
+---
+
 ## 2.2.0 — 2026-10-29
 
 A feature release: Ubisoft Connect as a fourth source, and Steam's achievements now open in the same window as the other stores'.

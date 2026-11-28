@@ -75,6 +75,7 @@ public sealed partial class UbisoftProvider
     /// <inheritdoc />
     public SignInResultKind GetSignInResultKind(Uri? address) =>
         address != null &&
+        address.Scheme == Uri.UriSchemeHttps &&
         address.Host.Equals("connect.ubisoft.com", StringComparison.OrdinalIgnoreCase) &&
         address.AbsolutePath.StartsWith("/change_domain/", StringComparison.OrdinalIgnoreCase)
             ? SignInResultKind.Address
@@ -142,7 +143,8 @@ public sealed partial class UbisoftProvider
         {
             // Kept, with the hour it was given.
         }
-        await DropConnectionAsync().ConfigureAwait(false);
+        // The connection was signed in with what is now replaced; a call may still be using it.
+        await DropAfterCallsAsync().ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -174,14 +176,30 @@ public sealed partial class UbisoftProvider
             _sessions.Delete(_sessionPath);
         }
         _blocks.Clear();
-        DropConnectionAsync().GetAwaiter().GetResult();
+        DropAfterCalls();
     }
 
     /// <summary>Closes the connection to Ubisoft's socket service, if one is open.</summary>
-    public ValueTask DisposeAsync() => new(DropConnectionAsync());
+    public ValueTask DisposeAsync() => new(DropAfterCallsAsync());
+
+    private async Task DropAfterCallsAsync()
+    {
+        var held = await _connecting.WaitAsync(_teardownLimit).ConfigureAwait(false);
+        try
+        {
+            await DropConnectionAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            if (held == true)
+            {
+                _connecting.Release();
+            }
+        }
+    }
 
     /// <summary>Closes the connection to Ubisoft's socket service, if one is open.</summary>
-    public void Dispose() => DropConnectionAsync().GetAwaiter().GetResult();
+    public void Dispose() => DropAfterCalls();
 
     #region Sign-in and session
 
@@ -450,7 +468,9 @@ public sealed partial class UbisoftProvider
     /// achievements, so what is already earned is read first and sent back with its times, and only the new ones
     /// are added, stamped with now. The list is read again afterwards, since the service answers a write with an
     /// empty message whether it kept the achievements or not. Not undoable, and only an unlock: a change to
-    /// "locked" is refused.
+    /// "locked" is refused. The read, the write and the check run on one connection in one turn; a game running at
+    /// the same time can still record an achievement between them and have it replaced, so the user is asked to close
+    /// it first.
     /// </summary>
     /// <param name="gameKey">The game's product id.</param>
     /// <param name="changes">Achievement id and the state it should have; each must be true.</param>
@@ -503,38 +523,55 @@ public sealed partial class UbisoftProvider
             wanted.Add(id);
         }
 
-        var current = await WithOnlineAsync(online => online.GetAchievementsAsync(syncId, cancellationToken), cancellationToken).ConfigureAwait(false);
-        var added = wanted.Distinct().Where(id => current.Any(c => c.Id == id) == false).ToList();
-        if (added.Count == 0)
-        {
-            return;
-        }
+        // Read, write and read back in one turn on the one connection: the service replaces the
+        // whole list, so no other call of ours may come between the read and the write.
+        // What was earned before anything of ours was sent, kept across the one retry: a write whose
+        // reply is lost is read again with the new ids already in it, and must still be checked.
+        List<uint>? earlier = null;
+        await WithOnlineAsync(
+            async online =>
+            {
+                var current = await online.GetAchievementsAsync(syncId, cancellationToken).ConfigureAwait(false);
+                earlier ??= current.Select(c => c.Id).ToList();
+                var added = wanted.Distinct().Where(id => current.Any(c => c.Id == id) == false).ToList();
+                if (added.Count == 0)
+                {
+                    ThrowIfEarlierIsGone(earlier, current.Select(c => c.Id));
+                    return false;
+                }
 
-        // The service's own unit: the times it sends are seconds, unless a record in the list is in milliseconds.
-        var now = current.Any(c => c.RawTime >= 10_000_000_000)
-            ? (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-            : (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        var everything = current.Select(c => (c.Id, c.RawTime)).Concat(added.Select(id => (id, now))).ToList();
+                // The service's own unit: the times it sends are seconds, unless a record in the list is in milliseconds.
+                var now = current.Any(c => c.RawTime >= 10_000_000_000)
+                    ? (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                    : (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                var everything = current.Select(c => (c.Id, c.RawTime)).Concat(added.Select(id => (id, now))).ToList();
 
-        try
-        {
-            await WithOnlineAsync(
-                async online =>
+                try
                 {
                     await online.WriteAchievementsAsync(syncId, everything, cancellationToken).ConfigureAwait(false);
-                    return true;
-                },
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (ProviderException e) when (e.ErrorCode == "network" && e.Message.Contains("did not accept the write", StringComparison.Ordinal))
-        {
-            throw new ProviderException("not_recorded", "Ubisoft did not accept the change.");
-        }
+                }
+                catch (ProviderException e) when (e.ErrorCode == "network" && e.Message.Contains("did not accept the write", StringComparison.Ordinal))
+                {
+                    throw new ProviderException("not_recorded", "Ubisoft did not accept the change.");
+                }
 
-        var after = await WithOnlineAsync(online => online.GetAchievementsAsync(syncId, cancellationToken), cancellationToken).ConfigureAwait(false);
-        if (!added.Any(id => after.Any(a => a.Id == id)))
+                var after = await online.GetAchievementsAsync(syncId, cancellationToken).ConfigureAwait(false);
+                ThrowIfEarlierIsGone(earlier.Concat(current.Select(c => c.Id)), after.Select(a => a.Id));
+                if (added.Any(id => after.Any(a => a.Id == id) == false))
+                {
+                    throw new ProviderException("not_recorded", "Ubisoft answered, but did not keep the change. Check the list again.");
+                }
+                return true;
+            },
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private static void ThrowIfEarlierIsGone(IEnumerable<uint> earlier, IEnumerable<uint> now)
+    {
+        if (earlier.Except(now).Any() == true)
         {
-            throw new ProviderException("not_recorded", "Ubisoft answered, but did not keep the change. Nothing was recorded.");
+            throw new ProviderException(
+                "not_recorded", "Ubisoft no longer lists an achievement you had earned earlier. Check your achievements in Ubisoft Connect.");
         }
     }
 
@@ -567,7 +604,8 @@ public sealed partial class UbisoftProvider
     private async Task<T> WithOnlineAsync<T>(Func<UbisoftOnline, Task<T>> action, CancellationToken cancellationToken)
     {
         await _connecting.WaitAsync(cancellationToken).ConfigureAwait(false);
-        _idle?.Cancel();
+        CancelIdle();
+        _idle = null;
         try
         {
             for (var attempt = 0; ; attempt++)
@@ -611,20 +649,53 @@ public sealed partial class UbisoftProvider
         }
     }
 
+    private void CancelIdle()
+    {
+        try
+        {
+            _idle?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
+    private static readonly TimeSpan _teardownLimit = TimeSpan.FromSeconds(10);
+
+    // Closes the connection once no call is using it. Not waited for without end: a call that hangs
+    // must not hang signing out or closing the application.
+    private void DropAfterCalls()
+    {
+        var held = _connecting.Wait(_teardownLimit);
+        try
+        {
+            DropConnectionAsync().GetAwaiter().GetResult();
+        }
+        finally
+        {
+            if (held == true)
+            {
+                _connecting.Release();
+            }
+        }
+    }
+
     /// <summary>Closes the connection <see cref="_idleLimit"/> after now, unless something uses it first.</summary>
     private void DropWhenIdle()
     {
         CancellationTokenSource idle = new();
+        var token = idle.Token;
+        CancelIdle();
         _idle = idle;
         _ = Task.Run(async () =>
         {
             try
             {
-                await Task.Delay(_idleLimit, idle.Token).ConfigureAwait(false);
-                await _connecting.WaitAsync(idle.Token).ConfigureAwait(false);
+                await Task.Delay(_idleLimit, token).ConfigureAwait(false);
+                await _connecting.WaitAsync(token).ConfigureAwait(false);
                 try
                 {
-                    if (idle.IsCancellationRequested == false)
+                    if (token.IsCancellationRequested == false)
                     {
                         await DropConnectionAsync().ConfigureAwait(false);
                     }
@@ -637,6 +708,11 @@ public sealed partial class UbisoftProvider
             catch (OperationCanceledException)
             {
                 // Used again before the limit.
+            }
+            finally
+            {
+                // Whoever replaced or cancelled it is done with it by now.
+                idle.Dispose();
             }
         });
     }

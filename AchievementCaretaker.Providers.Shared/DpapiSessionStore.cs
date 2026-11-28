@@ -51,7 +51,7 @@ public sealed class DpapiSessionStore : ISessionStore
                 if (legacy != null)
                 {
                     // Encrypted from now on, so the token does not stay readable on disk.
-                    Save(path, legacy);
+                    TryEncrypt(path, legacy);
                 }
                 return legacy;
             }
@@ -59,8 +59,13 @@ public sealed class DpapiSessionStore : ISessionStore
             return JsonSerializer.Deserialize<T>(
                 ProtectedData.Unprotect(bytes, null, DataProtectionScope.CurrentUser));
         }
-        catch (Exception)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
+            return null;
+        }
+        catch (Exception e) when (e is JsonException or CryptographicException)
+        {
+            UnreadableFile.KeepAside(path);
             // A corrupt or undecryptable file means signing in again, not
             // failing to start.
             return null;
@@ -77,7 +82,8 @@ public sealed class DpapiSessionStore : ISessionStore
         }
 
         var json = JsonSerializer.SerializeToUtf8Bytes(session, new JsonSerializerOptions() { WriteIndented = true });
-        File.WriteAllBytes(path, ProtectedData.Protect(json, null, DataProtectionScope.CurrentUser));
+        AtomicFile.WriteAllBytes(path, ProtectedData.Protect(json, null, DataProtectionScope.CurrentUser));
+        UnreadableFile.Forget(path);
     }
 
     /// <inheritdoc/>
@@ -86,6 +92,19 @@ public sealed class DpapiSessionStore : ISessionStore
         if (File.Exists(path) == true)
         {
             File.Delete(path);
+        }
+        UnreadableFile.Forget(path);
+    }
+
+    // A session that was read is used even when it cannot be written back; the next start tries again.
+    private void TryEncrypt<T>(string path, T session)
+    {
+        try
+        {
+            Save(path, session);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or CryptographicException)
+        {
         }
     }
 

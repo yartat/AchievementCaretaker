@@ -46,7 +46,8 @@ internal static class ServiceRegistration
         // Each provider keeps one session file in the home directory, named after its id,
         // and asks the HTTP client factory for a client per request.
         // The default client, for the capsule art and the published game list.
-        services.AddHttpClient();
+        // The default client downloads capsule art and the published game list, neither anywhere near this.
+        services.AddHttpClient(string.Empty, client => client.MaxResponseContentBufferSize = 32 * 1024 * 1024);
 
         services.AddEpicProvider(AppSettings.HomeDirectory);
         services.AddGogProvider(AppSettings.HomeDirectory);

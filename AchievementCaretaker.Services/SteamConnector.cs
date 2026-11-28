@@ -44,6 +44,7 @@ public sealed class SteamConnector : IDisposable
     private readonly ISteamLibraryService _library;
     private readonly ISteamEnvironment _environment;
     private readonly TimeSpan _interval;
+    private readonly Func<TimeSpan, CancellationToken, Task> _delay;
     private readonly CancellationTokenSource _stop = new();
 
     /// <summary>The 32-bit account id Steam is logged in as, or null until Steam has been reached.</summary>
@@ -62,8 +63,14 @@ public sealed class SteamConnector : IDisposable
     /// <param name="library">Asked who is logged in, which is how Steam being there is learned.</param>
     /// <param name="environment">Asked first whether Steam is installed and running.</param>
     /// <param name="interval">How long to wait between tries. Only a test has a reason to pass one.</param>
-    public SteamConnector(ISteamLibraryService library, ISteamEnvironment environment, TimeSpan? interval = null)
+    /// <param name="delay">How a step of the wait between two tries is waited. Only a test passes one, to count the steps.</param>
+    public SteamConnector(
+        ISteamLibraryService library,
+        ISteamEnvironment environment,
+        TimeSpan? interval = null,
+        Func<TimeSpan, CancellationToken, Task>? delay = null)
     {
+        _delay = delay ?? Task.Delay;
         _library = library;
         _environment = environment;
         _interval = interval ?? DefaultInterval;
@@ -110,6 +117,10 @@ public sealed class SteamConnector : IDisposable
     /// <summary>Tries until Steam is reached. Null when it will not be: disposed, or a failure that cannot be retried.</summary>
     private async Task<(uint Account, int? ProcessId)?> FindAsync(CancellationToken token)
     {
+        // Asking who is logged in starts a helper process, so a Steam that keeps refusing is asked
+        // less and less often. Looking for Steam itself costs nothing and keeps its pace.
+        var delay = _interval;
+        int? refused = null;
         while (true)
         {
             var (found, reason, canRetry) = await TryAsync(token);
@@ -128,7 +139,35 @@ public sealed class SteamConnector : IDisposable
                 return null;
             }
 
-            await Task.Delay(_interval, token);
+            var processId = await Task.Run(_environment.GetRunningProcessId, token);
+            if (processId == null || processId != refused)
+            {
+                delay = _interval;
+            }
+            refused = processId;
+            await WaitAsync(delay, processId, token);
+            if (processId != null)
+            {
+                var longest = _interval * LongestWaitInIntervals;
+                delay = delay * 2 < longest ? delay * 2 : longest;
+            }
+        }
+    }
+
+    /// <summary>The longest wait between two tries, as a multiple of the interval: a minute by default.</summary>
+    private const int LongestWaitInIntervals = 20;
+
+    // In steps of the interval, ending early when Steam is no longer the process that refused.
+    private async Task WaitAsync(TimeSpan delay, int? processId, CancellationToken token)
+    {
+        for (var waited = TimeSpan.Zero; waited < delay; waited += _interval)
+        {
+            await _delay(_interval, token);
+            // Off the UI thread: the process list.
+            if (await Task.Run(_environment.GetRunningProcessId, token) != processId)
+            {
+                return;
+            }
         }
     }
 

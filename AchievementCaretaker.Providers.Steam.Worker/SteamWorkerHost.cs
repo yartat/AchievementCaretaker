@@ -10,6 +10,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Security.Authentication;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
@@ -29,6 +30,7 @@ public sealed class SteamWorkerHost : IAsyncDisposable
 {
     private readonly WebApplication _app;
     private readonly TaskCompletionSource _exitRequested;
+    private readonly X509Certificate2 _certificate;
 
     /// <summary>The port it is listening on.</summary>
     public int Port { get; }
@@ -36,8 +38,9 @@ public sealed class SteamWorkerHost : IAsyncDisposable
     /// <summary>Completes when a caller has asked the helper to exit.</summary>
     public Task ExitRequested => _exitRequested.Task;
 
-    private SteamWorkerHost(WebApplication app, int port, TaskCompletionSource exitRequested)
+    private SteamWorkerHost(WebApplication app, int port, TaskCompletionSource exitRequested, X509Certificate2 certificate)
     {
+        _certificate = certificate;
         _app = app;
         Port = port;
         _exitRequested = exitRequested;
@@ -50,6 +53,22 @@ public sealed class SteamWorkerHost : IAsyncDisposable
     {
         TaskCompletionSource exit = new(TaskCreationOptions.RunContinuationsAsynchronously);
         var certificate = handshake.LoadCertificate();
+        try
+        {
+            return await ServeAsync(backend, handshake, certificate, exit);
+        }
+        catch
+        {
+            // Windows keeps the imported key on disk until this is disposed. It cannot be loaded
+            // as an ephemeral key: the TLS server refuses one. A killed helper still leaves the file.
+            certificate.Dispose();
+            throw;
+        }
+    }
+
+    private static async Task<SteamWorkerHost> ServeAsync(
+        ISteamAppBackend backend, SteamWorkerHandshake handshake, X509Certificate2 certificate, TaskCompletionSource exit)
+    {
 
         var builder = WebApplication.CreateSlimBuilder();
         builder.Logging.ClearProviders();
@@ -81,7 +100,7 @@ public sealed class SteamWorkerHost : IAsyncDisposable
         var addresses = app.Services.GetRequiredService<Microsoft.AspNetCore.Hosting.Server.IServer>()
             .Features.Get<Microsoft.AspNetCore.Hosting.Server.Features.IServerAddressesFeature>()!.Addresses;
         var address = new Uri(addresses.First());
-        return new SteamWorkerHost(app, address.Port, exit);
+        return new SteamWorkerHost(app, address.Port, exit, certificate);
     }
 
     /// <summary>
@@ -118,5 +137,7 @@ public sealed class SteamWorkerHost : IAsyncDisposable
     {
         await _app.StopAsync();
         await _app.DisposeAsync();
+        // Windows keeps an imported key on disk until the certificate that holds it is disposed.
+        _certificate.Dispose();
     }
 }

@@ -23,11 +23,16 @@
         <Button DockPanel.Dock="Right"
                 Content="Cancel"
                 Click="OnCancelClicked" />
-        <TextBlock x:Name="Note"
+        <StackPanel VerticalAlignment="Center">
+          <TextBlock x:Name="Address"
+                     FontSize="11"
+                     TextTrimming="CharacterEllipsis"
+                     Foreground="{DynamicResource SamTextBrush}" />
+          <TextBlock x:Name="Note"
                    FontSize="11"
                    TextWrapping="Wrap"
-                   Foreground="{DynamicResource SamMutedTextBrush}"
-                   VerticalAlignment="Center" />
+                   Foreground="{DynamicResource SamMutedTextBrush}" />
+        </StackPanel>
       </DockPanel>
     </Border>
 

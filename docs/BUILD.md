@@ -9,9 +9,9 @@
 
 ## Prerequisites
 
-- The [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0). The exact version is
-  pinned in `global.json` with `rollForward: latestFeature`; do not remove that file, or
-  builds drift onto whatever preview SDK happens to be installed.
+- The [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) or a later one.
+  `global.json` names the lowest version with `rollForward: latestMajor`; do not remove that
+  file: it also selects the test runner.
 - Nothing else. NuGet packages (Avalonia, CommunityToolkit.Mvvm, Microsoft.Data.Sqlite) are
   restored automatically. Visual Studio is optional — 17.14 or newer can open
   `AchievementCaretaker.slnx` directly, since the `.slnx` solution format needs no
@@ -186,7 +186,7 @@ than a larger download. Debug symbols are stripped, which is about a third of th
 | `.github/workflows/release.yml` | a `v*.*.*` tag, or `workflow_dispatch` | builds the seven artifacts and attaches them to a GitHub release; then, on a tag only, pushes the Chocolatey package (`chocolatey` job, Windows runner, needs the `CHOCO_API_KEY` secret) and uploads the `.deb` to the APT repository (`apt` job, needs the `CLOUDSMITH_API_KEY` secret and the `CLOUDSMITH_OWNER` and `CLOUDSMITH_REPOSITORY` values, as variables or secrets) |
 
 The `.NET` SDK comes from `actions/setup-dotnet` with `global-json-file: global.json`, so
-the pinned SDK version is honoured rather than restated. `workflow_dispatch` builds
+the version is not restated in the workflows. `workflow_dispatch` builds
 everything and uploads it as workflow artifacts *without* creating a release, which is how
 to exercise the packaging without tagging.
 
@@ -252,6 +252,16 @@ were verified:
 ```
 setup.exe /S /D=C:\path\without\quotes     (/D must come last)
 Uninstall.exe /S
+```
+
+The installer removes only what it installed: the application goes into `AchievementCaretaker`
+inside whatever was chosen, a `.achievement-caretaker-install` marker says the folder may be removed
+whole, and in any other folder only the files listed in `.achievement-caretaker-files` go. After a
+change to `installer.nsi` or `build-installer.sh`, run the test on a machine where the application is
+not installed (CI runs it on a Windows runner too):
+
+```powershell
+pwsh -File packaging/windows/test-installer.ps1 -Setup dist/achievement-caretaker-X.Y.Z-win-x64-setup.exe
 ```
 
 ### Why everything is self-contained

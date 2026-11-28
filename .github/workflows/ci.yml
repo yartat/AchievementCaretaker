@@ -26,11 +26,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           global-json-file: global.json
+
+      - name: Check that the workflows are pinned
+        run: bash packaging/check-workflows.sh
 
       # A clean build is 0 warnings, 0 errors, so hold that line rather than
       # trusting it. This does not prove the windows open: resource lookups and
@@ -72,6 +75,13 @@ jobs:
           package win-x64 AnyCPU x64
           package win-x86 x86 x86
 
+      - name: Keep the 64-bit installer for the installer test
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: installer-x64
+          path: dist/*-win-x64-setup.exe
+          retention-days: 1
+
       - name: Build the Debian package
         run: |
           set -euo pipefail
@@ -100,9 +110,9 @@ jobs:
           - rid: osx-arm64
             arch: arm64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           global-json-file: global.json
 
@@ -117,3 +127,22 @@ jobs:
           bash packaging/check-policy.sh "out/${{ matrix.rid }}"
           bash packaging/macos/build-app.sh \
             --publish-dir "out/${{ matrix.rid }}" --version "$VERSION" --arch "${{ matrix.arch }}" --output dist
+
+  # The installer removes folders, so what it removes is tried for real: silent installs and
+  # uninstalls into throw-away folders on a Windows runner.
+  installer:
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: installer-x64
+          path: dist
+
+      - name: Install, upgrade and uninstall
+        shell: pwsh
+        run: |
+          $setup = (Get-ChildItem dist -Filter *-setup.exe).FullName
+          ./packaging/windows/test-installer.ps1 -Setup $setup

@@ -500,6 +500,102 @@ public sealed class DatabaseRelocatorTests : IDisposable
     }
 
     [Fact]
+    public void Moving_onto_a_file_that_is_there_is_refused_and_neither_changes()
+    {
+        _db.Repository.Sync(1, new[] { new CachedGame { Id = 10, Name = "Mine" } });
+        var destination = Path.Combine(_db.Directory, "theirs.db");
+        File.WriteAllText(destination, "someone else's file");
+
+        Assert.Throws<IOException>(() => _db.Services.GetRequiredService<IDatabaseRelocator>().MoveTo(destination));
+
+        Assert.Equal("someone else's file", File.ReadAllText(destination));
+        Assert.Equal(_db.DatabasePath, _db.State.Path);
+        Assert.Equal("Mine", _db.Repository.LoadAll(1).Single().Name);
+    }
+
+    [Theory]
+    [InlineData("-wal")]
+    [InlineData("-shm")]
+    public void A_sidecar_in_the_way_stops_the_move_before_anything_has_moved(string suffix)
+    {
+        _db.Repository.Sync(1, new[] { new CachedGame { Id = 10, Name = "Whole" } });
+        var destination = Path.Combine(_db.Directory, "elsewhere", "games.db");
+        Directory.CreateDirectory(destination + suffix);
+
+        Assert.ThrowsAny<IOException>(() => _db.Services.GetRequiredService<IDatabaseRelocator>().MoveTo(destination));
+
+        Assert.False(File.Exists(destination));
+        Assert.True(File.Exists(_db.DatabasePath));
+        Assert.Equal("Whole", _db.Repository.LoadAll(1).Single().Name);
+    }
+
+    [Fact]
+    public void A_name_that_differs_in_case_is_another_file_where_the_system_says_so()
+    {
+        if (OperatingSystem.IsWindows() || OperatingSystem.IsMacOS())
+        {
+            Assert.Skip("The default file systems here do not tell the two apart.");
+        }
+        _db.Repository.Sync(1, new[] { new CachedGame { Id = 10, Name = "Case" } });
+        var destination = Path.Combine(_db.Directory, "GAMES.db");
+
+        _db.Services.GetRequiredService<IDatabaseRelocator>().MoveTo(destination);
+
+        Assert.Equal("Case", _db.Repository.LoadAll(1).Single().Name);
+        Assert.False(File.Exists(_db.DatabasePath));
+    }
+
+    // Whether two names are one file is the folder's to say, not the operating system's: macOS can be
+    // formatted either way, and Windows can make one folder tell them apart.
+    [Fact]
+    public void A_folder_that_tells_cases_apart_gets_the_file_moved()
+    {
+        if (OperatingSystem.IsWindows() == false)
+        {
+            Assert.Skip("Covered by the system's own file system elsewhere.");
+        }
+        var folder = Path.Combine(_db.Directory, "sensitive");
+        Directory.CreateDirectory(folder);
+        using (var fsutil = System.Diagnostics.Process.Start(
+            new System.Diagnostics.ProcessStartInfo("fsutil.exe", new[] { "file", "setCaseSensitiveInfo", folder, "enable" })
+            {
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+            })!)
+        {
+            fsutil.WaitForExit();
+            if (fsutil.ExitCode != 0)
+            {
+                Assert.Skip("This system cannot make a folder tell cases apart.");
+            }
+        }
+        _db.Repository.Sync(1, new[] { new CachedGame { Id = 10, Name = "Case" } });
+        var relocator = _db.Services.GetRequiredService<IDatabaseRelocator>();
+        relocator.MoveTo(Path.Combine(folder, "games.db"));
+
+        relocator.MoveTo(Path.Combine(folder, "GAMES.db"));
+
+        Assert.Equal("Case", _db.Repository.LoadAll(1).Single().Name);
+        Assert.False(File.Exists(Path.Combine(folder, "games.db")));
+    }
+
+    [Fact]
+    public void The_same_file_spelled_in_other_case_is_not_a_move()
+    {
+        if (OperatingSystem.IsWindows() == false)
+        {
+            Assert.Skip("Only where the two spellings are one file.");
+        }
+        _db.Repository.Sync(1, new[] { new CachedGame { Id = 10, Name = "Same" } });
+        var spelled = Path.Combine(_db.Directory.ToUpperInvariant(), "GAMES.DB");
+
+        _db.Services.GetRequiredService<IDatabaseRelocator>().MoveTo(spelled);
+
+        Assert.Equal("Same", _db.Repository.LoadAll(1).Single().Name);
+        Assert.True(File.Exists(_db.DatabasePath));
+    }
+
+    [Fact]
     public void A_failed_move_leaves_the_database_where_it_was_and_working()
     {
         _db.Repository.Sync(1, new[] { new CachedGame { Id = 10, Name = "Stays" } });

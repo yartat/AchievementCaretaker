@@ -31,9 +31,14 @@ public sealed class PlainSessionStore : ISessionStore
         {
             return File.Exists(path) == true ? JsonSerializer.Deserialize<T>(File.ReadAllBytes(path)) : null;
         }
-        catch (Exception)
+        catch (JsonException)
         {
             // A corrupt file means signing in again, not failing to start.
+            UnreadableFile.KeepAside(path);
+            return null;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
             return null;
         }
     }
@@ -42,15 +47,18 @@ public sealed class PlainSessionStore : ISessionStore
     public void Save<T>(string path, T session)
     {
         var directory = Path.GetDirectoryName(Path.GetFullPath(path));
-        if (!string.IsNullOrEmpty(directory))
+        if (string.IsNullOrEmpty(directory) == false)
         {
-            Directory.CreateDirectory(directory);
+            PrivateDirectory.Create(directory);
         }
 
-        File.WriteAllBytes(
+        // The mode is given at creation: a file made first and restricted after is readable in between.
+        AtomicFile.WriteAllBytes(
             path,
-            JsonSerializer.SerializeToUtf8Bytes(session, new JsonSerializerOptions() { WriteIndented = true }));
+            JsonSerializer.SerializeToUtf8Bytes(session, new JsonSerializerOptions() { WriteIndented = true }),
+            UnixFileMode.UserRead | UnixFileMode.UserWrite);
         File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        UnreadableFile.Forget(path);
     }
 
     /// <inheritdoc/>
@@ -60,5 +68,6 @@ public sealed class PlainSessionStore : ISessionStore
         {
             File.Delete(path);
         }
+        UnreadableFile.Forget(path);
     }
 }

@@ -52,7 +52,8 @@ app ID; that still starts the library and the app ID is ignored.
 
 Every download bundles the .NET runtime, so there is nothing to install first. The Windows
 installer is per-user: it needs no administrator, and uninstalling leaves your settings and
-ratings in `~/.sac` alone.
+ratings in `~/.sac` alone. It installs into a folder named `AchievementCaretaker` inside the one
+you choose, and removes only that folder.
 
 The Chocolatey package installs the **portable** build (the 64-bit or the 32-bit zip, whichever your
 machine needs) and checks its SHA-256 hash before unpacking, and adds a Start menu shortcut. Upgrade it with
@@ -145,6 +146,9 @@ macOS it is written readable by you alone. Caretaker never sees or stores a pass
 page. Deleting one signs you out of that store (your saved library stays); keep these files private and out of
 backups you share.
 
+A file Caretaker cannot read is not thrown away: a copy is kept beside it (`ratings.json.corrupt-<hash>`,
+`<session>.json.unreadable`, which goes again when you next sign in or sign out), so nothing is lost silently.
+
 Everything else is a cache or a local preference: delete it and Caretaker rebuilds it on the next run, losing only
 your like/dislike ratings. Libraries are saved per account, so signing out or switching accounts deletes nothing,
 and signing back in finds the games and progress as they were. **Nothing here is ever sent to Steam.**
@@ -156,7 +160,8 @@ The **Settings** button at the bottom of the library window's left rail opens a 
 - **Theme** — Follow system, Light or Dark. It is previewed as you choose and kept only when you press **Save**;
   **Cancel** puts the old one back.
 - **Game database** and **Icon cache folder** — where `games.db` and `icons/` live (**Browse…** to pick).
-  Saving a new location moves the existing data there, and if the move fails the data stays where it was. Both are
+  Saving a new location moves the existing data there, and if the move fails the data stays where it was. A
+  database already at the new place is never overwritten: the move is refused. Both are
   shared by every source. **Restore defaults** fills in the default locations under `~/.sac` and Follow system (nothing is moved until you press **Save**).
 
 Your choices are written to `settings.json` only once you change something; without the file, the defaults
@@ -169,7 +174,7 @@ time Caretaker runs.
 
 ## Versioning
 
-Current version: **2.2.0**. [docs/RELEASE-NOTES.md](docs/RELEASE-NOTES.md) records what
+Current version: **2.3.0**. [docs/RELEASE-NOTES.md](docs/RELEASE-NOTES.md) records what
 changed in each release.
 
 ## Using the sources
@@ -297,8 +302,8 @@ Without a sign-in nothing can be changed. See [docs/UBISOFT-RESEARCH.md](docs/UB
 
 ## Building
 
-Requires the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0); the exact
-version is pinned in `global.json`. No Visual Studio installation is required.
+Requires the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) or a later one
+(`global.json` rolls forward). No Visual Studio installation is required.
 
 ```bash
 dotnet build AchievementCaretaker.slnx -c Release

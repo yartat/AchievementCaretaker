@@ -122,7 +122,7 @@ public sealed class SteamProviderTests
         public int StartCount { get; private set; }
         public bool FailNextStart { get; set; }
         public string? TokenOverride { get; set; }
-        public string? ThumbprintOverride { get; set; }
+        public string? CertificateHashOverride { get; set; }
 
         public InProcessLauncher(ISteamAppBackend backend) => _backend = backend;
 
@@ -138,7 +138,7 @@ public sealed class SteamProviderTests
             var handshake = SteamWorkerHandshake.Create();
             var host = await SteamWorkerHost.StartAsync(_backend, handshake);
             return new Worker(host, new SteamWorkerEndpoint(
-                host.Port, ThumbprintOverride ?? handshake.Thumbprint, TokenOverride ?? handshake.Token));
+                host.Port, CertificateHashOverride ?? handshake.CertificateHash, TokenOverride ?? handshake.Token));
         }
 
         private sealed class Worker : ISteamWorker
@@ -276,8 +276,8 @@ public sealed class SteamProviderTests
     [Fact]
     public async Task A_server_with_another_certificate_is_not_trusted()
     {
-        var other = SteamWorkerHandshake.Create().Thumbprint;
-        var provider = new SteamProvider(new InProcessLauncher(new FakeBackend()) { ThumbprintOverride = other });
+        var other = SteamWorkerHandshake.Create().CertificateHash;
+        var provider = new SteamProvider(new InProcessLauncher(new FakeBackend()) { CertificateHashOverride = other });
 
         await Assert.ThrowsAnyAsync<Exception>(
             () => provider.GetAchievementsAsync("480", "en", TestContext.Current.CancellationToken));

@@ -114,12 +114,19 @@ public sealed class TextKeyValue(string? value, Dictionary<string, TextKeyValue>
     public static TextKeyValue Parse(string text)
     {
         int position = 0;
-        var root = ParseObject(text, ref position);
+        var root = ParseObject(text, ref position, 0);
         return root ?? Invalid;
     }
 
-    private static TextKeyValue ParseObject(string text, ref int position)
+    // As in KeyValue: nesting is limited, because overflowing the stack cannot be caught.
+    private const int MaximumDepth = 64;
+
+    private static TextKeyValue? ParseObject(string text, ref int position, int depth)
     {
+        if (depth > MaximumDepth)
+        {
+            return null;
+        }
         Dictionary<string, TextKeyValue> children = new(StringComparer.OrdinalIgnoreCase);
 
         while (true)
@@ -146,7 +153,12 @@ public sealed class TextKeyValue(string? value, Dictionary<string, TextKeyValue>
             if (text[position] == '{')
             {
                 position++;
-                children[key] = ParseObject(text, ref position);
+                var child = ParseObject(text, ref position, depth + 1);
+                if (child == null)
+                {
+                    return null;
+                }
+                children[key] = child;
             }
             else
             {

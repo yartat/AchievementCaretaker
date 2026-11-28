@@ -247,11 +247,10 @@ public sealed partial class UbisoftProvider : IWritableStoreProvider, ILocalStor
             var bytes = await client.GetByteArrayAsync(AssetsUrl + Uri.EscapeDataString(spec), cancellationToken).ConfigureAwait(false);
 
             Directory.CreateDirectory(_archiveDirectory);
-            var temporary = file + ".tmp";
-            await File.WriteAllBytesAsync(temporary, bytes, cancellationToken).ConfigureAwait(false);
-            File.Move(temporary, file, overwrite: true);
+            AtomicFile.WriteAllBytes(file, bytes);
         }
-        catch (Exception e) when (e is HttpRequestException or IOException or UnauthorizedAccessException)
+        catch (Exception e) when (cancellationToken.IsCancellationRequested == false &&
+            e is HttpRequestException or TaskCanceledException or IOException or UnauthorizedAccessException)
         {
             throw new ProviderException("network", "Ubisoft's server could not be reached for this game's achievement list.");
         }
@@ -355,8 +354,17 @@ public sealed partial class UbisoftProvider : IWritableStoreProvider, ILocalStor
                 var file = Path.Combine(directory, achievement.Id.ToString(CultureInfo.InvariantCulture) + ".png");
                 if (File.Exists(file) == false || File.GetLastWriteTimeUtc(file) < archiveWritten)
                 {
-                    using var destination = File.Create(file);
-                    archive.CopyIcon(achievement.Id, destination);
+                    // Unpacked whole first: half an icon would be newer than the archive and never redone.
+                    using MemoryStream icon = new();
+                    try
+                    {
+                        archive.CopyIcon(achievement.Id, icon);
+                    }
+                    catch (InvalidDataException)
+                    {
+                        continue;
+                    }
+                    AtomicFile.WriteAllBytes(file, icon.ToArray());
                 }
 
                 addresses[achievement.Id] = new Uri(file).AbsoluteUri;

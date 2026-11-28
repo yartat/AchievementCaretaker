@@ -100,7 +100,9 @@ public sealed class EpicProvider : IStoreProvider, IStoreAccount
     /// <inheritdoc />
     public SignInResultKind GetSignInResultKind(Uri? address) =>
         address != null &&
-        address.Host.EndsWith("epicgames.com", StringComparison.OrdinalIgnoreCase) &&
+        address.Scheme == Uri.UriSchemeHttps &&
+        (address.Host.Equals("epicgames.com", StringComparison.OrdinalIgnoreCase) ||
+         address.Host.EndsWith(".epicgames.com", StringComparison.OrdinalIgnoreCase)) &&
         address.AbsolutePath.StartsWith("/id/api/redirect", StringComparison.OrdinalIgnoreCase)
             ? SignInResultKind.PageText
             : SignInResultKind.None;
@@ -129,6 +131,8 @@ public sealed class EpicProvider : IStoreProvider, IStoreAccount
     /// <summary>What every request of the named client starts from; see <see cref="HttpClientName"/>.</summary>
     internal static void ConfigureHttpClient(HttpClient client)
     {
+        // An answer is buffered whole before it is read.
+        client.MaxResponseContentBufferSize = 32 * 1024 * 1024;
         client.Timeout = TimeSpan.FromSeconds(30);
         client.DefaultRequestHeaders.UserAgent.ParseAdd(LauncherUserAgent);
     }
